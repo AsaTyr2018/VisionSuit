@@ -61,3 +61,30 @@ port `80` in the `midgard` network and forwards requests from
 `http://<server>/<AppName>/` to the matching host port. Routes are stored in
 `bifrost_routes.json` and reloaded automatically whenever apps are installed or
 removed.
+
+## Anchor Files
+
+Apps can define custom install steps by placing a `visionsuit-anchor.yaml` (or
+`visionsuit-anchor.json`) file in the root of their repository. VisionSuit reads
+this file when an app is cloned or updated.
+
+Example `visionsuit-anchor.yaml`:
+
+```yaml
+apt_packages:
+  - ffmpeg
+pip_packages:
+  - somepackage>=1.0
+env:
+  SAMPLE_VAR: "value"
+```
+
+Supported keys:
+
+- `apt_packages` – system packages installed via `apt-get` before building the
+  Docker image.
+- `pip_packages` – additional Python packages installed with `pip`.
+- `env` – environment variables passed to the container at runtime.
+
+Include this file in the app repository to have VisionSuit apply these custom
+steps automatically.
