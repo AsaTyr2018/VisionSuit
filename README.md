@@ -62,6 +62,9 @@ port `80` in the `midgard` network and forwards requests from
 `bifrost_routes.json` and reloaded automatically whenever apps are installed or
 removed.
 
+The Bifrost container is started with `--add-host=host.docker.internal:host-gateway`
+so that Nginx can reach services running on the host.
+
 ## Anchor Files
 
 Apps can define custom install steps by placing a `visionsuit-anchor.yaml` (or

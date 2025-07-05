@@ -31,6 +31,7 @@ def ensure_bifrost():
             'docker', 'run', '-d', '--name', 'bifrost',
             '-p', '80:80',
             '--network', 'midgard',
+            '--add-host=host.docker.internal:host-gateway',
             '-v', f'{CONF_FILE.absolute()}:/etc/nginx/conf.d/default.conf:ro',
             'nginx:alpine'
         ], check=True)
