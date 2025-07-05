@@ -1,0 +1,9 @@
+[submodule "apps/VisionVault"]
+	path = apps/VisionVault
+	url = https://github.com/AsaTyr2018/VisionVault
+[submodule "apps/MyLora"]
+	path = apps/MyLora
+	url = https://github.com/AsaTyr2018/MyLora
+[submodule "apps/SDUnity"]
+	path = apps/SDUnity
+	url = https://github.com/AsaTyr2018/SDUnity
