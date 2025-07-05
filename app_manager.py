@@ -1,6 +1,7 @@
 import argparse
 import subprocess
 import shutil
+import json
 from pathlib import Path
 import yaml
 import os
@@ -9,6 +10,46 @@ import bifrost
 MANIFEST_DIR = Path('manifests')
 TEMP_DIR = Path('temp')
 STORAGE_DIR = Path('storage')
+
+
+def load_anchor(path: Path) -> dict:
+    """Load anchor configuration from visionsuit-anchor file if present."""
+    for name in (
+        'visionsuit-anchor.yaml',
+        'visionsuit-anchor.yml',
+        'visionsuit-anchor.json',
+    ):
+        anchor = path / name
+        if anchor.exists():
+            with anchor.open() as f:
+                if anchor.suffix in {'.yaml', '.yml'}:
+                    return yaml.safe_load(f) or {}
+                else:
+                    return json.load(f)
+    return {}
+
+
+def apply_anchor(path: Path) -> dict:
+    """Install extra packages and return environment variables from anchor."""
+    cfg = load_anchor(path)
+    env = cfg.get('env', {}) or {}
+    apt_packages = cfg.get('apt_packages', [])
+    pip_packages = cfg.get('pip_packages', [])
+
+    if apt_packages:
+        try:
+            subprocess.run(['apt-get', 'update'], check=True)
+            subprocess.run(['apt-get', 'install', '-y', *apt_packages], check=True)
+        except Exception as exc:
+            print(f"Failed to install apt packages: {exc}")
+
+    if pip_packages:
+        try:
+            subprocess.run(['pip', 'install', *pip_packages], check=True)
+        except Exception as exc:
+            print(f"Failed to install pip packages: {exc}")
+
+    return env
 
 def is_installed(name: str) -> bool:
     """Return True if the app has been installed."""
@@ -44,6 +85,8 @@ def install_app(name):
     else:
         subprocess.run(['git', 'clone', repo, str(clone_dir)], check=True)
 
+    env_vars = apply_anchor(clone_dir)
+
     if shutil.which('docker'):
         port = str(data.get('default_port', 3000))
         docker_tag = name.lower()
@@ -63,15 +106,14 @@ def install_app(name):
                 return
 
         subprocess.run(['docker', 'build', '-t', docker_tag, str(build_dir)], check=True)
-        subprocess.run([
-            'docker',
-            'run',
-            '-d',
-            '--name', docker_tag,
+        cmd = [
+            'docker', 'run', '-d', '--name', docker_tag,
             '--network', 'asgard',
-            '-p', f'{host_port}:{port}',
-            docker_tag,
-        ], check=True)
+        ]
+        for k, v in env_vars.items():
+            cmd.extend(['-e', f'{k}={v}'])
+        cmd.extend(['-p', f'{host_port}:{port}', docker_tag])
+        subprocess.run(cmd, check=True)
         bifrost.add_route(name, host_port)
         print(f"App {name} running at /{name} (port {host_port})")
         STORAGE_DIR.mkdir(exist_ok=True)
@@ -102,6 +144,8 @@ def update_app(name):
 
     subprocess.run(['git', '-C', str(storage_dir), 'pull'], check=True)
 
+    env_vars = apply_anchor(storage_dir)
+
     if shutil.which('docker'):
         subprocess.run(['docker', 'rm', '-f', docker_tag], check=False)
 
@@ -118,15 +162,14 @@ def update_app(name):
                 return
 
         subprocess.run(['docker', 'build', '-t', docker_tag, str(build_dir)], check=True)
-        subprocess.run([
-            'docker',
-            'run',
-            '-d',
-            '--name', docker_tag,
+        cmd = [
+            'docker', 'run', '-d', '--name', docker_tag,
             '--network', 'asgard',
-            '-p', f'{host_port}:{port}',
-            docker_tag,
-        ], check=True)
+        ]
+        for k, v in env_vars.items():
+            cmd.extend(['-e', f'{k}={v}'])
+        cmd.extend(['-p', f'{host_port}:{port}', docker_tag])
+        subprocess.run(cmd, check=True)
         bifrost.add_route(name, host_port)
         print(f"Updated {name} running at /{name} (port {host_port})")
     else:
