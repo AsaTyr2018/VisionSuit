@@ -49,7 +49,7 @@ def patch_dockerfile(dockerfile: Path, repo_dir: Path, apt: list, pip: list):
         return
 
     script = repo_dir / 'visionsuit_anchor_setup.sh'
-    lines = ['#!/bin/bash', 'set -e']
+    lines = ['#!/bin/sh', 'set -e']
     if apt:
         lines.append('apt-get update')
         lines.append('apt-get install -y $APT_PACKAGES')
@@ -69,7 +69,7 @@ def patch_dockerfile(dockerfile: Path, repo_dir: Path, apt: list, pip: list):
                 'ARG APT_PACKAGES=""',
                 'ARG PIP_PACKAGES=""',
                 f'COPY {script.name} /tmp/{script.name}',
-                f'RUN bash /tmp/{script.name} && rm /tmp/{script.name}'
+                f'RUN sh /tmp/{script.name} && rm /tmp/{script.name}'
             ])
             inserted = True
     dockerfile.write_text('\n'.join(new_lines) + '\n')
