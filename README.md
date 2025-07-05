@@ -21,10 +21,16 @@ List available apps:
 python app_manager.py list
 ```
 
+The repository ships with manifests for three applications:
+
+- **VisionVault** – lightweight image board for AI-generated artwork.
+- **MyLora** – manage and browse LoRA models.
+- **SDUnity** – Stable Diffusion web UI built with Gradio.
+
 Install an app from its manifest:
 
 ```bash
-python app_manager.py install VisionVault
+python app_manager.py install <AppName>
 ```
 
 The install command clones the app repository into `temp/`, builds a Docker image and runs it. The container is exposed on the port defined in the manifest.

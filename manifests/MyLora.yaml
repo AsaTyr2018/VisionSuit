@@ -1,0 +1,4 @@
+name: MyLora
+repo: https://github.com/AsaTyr2018/MyLora
+description: Manage and view LoRA models in a modern web interface
+default_port: 5000
