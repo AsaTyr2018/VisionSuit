@@ -33,7 +33,7 @@ Install an app from its manifest:
 python app_manager.py install <AppName>
 ```
 
-The install command clones the app repository into `temp/`, builds a Docker image and runs it. The container is exposed on the port defined in the manifest.
+The install command clones the app repository into `temp/`, builds a Docker image and runs it. If no `Dockerfile` is present, VisionSuit looks for a `docker_setup/builder.py` script and runs it to create one automatically. The container is then exposed on the port defined in the manifest.
 
 ## Web Interface
 

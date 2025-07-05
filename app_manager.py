@@ -38,7 +38,19 @@ def install_app(name):
     if shutil.which('docker'):
         port = str(data.get('default_port', 3000))
         docker_tag = name.lower()
-        subprocess.run(['docker', 'build', '-t', docker_tag, str(clone_dir)], check=True)
+
+        dockerfile = clone_dir / 'Dockerfile'
+        build_dir = clone_dir
+        if not dockerfile.exists():
+            builder = clone_dir / 'docker_setup' / 'builder.py'
+            if builder.exists():
+                subprocess.run(['python', str(builder), repo], check=True)
+                build_dir = clone_dir / 'app'
+            else:
+                print('No Dockerfile or builder script found. Cannot build the app.')
+                return
+
+        subprocess.run(['docker', 'build', '-t', docker_tag, str(build_dir)], check=True)
         subprocess.run([
             'docker',
             'run',
