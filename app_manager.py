@@ -3,6 +3,7 @@ import subprocess
 import shutil
 from pathlib import Path
 import yaml
+import os
 
 MANIFEST_DIR = Path('manifests')
 TEMP_DIR = Path('temp')
@@ -44,13 +45,14 @@ def install_app(name):
 
         dockerfile = clone_dir / 'Dockerfile'
         build_dir = clone_dir
-        if not dockerfile.exists():
-            builder = clone_dir / 'docker_setup' / 'builder.py'
-            if builder.exists():
-                subprocess.run(['python', str(builder), repo], check=True, cwd=clone_dir)
+        if not dockerfile.exists() or not os.access(dockerfile, os.R_OK):
+            builder_rel = Path('docker_setup') / 'builder.py'
+            builder = clone_dir / builder_rel
+            if builder.exists() and os.access(builder, os.R_OK):
+                subprocess.run(['python', str(builder_rel), repo], check=True, cwd=clone_dir)
                 build_dir = clone_dir / 'app'
             else:
-                print('No Dockerfile or builder script found. Cannot build the app.')
+                print('No readable Dockerfile or builder script found. Cannot build the app.')
                 return
 
         subprocess.run(['docker', 'build', '-t', docker_tag, str(build_dir)], check=True)
