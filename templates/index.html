@@ -26,7 +26,15 @@
                 <div class="card-body">
                     <h5 class="card-title">{{ app.name }}</h5>
                     <p class="card-text">{{ app.description }}</p>
+                    {% if not app.installed %}
                     <a href="{{ url_for('install', name=app.name) }}" class="btn btn-primary">Install</a>
+                    {% else %}
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('open_app', name=app.name) }}" class="btn btn-success">Open</a>
+                        <a href="{{ url_for('update', name=app.name) }}" class="btn btn-primary">Update</a>
+                        <a href="{{ url_for('remove', name=app.name) }}" class="btn btn-danger">Remove</a>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

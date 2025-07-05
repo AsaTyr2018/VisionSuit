@@ -38,7 +38,7 @@ The install command clones the app repository into `temp/` where the Docker imag
 
 ## Web Interface
 
-A simple Flask web server is provided for browsing and installing apps.
+A simple Flask web server is provided for browsing and managing apps.
 
 Start the server:
 
@@ -47,4 +47,7 @@ python webserver.py
 ```
 
 By default the server runs on port 5000. Open `http://localhost:5000` in your
-browser to view the app list and install apps.
+browser to view the app list. Each application shows an **Install** button when
+it is not present on the system. Once installed, the Web UI displays **Open**,
+**Update** and **Remove** actions allowing you to access the running app,
+rebuild it from the latest sources or delete it entirely.
