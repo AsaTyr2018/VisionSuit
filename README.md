@@ -28,3 +28,16 @@ python app_manager.py install VisionVault
 ```
 
 The install command clones the app repository into `temp/`, builds a Docker image and runs it. The container is exposed on the port defined in the manifest.
+
+## Web Interface
+
+A simple Flask web server is provided for browsing and installing apps.
+
+Start the server:
+
+```bash
+python webserver.py
+```
+
+By default the server runs on port 5000. Open `http://localhost:5000` in your
+browser to view the app list and install apps.
