@@ -6,6 +6,7 @@ import yaml
 
 MANIFEST_DIR = Path('manifests')
 TEMP_DIR = Path('temp')
+STORAGE_DIR = Path('storage')
 
 
 def list_apps():
@@ -30,6 +31,8 @@ def install_app(name):
         return
 
     clone_dir = TEMP_DIR / name
+    storage_dir = STORAGE_DIR / name
+
     if clone_dir.exists():
         print(f"{clone_dir} already exists")
     else:
@@ -44,7 +47,7 @@ def install_app(name):
         if not dockerfile.exists():
             builder = clone_dir / 'docker_setup' / 'builder.py'
             if builder.exists():
-                subprocess.run(['python', str(builder), repo], check=True)
+                subprocess.run(['python', str(builder), repo], check=True, cwd=clone_dir)
                 build_dir = clone_dir / 'app'
             else:
                 print('No Dockerfile or builder script found. Cannot build the app.')
@@ -60,6 +63,11 @@ def install_app(name):
             docker_tag,
         ], check=True)
         print(f"App {name} running at /{name} (port {port})")
+        STORAGE_DIR.mkdir(exist_ok=True)
+        if storage_dir.exists():
+            shutil.rmtree(storage_dir)
+        shutil.move(str(clone_dir), storage_dir)
+        print(f"Stored app files in {storage_dir}")
     else:
         print('Docker not found. Cannot build or run the app.')
 
