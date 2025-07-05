@@ -51,3 +51,13 @@ browser to view the app list. Each application shows an **Install** button when
 it is not present on the system. Once installed, the Web UI displays **Open**,
 **Update** and **Remove** actions allowing you to access the running app,
 rebuild it from the latest sources or delete it entirely.
+
+## Bifrost Ingress
+
+On server start, VisionSuit launches the **Bifrost** container which acts as a
+reverse proxy for all installed apps. Each application container joins the
+`asgard` Docker network and is assigned a random host port. Bifrost listens on
+port `80` in the `midgard` network and forwards requests from
+`http://<server>/<AppName>/` to the matching host port. Routes are stored in
+`bifrost_routes.json` and reloaded automatically whenever apps are installed or
+removed.

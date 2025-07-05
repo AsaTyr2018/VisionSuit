@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 import yaml
 import os
+import bifrost
 
 MANIFEST_DIR = Path('manifests')
 TEMP_DIR = Path('temp')
@@ -46,6 +47,8 @@ def install_app(name):
     if shutil.which('docker'):
         port = str(data.get('default_port', 3000))
         docker_tag = name.lower()
+        bifrost.ensure_bifrost()
+        host_port = bifrost.pick_free_port()
 
         dockerfile = clone_dir / 'Dockerfile'
         build_dir = clone_dir
@@ -65,10 +68,12 @@ def install_app(name):
             'run',
             '-d',
             '--name', docker_tag,
-            '-p', f'{port}:{port}',
+            '--network', 'asgard',
+            '-p', f'{host_port}:{port}',
             docker_tag,
         ], check=True)
-        print(f"App {name} running at /{name} (port {port})")
+        bifrost.add_route(name, host_port)
+        print(f"App {name} running at /{name} (port {host_port})")
         STORAGE_DIR.mkdir(exist_ok=True)
         if storage_dir.exists():
             shutil.rmtree(storage_dir)
@@ -92,6 +97,8 @@ def update_app(name):
     repo = data.get('repo')
     port = str(data.get('default_port', 3000))
     docker_tag = name.lower()
+    bifrost.ensure_bifrost()
+    host_port = bifrost.get_route(name) or bifrost.pick_free_port()
 
     subprocess.run(['git', '-C', str(storage_dir), 'pull'], check=True)
 
@@ -116,10 +123,12 @@ def update_app(name):
             'run',
             '-d',
             '--name', docker_tag,
-            '-p', f'{port}:{port}',
+            '--network', 'asgard',
+            '-p', f'{host_port}:{port}',
             docker_tag,
         ], check=True)
-        print(f"Updated {name} running at /{name} (port {port})")
+        bifrost.add_route(name, host_port)
+        print(f"Updated {name} running at /{name} (port {host_port})")
     else:
         print('Docker not found. Cannot build or run the app.')
 
@@ -130,6 +139,7 @@ def remove_app(name):
 
     if shutil.which('docker'):
         subprocess.run(['docker', 'rm', '-f', docker_tag], check=False)
+    bifrost.remove_route(name)
 
     if storage_dir.exists():
         shutil.rmtree(storage_dir)
