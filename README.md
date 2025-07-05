@@ -84,10 +84,10 @@ env:
 
 Supported keys:
 
-- `apt_packages` – system packages installed via `apt-get` before building the
-  Docker image.
-- `pip_packages` – additional Python packages installed with `pip`.
-- `env` – environment variables passed to the container at runtime.
+ - `apt_packages` – Debian packages installed inside the Docker image during the
+  build.
+ - `pip_packages` – additional Python packages installed inside the image with `pip`.
+ - `env` – environment variables passed to the container at runtime.
 
 Include this file in the app repository to have VisionSuit apply these custom
 steps automatically.

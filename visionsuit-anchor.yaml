@@ -2,14 +2,13 @@
 # Place this file in the root of your VisionSuit-compatible application
 # to provide extra setup steps during installation.
 
-# apt_packages lists Debian packages installed via apt-get
-# before the Docker image for the app is built.
+# apt_packages lists Debian packages installed inside the Docker image
+# during the build phase.
 apt_packages:
   - ffmpeg
   - git
 
-# pip_packages lists Python packages that will be installed with pip
-# before the Docker image is built.
+# pip_packages lists Python packages installed inside the image with pip.
 pip_packages:
   - somepackage>=1.0
   - anotherpackage==2.0

@@ -29,27 +29,50 @@ def load_anchor(path: Path) -> dict:
     return {}
 
 
-def apply_anchor(path: Path) -> dict:
-    """Install extra packages and return environment variables from anchor."""
+def apply_anchor(path: Path):
+    """Return environment variables and package lists from anchor."""
     cfg = load_anchor(path)
     env = cfg.get('env', {}) or {}
     apt_packages = cfg.get('apt_packages', [])
     pip_packages = cfg.get('pip_packages', [])
 
-    if apt_packages:
-        try:
-            subprocess.run(['apt-get', 'update'], check=True)
-            subprocess.run(['apt-get', 'install', '-y', *apt_packages], check=True)
-        except Exception as exc:
-            print(f"Failed to install apt packages: {exc}")
+    return env, apt_packages, pip_packages
 
-    if pip_packages:
-        try:
-            subprocess.run(['pip', 'install', *pip_packages], check=True)
-        except Exception as exc:
-            print(f"Failed to install pip packages: {exc}")
 
-    return env
+def patch_dockerfile(dockerfile: Path, repo_dir: Path, apt: list, pip: list):
+    """Inject package installation steps into the Dockerfile."""
+    if not dockerfile.exists() or (not apt and not pip):
+        return
+
+    text = dockerfile.read_text()
+    if 'visionsuit_anchor_setup.sh' in text:
+        return
+
+    script = repo_dir / 'visionsuit_anchor_setup.sh'
+    lines = ['#!/bin/bash', 'set -e']
+    if apt:
+        lines.append('apt-get update')
+        lines.append('apt-get install -y $APT_PACKAGES')
+        lines.append('rm -rf /var/lib/apt/lists/*')
+    if pip:
+        lines.append('pip install $PIP_PACKAGES')
+    script.write_text('\n'.join(lines) + '\n')
+    os.chmod(script, 0o755)
+
+    df_lines = text.splitlines()
+    new_lines = []
+    inserted = False
+    for line in df_lines:
+        new_lines.append(line)
+        if not inserted and line.strip().startswith('FROM'):
+            new_lines.extend([
+                'ARG APT_PACKAGES=""',
+                'ARG PIP_PACKAGES=""',
+                f'COPY {script.name} /tmp/{script.name}',
+                f'RUN bash /tmp/{script.name} && rm /tmp/{script.name}'
+            ])
+            inserted = True
+    dockerfile.write_text('\n'.join(new_lines) + '\n')
 
 def is_installed(name: str) -> bool:
     """Return True if the app has been installed."""
@@ -85,7 +108,7 @@ def install_app(name):
     else:
         subprocess.run(['git', 'clone', repo, str(clone_dir)], check=True)
 
-    env_vars = apply_anchor(clone_dir)
+    env_vars, apt_packages, pip_packages = apply_anchor(clone_dir)
 
     if shutil.which('docker'):
         port = str(data.get('default_port', 3000))
@@ -105,7 +128,14 @@ def install_app(name):
                 print('No readable Dockerfile or builder script found. Cannot build the app.')
                 return
 
-        subprocess.run(['docker', 'build', '-t', docker_tag, str(build_dir)], check=True)
+        patch_dockerfile(build_dir / 'Dockerfile', build_dir, apt_packages, pip_packages)
+        build_cmd = ['docker', 'build']
+        if apt_packages:
+            build_cmd.extend(['--build-arg', f'APT_PACKAGES={" ".join(apt_packages)}'])
+        if pip_packages:
+            build_cmd.extend(['--build-arg', f'PIP_PACKAGES={" ".join(pip_packages)}'])
+        build_cmd.extend(['-t', docker_tag, str(build_dir)])
+        subprocess.run(build_cmd, check=True)
         cmd = [
             'docker', 'run', '-d', '--name', docker_tag,
             '--network', 'asgard',
@@ -144,7 +174,7 @@ def update_app(name):
 
     subprocess.run(['git', '-C', str(storage_dir), 'pull'], check=True)
 
-    env_vars = apply_anchor(storage_dir)
+    env_vars, apt_packages, pip_packages = apply_anchor(storage_dir)
 
     if shutil.which('docker'):
         subprocess.run(['docker', 'rm', '-f', docker_tag], check=False)
@@ -161,7 +191,15 @@ def update_app(name):
                 print('No readable Dockerfile or builder script found. Cannot build the app.')
                 return
 
-        subprocess.run(['docker', 'build', '-t', docker_tag, str(build_dir)], check=True)
+        patch_dockerfile(build_dir / 'Dockerfile', build_dir, apt_packages, pip_packages)
+
+        build_cmd = ['docker', 'build']
+        if apt_packages:
+            build_cmd.extend(['--build-arg', f'APT_PACKAGES={" ".join(apt_packages)}'])
+        if pip_packages:
+            build_cmd.extend(['--build-arg', f'PIP_PACKAGES={" ".join(pip_packages)}'])
+        build_cmd.extend(['-t', docker_tag, str(build_dir)])
+        subprocess.run(build_cmd, check=True)
         cmd = [
             'docker', 'run', '-d', '--name', docker_tag,
             '--network', 'asgard',
