@@ -1,0 +1,4 @@
+name: VisionVault
+repo: https://github.com/AsaTyr2018/VisionVault
+description: Lightweight image board for AI-generated artwork
+default_port: 3000
