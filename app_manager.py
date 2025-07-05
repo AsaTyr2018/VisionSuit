@@ -45,8 +45,6 @@ def patch_dockerfile(dockerfile: Path, repo_dir: Path, apt: list, pip: list):
         return
 
     text = dockerfile.read_text()
-    if 'visionsuit_anchor_setup.sh' in text:
-        return
 
     script = repo_dir / 'visionsuit_anchor_setup.sh'
     lines = ['#!/bin/sh', 'set -e']
@@ -60,9 +58,19 @@ def patch_dockerfile(dockerfile: Path, repo_dir: Path, apt: list, pip: list):
     os.chmod(script, 0o755)
 
     df_lines = text.splitlines()
+
+    # Remove any previously inserted anchor lines to ensure consistency
+    filtered = []
+    for line in df_lines:
+        if 'visionsuit_anchor_setup.sh' in line:
+            continue
+        if line.strip().startswith('ARG APT_PACKAGES') or line.strip().startswith('ARG PIP_PACKAGES'):
+            continue
+        filtered.append(line)
+
     new_lines = []
     inserted = False
-    for line in df_lines:
+    for line in filtered:
         new_lines.append(line)
         if not inserted and line.strip().startswith('FROM'):
             new_lines.extend([
@@ -72,6 +80,7 @@ def patch_dockerfile(dockerfile: Path, repo_dir: Path, apt: list, pip: list):
                 f'RUN sh /tmp/{script.name} && rm /tmp/{script.name}'
             ])
             inserted = True
+
     dockerfile.write_text('\n'.join(new_lines) + '\n')
 
 def is_installed(name: str) -> bool:
