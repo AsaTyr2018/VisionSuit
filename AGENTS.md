@@ -2,9 +2,10 @@
 
 This repository is a compact installer package for all Vision Apps designed around Generative AI Content. The application pulls, builds and manages Vision Apps using Docker Engine.
 
-- Keep all external Vision apps as git submodules under the `apps/` directory.
-- When adding new Vision apps, add them as submodules in `apps/` and commit the change.
-- Update submodules regularly using standard git submodule workflow (`git submodule update --remote`).
+- **Do not** use Git submodules or `.gitmodules` files. They are not supported in
+  this project and will cause issues.
+- Clone external Vision app repositories manually when needed instead of relying
+  on submodules.
 
 Current available Repos:
 - https://github.com/AsaTyr2018/VisionVault
