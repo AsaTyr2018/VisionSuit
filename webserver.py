@@ -4,9 +4,11 @@ from flask import Flask, render_template, redirect, url_for, flash, request
 import app_manager
 from pathlib import Path
 import yaml
+import bifrost
 
 app = Flask(__name__)
 app.secret_key = 'visionsuit'
+bifrost.ensure_bifrost()
 
 MANIFEST_DIR = Path('manifests')
 
@@ -58,11 +60,8 @@ def open_app(name):
     if not manifest_path.exists():
         flash(f'Manifest for {name} not found', 'danger')
         return redirect(url_for('index'))
-    with manifest_path.open() as f:
-        data = yaml.safe_load(f)
-    port = data.get('default_port', 3000)
     host = request.host.split(':')[0]
-    url = f'http://{host}:{port}'
+    url = f'http://{host}/{name}/'
     return redirect(url)
 
 if __name__ == '__main__':
