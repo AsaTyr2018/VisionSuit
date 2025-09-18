@@ -2,9 +2,16 @@ import { createHash, webcrypto } from 'node:crypto'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+type HashCapableCrypto = Crypto & {
+  hash?: (
+    algorithm: string | { name?: string },
+    data: SupportedDataView | string,
+  ) => Promise<ArrayBuffer> | ArrayBuffer | Buffer | string
+}
+
 const ensureNodeCryptoHashPolyfill = () => {
-  const globalScope = globalThis as typeof globalThis & { crypto?: any }
-  const cryptoGlobal: any = globalScope.crypto ?? webcrypto
+  const globalScope = globalThis as typeof globalThis & { crypto?: HashCapableCrypto }
+  const cryptoGlobal = (globalScope.crypto ?? (webcrypto as unknown)) as HashCapableCrypto | undefined
 
   if (!cryptoGlobal) {
     return

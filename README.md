@@ -51,8 +51,14 @@ Standard-Ports:
 
 > Tipp: Mit `HOST=0.0.0.0 ./dev-start.sh` lässt sich der Host explizit überschreiben, falls erforderlich.
 
-> Hinweis: Für das Frontend ist Node.js **18 LTS** oder neuer erforderlich. Die Toolchain ist bewusst auf Vite 5 fixiert,
-> damit lokale Entwicklungsumgebungen mit Node 18 weiterhin funktionieren.
+### Node.js-Versionen & Kompatibilität
+
+- Die Vite-CLI gibt unter Node.js 18.19.x einen Warnhinweis aus, funktioniert aber dank eines mitgelieferten
+  Polyfills ohne Fehlermeldung. Die npm-Skripte laden `scripts/node18-crypto-polyfill.cjs` automatisch vor,
+  wodurch `crypto.hash` auf älteren LTS-Versionen verfügbar wird.
+- Für neue Installationen wird Node.js **22 LTS** empfohlen, um die Warnung zu vermeiden und zukünftige Vite-Releases
+  ohne Anpassungen nutzen zu können. Ein Wechsel gelingt beispielsweise via `nvm install 22 && nvm use 22`.
+
 
 ### Einzelne Services
 
