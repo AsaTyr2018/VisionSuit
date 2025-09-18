@@ -15,6 +15,16 @@ den Upload- und Kuration-Workflow.
 
 ## Installation & Setup
 
+### Voraussetzungen
+
+Stelle sicher, dass folgende Werkzeuge verfügbar sind:
+
+- Node.js (empfohlen: 22 LTS) und npm
+- Python 3 (für kleine Hilfsskripte im Installer)
+- Docker Engine (inklusive laufendem Daemon)
+- Docker Compose Plugin oder die Legacy-Binary `docker-compose`
+- Portainer CE (wird auf Wunsch direkt über das Installationsskript eingerichtet)
+
 Das Skript `./install.sh` richtet Backend und Frontend gemeinsam ein und fragt nach den wichtigsten Parametern.
 
 ```bash
@@ -23,9 +33,10 @@ Das Skript `./install.sh` richtet Backend und Frontend gemeinsam ein und fragt n
 
 Funktionen im Überblick:
 
+- Prüft, ob Docker, Docker Compose und Portainer verfügbar sind und bietet ggf. die automatische Installation von Portainer CE an.
 - Installiert die npm-Abhängigkeiten für Backend und Frontend.
 - Erstellt fehlende `.env`-Dateien aus den jeweiligen Vorlagen und stimmt `HOST`, `PORT` sowie `VITE_API_URL` aufeinander ab.
-- Richtet den MinIO-Zugangspunkt samt Zugangsdaten und Bucket-Namen ein (Secret-Key wird bei Bedarf automatisch generiert).
+- Richtet den MinIO-Zugangspunkt samt Zugangsdaten und Bucket-Namen ein (Secret-Key wird bei Bedarf automatisch generiert) und startet anschließend einen passenden Docker-Container (`visionsuit-minio`).
 - Optionaler Direktaufruf von `npm run prisma:migrate` und `npm run seed` (Bestätigung per Prompt).
 
 Nach Abschluss ist das Projekt sofort bereit für den Entwicklungsstart mit `./dev-start.sh`.
@@ -118,19 +129,11 @@ Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/S
   Buckets existieren. So entfällt das manuelle Anlegen per Konsole.
 - Die relevanten Variablen liegen in `backend/.env` (`STORAGE_DRIVER`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_BUCKET_*`, …).
   Standardmäßig werden zwei Buckets (`visionsuit-models`, `visionsuit-images`) genutzt.
-- Für lokale Tests lässt sich ein MinIO-Server per Docker starten. Nutze dabei die Zugangsdaten, die `install.sh` abgefragt hat:
-
-  ```bash
-  docker run -d \
-    --name visionsuit-minio \
-    -p 9000:9000 \
-    -p 9001:9001 \
-    -e MINIO_ROOT_USER="<ACCESS_KEY>" \
-    -e MINIO_ROOT_PASSWORD="<SECRET_KEY>" \
-    minio/minio server /data --console-address ":9001"
-  ```
-
-  Die öffentliche Basis-URL (`MINIO_PUBLIC_URL`) entspricht anschließend `http://localhost:9000` (bzw. `https://` bei TLS).
+- `install.sh` erzeugt nach dem Abfragen deiner Zugangsdaten automatisch einen MinIO-Docker-Container namens `visionsuit-minio`.
+  - Die Daten werden im Ordner `docker-data/minio/` unterhalb des Repos persistiert.
+  - Der API-Port entspricht deiner Eingabe (`MINIO_PORT`), der Administrationszugang liegt standardmäßig auf Port `MINIO_PORT + 1`.
+  - Existiert bereits ein Container, kannst du ihn direkt weiterverwenden oder komfortabel neu provisionieren lassen.
+- Portainer CE lässt sich im selben Schritt (optional) bereitstellen und bietet dir ein Dashboard für MinIO und weitere Container.
 
 ## Rollback & Bereinigung
 
