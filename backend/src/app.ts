@@ -1,8 +1,10 @@
 import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 import morgan from 'morgan';
 
 import { appConfig } from './config';
+import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from './lib/uploadLimits';
 import { router } from './routes';
 
 export const createApp = () => {
@@ -28,6 +30,26 @@ export const createApp = () => {
   });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        res.status(400).json({
+          message: `Es können maximal ${MAX_UPLOAD_FILES} Dateien pro Upload übertragen werden.`,
+        });
+        return;
+      }
+
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        const maxSizeGb = (MAX_TOTAL_SIZE_BYTES / (1024 * 1024 * 1024)).toFixed(0);
+        res.status(400).json({
+          message: `Eine der Dateien überschreitet das erlaubte Größenlimit von ${maxSizeGb} GB.`,
+        });
+        return;
+      }
+
+      res.status(400).json({ message: err.message });
+      return;
+    }
+
     // eslint-disable-next-line no-console
     console.error(err);
     res.status(500).json({ message: 'Unexpected server error' });

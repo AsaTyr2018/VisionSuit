@@ -1,5 +1,7 @@
 import type { ModelAsset } from '../types/api';
 
+import { resolveStorageUrl } from '../lib/storage';
+
 interface AssetCardProps {
   asset: ModelAsset;
 }
@@ -19,12 +21,15 @@ const formatDate = (value: string) =>
 
 export const AssetCard = ({ asset }: AssetCardProps) => {
   const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'Asset';
+  const previewUrl = resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject);
+  const downloadUrl =
+    resolveStorageUrl(asset.storagePath, asset.storageBucket, asset.storageObject) ?? asset.storagePath;
 
   return (
     <article className="asset-card">
-      {asset.previewImage ? (
+      {previewUrl ? (
         <div className="asset-card__media">
-          <img src={asset.previewImage} alt={`Preview von ${asset.title}`} loading="lazy" />
+          <img src={previewUrl} alt={`Preview von ${asset.title}`} loading="lazy" />
         </div>
       ) : null}
       <header className="asset-card__header">
@@ -38,8 +43,8 @@ export const AssetCard = ({ asset }: AssetCardProps) => {
       <dl className="asset-card__meta">
         <div>
           <dt>Storage</dt>
-          <dd title={asset.storagePath} className="asset-card__mono">
-            <a href={asset.storagePath} target="_blank" rel="noopener noreferrer">
+          <dd title={downloadUrl} className="asset-card__mono">
+            <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
               {asset.storageObject ?? asset.storagePath}
             </a>
           </dd>

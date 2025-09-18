@@ -8,9 +8,10 @@ den Upload- und Kuration-Workflow.
 
 - **Upload-Wizard** – dreistufiger Assistent für Basisdaten, Dateiupload & Review inklusive Validierungen, Drag & Drop sowie Rückmeldung aus dem produktiven Upload-Endpunkt (`POST /api/uploads`).
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
-- **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB) und automatischem Übergang in die Analyse-Queue.
+- **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
+- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:object` durch das Backend geproxied, damit Modell- und Bildassets trotz internem MinIO-Endpunkt erreichbar bleiben.
 
 ## Architekturüberblick
 
@@ -131,12 +132,15 @@ reagieren.
 3. **Asset-Erzeugung & Linking** – Das Backend erzeugt sofort `ModelAsset`- bzw. `ImageAsset`-Datensätze, verknüpft Tags, erstellt auf Wunsch neue Galerien und setzt Cover-Bilder automatisch.
 4. **Explorer-Refresh & Audit** – UploadDrafts erhalten einen `processed`-Status, Explorer-Kacheln sind direkt sichtbar und alle Storage-Informationen (Bucket, Object-Key, Public-URL) werden im API-Response ausgespielt.
 
+Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit klaren Fehlermeldungen, sobald Größen- oder Anzahllimits überschritten werden.
+
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.
 - `GET /api/meta/stats` – Aggregierte Kennzahlen (Assets, Galerien, Tags).
 - `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
 - `GET /api/assets/images` – Bild-Assets (Prompt, Modelldaten, Tags).
 - `GET /api/galleries` – Kuratierte Galerien mit zugehörigen Assets & Bildern.
+- `GET /api/storage/:bucket/:objectKey` – Proxied-Dateizugriff für MinIO-Objekte.
 - `POST /api/uploads` – Legt eine UploadDraft-Session an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
 
 ## Datenmodell-Highlights
@@ -165,6 +169,8 @@ Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/S
   - Der API-Port entspricht deiner Eingabe (`MINIO_PORT`), der Administrationszugang liegt standardmäßig auf Port `MINIO_PORT + 1`.
   - Existiert bereits ein Container, kannst du ihn direkt weiterverwenden oder komfortabel neu provisionieren lassen.
 - Portainer CE lässt sich im selben Schritt (optional) bereitstellen und bietet dir ein Dashboard für MinIO und weitere Container.
+
+Da MinIO in vielen Setups nur intern erreichbar ist, übernimmt das Backend das Ausliefern der Dateien. Über den neuen Proxy-Endpunkt `/api/storage/:bucket/:objectKey` werden Content-Type, Dateigröße sowie Dateiname korrekt gesetzt, damit Downloads und Inline-Previews im Frontend zuverlässig funktionieren.
 
 ## Rollback & Bereinigung
 

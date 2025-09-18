@@ -6,16 +6,15 @@ import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, sanitizeFilename, slugify } from '../lib/slug';
-
-const MAX_TOTAL_SIZE = 2_147_483_648; // 2 GB per Request
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    files: 12,
-    fileSize: MAX_TOTAL_SIZE,
+    files: MAX_UPLOAD_FILES,
+    fileSize: MAX_TOTAL_SIZE_BYTES,
   },
 });
 
@@ -202,7 +201,7 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
     const payload = parseResult.data;
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
 
-    if (totalSize > MAX_TOTAL_SIZE) {
+    if (totalSize > MAX_TOTAL_SIZE_BYTES) {
       res.status(400).json({
         message: 'Gesamtgröße der Dateien überschreitet das Limit von 2 GB.',
       });

@@ -1,5 +1,7 @@
 import type { Gallery } from '../types/api';
 
+import { resolveStorageUrl } from '../lib/storage';
+
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString('de-DE', {
     year: 'numeric',
@@ -10,10 +12,20 @@ const formatDate = (value: string) =>
 export const GalleryCard = ({ gallery }: { gallery: Gallery }) => {
   const previewItems = gallery.entries.slice(0, 4).map((entry) => {
     const type = entry.imageAsset ? 'image' : entry.modelAsset ? 'model' : 'empty';
-    const src = entry.imageAsset?.storagePath ?? entry.modelAsset?.previewImage ?? null;
+    const src = entry.imageAsset
+      ? resolveStorageUrl(entry.imageAsset.storagePath, entry.imageAsset.storageBucket, entry.imageAsset.storageObject)
+      : entry.modelAsset
+        ? resolveStorageUrl(
+            entry.modelAsset.previewImage,
+            entry.modelAsset.previewImageBucket,
+            entry.modelAsset.previewImageObject,
+          )
+        : null;
     const title = entry.imageAsset?.title ?? entry.modelAsset?.title ?? `Slot ${entry.position}`;
     return { id: entry.id, type, src, title };
   });
+
+  const coverUrl = resolveStorageUrl(gallery.coverImage, gallery.coverImageBucket, gallery.coverImageObject);
 
   return (
     <article className="gallery-card">
@@ -44,7 +56,7 @@ export const GalleryCard = ({ gallery }: { gallery: Gallery }) => {
         </div>
         <div>
           <dt>Cover</dt>
-          <dd className="gallery-card__mono">{gallery.coverImage ?? '–'}</dd>
+          <dd className="gallery-card__mono">{gallery.coverImageObject ?? coverUrl ?? '–'}</dd>
         </div>
       </dl>
       <footer className="gallery-card__footer">
