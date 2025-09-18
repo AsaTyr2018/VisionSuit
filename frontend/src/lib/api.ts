@@ -1,5 +1,7 @@
 import type { Gallery, MetaStats, ModelAsset } from '../types/api';
 
+import { buildApiUrl } from '../config';
+
 export class ApiError extends Error {
   details?: string[];
 
@@ -31,15 +33,8 @@ interface CreateUploadDraftResponse {
   gallerySlug?: string;
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
-
-const toUrl = (path: string) => {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${apiBaseUrl.replace(/\/$/, '')}${normalizedPath}`;
-};
-
 const request = async <T>(path: string): Promise<T> => {
-  const response = await fetch(toUrl(path));
+  const response = await fetch(buildApiUrl(path));
 
   if (!response.ok) {
     throw new Error(`API request failed: ${response.status}`);
@@ -93,7 +88,7 @@ const postUploadDraft = async (payload: CreateUploadDraftPayload) => {
   payload.files.forEach((file) => formData.append('files', file, file.name));
 
   try {
-    const response = await fetch(toUrl('/api/uploads'), {
+    const response = await fetch(buildApiUrl('/api/uploads'), {
       method: 'POST',
       body: formData,
     });

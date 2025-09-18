@@ -4,6 +4,7 @@ import { assetsRouter } from './assets';
 import { galleriesRouter } from './galleries';
 import { metaRouter } from './meta';
 import { uploadsRouter } from './uploads';
+import { storageRouter } from './storage';
 
 export const router = Router();
 
@@ -11,3 +12,4 @@ router.use('/assets', assetsRouter);
 router.use('/galleries', galleriesRouter);
 router.use('/meta', metaRouter);
 router.use('/uploads', uploadsRouter);
+router.use('/storage', storageRouter);
