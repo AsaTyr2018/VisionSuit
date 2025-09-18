@@ -10,6 +10,7 @@ den Upload- und Kuration-Workflow.
 | ------------- | ----------------------------------------------------------------------------------------------- |
 | **Backend**   | Express 5 (TypeScript) + Prisma + SQLite. Stellt REST-Endpunkte für Assets, Galerien und Statistiken bereit. |
 | **Datenbank** | Prisma-Schema für Benutzer, LoRA-Assets, Galerie-Einträge und Tagging inklusive Referenzen & Constraints.    |
+| **Storage**   | MinIO (S3-kompatibel) verwaltet Buckets für Modell- und Bilddateien und wird automatisch provisioniert.      |
 | **Frontend**  | Vite + React (TypeScript). Liefert einen ersten UI-Entwurf mit Platzhalterkarten und Statusanzeigen.         |
 
 ## Installation & Setup
@@ -24,6 +25,7 @@ Funktionen im Überblick:
 
 - Installiert die npm-Abhängigkeiten für Backend und Frontend.
 - Erstellt fehlende `.env`-Dateien aus den jeweiligen Vorlagen und stimmt `HOST`, `PORT` sowie `VITE_API_URL` aufeinander ab.
+- Richtet den MinIO-Zugangspunkt samt Zugangsdaten und Bucket-Namen ein (Secret-Key wird bei Bedarf automatisch generiert).
 - Optionaler Direktaufruf von `npm run prisma:migrate` und `npm run seed` (Bestätigung per Prompt).
 
 Nach Abschluss ist das Projekt sofort bereit für den Entwicklungsstart mit `./dev-start.sh`.
@@ -109,6 +111,26 @@ Standard-Ports:
 - Kuratierte Galerie „Featured Cinematic Set“ als Startpunkt für UI-Iterationen.
 
 Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/Suchfunktionen.
+
+## Storage mit MinIO
+
+- Der Backend-Start ruft `initializeStorage` auf und sorgt (abhängig von `MINIO_AUTO_CREATE_BUCKETS`) dafür, dass die konfigurierten
+  Buckets existieren. So entfällt das manuelle Anlegen per Konsole.
+- Die relevanten Variablen liegen in `backend/.env` (`STORAGE_DRIVER`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_BUCKET_*`, …).
+  Standardmäßig werden zwei Buckets (`visionsuit-models`, `visionsuit-images`) genutzt.
+- Für lokale Tests lässt sich ein MinIO-Server per Docker starten. Nutze dabei die Zugangsdaten, die `install.sh` abgefragt hat:
+
+  ```bash
+  docker run -d \
+    --name visionsuit-minio \
+    -p 9000:9000 \
+    -p 9001:9001 \
+    -e MINIO_ROOT_USER="<ACCESS_KEY>" \
+    -e MINIO_ROOT_PASSWORD="<SECRET_KEY>" \
+    minio/minio server /data --console-address ":9001"
+  ```
+
+  Die öffentliche Basis-URL (`MINIO_PUBLIC_URL`) entspricht anschließend `http://localhost:9000` (bzw. `https://` bei TLS).
 
 ## Rollback & Bereinigung
 
