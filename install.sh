@@ -32,6 +32,14 @@ prompt_default() {
   printf '%s' "$answer"
 }
 
+generate_secret() {
+  python3 - <<'PY'
+import secrets
+
+print(secrets.token_urlsafe(24))
+PY
+}
+
 confirm() {
   local prompt="$1"
   local answer
@@ -152,6 +160,72 @@ if [ -z "$frontend_api_url" ]; then
 fi
 update_env_value "$FRONTEND_DIR/.env" VITE_API_URL "$frontend_api_url"
 success "Frontend-Umgebung aktualisiert."
+
+info "Storage-Konfiguration (MinIO)"
+storage_driver_default="$(read_env_value "$BACKEND_DIR/.env" STORAGE_DRIVER || printf 'minio')"
+storage_driver="$(prompt_default "Storage-Treiber" "$storage_driver_default")"
+if [ "$storage_driver" != "minio" ]; then
+  echo "Warnung: Aktuell wird nur MinIO unterstützt. Der Treiber wird auf 'minio' gesetzt." >&2
+  storage_driver="minio"
+fi
+update_env_value "$BACKEND_DIR/.env" STORAGE_DRIVER "$storage_driver"
+
+minio_endpoint_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_ENDPOINT || printf '127.0.0.1')"
+minio_endpoint="$(prompt_default "MinIO Endpoint (Hostname oder IP)" "$minio_endpoint_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_ENDPOINT "$minio_endpoint"
+
+minio_port_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_PORT || printf '9000')"
+minio_port="$(prompt_default "MinIO Port" "$minio_port_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_PORT "$minio_port"
+
+minio_use_ssl_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_USE_SSL || printf 'false')"
+minio_use_ssl="$(prompt_default "MinIO HTTPS verwenden? (true/false)" "$minio_use_ssl_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_USE_SSL "$minio_use_ssl"
+
+minio_access_key_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_ACCESS_KEY || printf 'visionsuit')"
+minio_access_key="$(prompt_default "MinIO Access Key" "$minio_access_key_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_ACCESS_KEY "$minio_access_key"
+
+minio_secret_key_existing="$(read_env_value "$BACKEND_DIR/.env" MINIO_SECRET_KEY || true)"
+if [ -z "$minio_secret_key_existing" ]; then
+  minio_secret_key_existing="$(generate_secret)"
+fi
+minio_secret_key="$(prompt_default "MinIO Secret Key" "$minio_secret_key_existing")"
+update_env_value "$BACKEND_DIR/.env" MINIO_SECRET_KEY "$minio_secret_key"
+
+minio_bucket_models_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_MODELS || printf 'visionsuit-models')"
+minio_bucket_models="$(prompt_default "Bucket für Modell-Assets" "$minio_bucket_models_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_MODELS "$minio_bucket_models"
+
+minio_bucket_images_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_IMAGES || printf 'visionsuit-images')"
+minio_bucket_images="$(prompt_default "Bucket für Bild-Assets" "$minio_bucket_images_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_IMAGES "$minio_bucket_images"
+
+minio_auto_create_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_AUTO_CREATE_BUCKETS || printf 'true')"
+minio_auto_create="$(prompt_default "Buckets automatisch erstellen? (true/false)" "$minio_auto_create_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_AUTO_CREATE_BUCKETS "$minio_auto_create"
+
+minio_public_url_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_PUBLIC_URL || true)"
+if [ -z "$minio_public_url_default" ]; then
+  if [ "${minio_use_ssl,,}" = "true" ]; then
+    minio_public_url_default="https://$minio_endpoint:$minio_port"
+  else
+    minio_public_url_default="http://$minio_endpoint:$minio_port"
+  fi
+fi
+minio_public_url="$(prompt_default "Öffentliche Basis-URL für MinIO" "$minio_public_url_default")"
+update_env_value "$BACKEND_DIR/.env" MINIO_PUBLIC_URL "$minio_public_url"
+
+minio_region_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_REGION || true)"
+if [ -n "$minio_region_default" ]; then
+  minio_region="$(prompt_default "MinIO Region (optional)" "$minio_region_default")"
+else
+  read -r -p "MinIO Region (optional) []: " minio_region || true
+fi
+if [ -n "${minio_region:-}" ]; then
+  update_env_value "$BACKEND_DIR/.env" MINIO_REGION "$minio_region"
+fi
+success "Storage-Umgebung aktualisiert."
 
 if confirm "Soll 'npm run prisma:migrate' jetzt ausgeführt werden?"; then
   info "Führe Datenbankmigrationen aus"

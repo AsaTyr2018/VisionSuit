@@ -1,20 +1,32 @@
 import { appConfig } from './config';
 import { createApp } from './app';
 import { prisma } from './lib/prisma';
+import { initializeStorage } from './lib/storage';
 
-const app = createApp();
+const start = async () => {
+  try {
+    await initializeStorage();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[startup] Failed to initialize storage:', error);
+    process.exit(1);
+  }
 
-const server = app.listen(appConfig.port, appConfig.host, () => {
-  // eslint-disable-next-line no-console
-  console.log(`VisionSuit backend running at http://${appConfig.host}:${appConfig.port}`);
-});
-
-const gracefulShutdown = () => {
-  server.close(async () => {
-    await prisma.$disconnect();
-    process.exit(0);
+  const app = createApp();
+  const server = app.listen(appConfig.port, appConfig.host, () => {
+    // eslint-disable-next-line no-console
+    console.log(`VisionSuit backend running at http://${appConfig.host}:${appConfig.port}`);
   });
+
+  const gracefulShutdown = () => {
+    server.close(async () => {
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', gracefulShutdown);
+  process.on('SIGINT', gracefulShutdown);
 };
 
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
+void start();
