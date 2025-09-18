@@ -11,7 +11,7 @@ den Upload- und Kuration-Workflow.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
-- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:object` durch das Backend geproxied, damit Modell- und Bildassets trotz internem MinIO-Endpunkt erreichbar bleiben.
+- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectKey` durch das Backend geproxied, damit Modell- und Bildassets trotz internem MinIO-Endpunkt erreichbar bleiben.
 
 ## Architekturüberblick
 
