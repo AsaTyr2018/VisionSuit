@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
+DOCKER_COMPOSE_CMD=""
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -11,6 +12,107 @@ require_command() {
     echo "Bitte installiere es und führe das Skript anschließend erneut aus." >&2
     exit 1
   fi
+}
+
+detect_docker_compose() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD="docker compose"
+    return 0
+  fi
+
+  if command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD="docker-compose"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_docker_requirements() {
+  info "Prüfe Docker-Voraussetzungen"
+  require_command docker
+
+  if ! docker info >/dev/null 2>&1; then
+    echo "Fehler: Docker-Daemon ist nicht verfügbar. Bitte stelle sicher, dass Docker läuft und du Zugriffsrechte besitzt." >&2
+    exit 1
+  fi
+
+  if ! detect_docker_compose; then
+    echo "Fehler: Weder 'docker compose' noch 'docker-compose' ist verfügbar." >&2
+    echo "Bitte installiere Docker Compose (Plugin oder Legacy-Binary) und starte das Skript erneut." >&2
+    exit 1
+  fi
+
+  success "Docker Compose erkannt (${DOCKER_COMPOSE_CMD})."
+}
+
+ensure_portainer() {
+  local container_name="portainer"
+  local volume_name="portainer_data"
+
+  if docker container inspect "$container_name" >/dev/null 2>&1; then
+    if ! docker ps --filter "name=^${container_name}$" --filter "status=running" --format '{{.Names}}' | grep -q "^${container_name}$"; then
+      info "Starte vorhandenen Portainer-Container"
+      docker start "$container_name" >/dev/null
+    fi
+    success "Portainer ist bereits installiert (https://localhost:9443)."
+    return
+  fi
+
+  if confirm "Portainer CE (Docker-Dashboard) installieren?"; then
+    info "Installiere Portainer CE"
+    if ! docker volume inspect "$volume_name" >/dev/null 2>&1; then
+      docker volume create "$volume_name" >/dev/null
+    fi
+    docker run -d \
+      --name "$container_name" \
+      --restart unless-stopped \
+      -p 8000:8000 \
+      -p 9443:9443 \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v "$volume_name:/data" \
+      portainer/portainer-ce:latest >/dev/null
+    success "Portainer CE wurde gestartet (UI: https://localhost:9443)."
+  else
+    info "Portainer-Installation übersprungen. Du kannst sie später jederzeit mit 'docker run portainer/portainer-ce' nachholen."
+  fi
+}
+
+setup_minio_container() {
+  local container_name="visionsuit-minio"
+  local data_dir="$ROOT_DIR/docker-data/minio"
+  local console_port="9001"
+
+  if [[ "$minio_port" =~ ^[0-9]+$ ]]; then
+    console_port="$((minio_port + 1))"
+  fi
+
+  mkdir -p "$data_dir"
+
+  if docker container inspect "$container_name" >/dev/null 2>&1; then
+    info "MinIO-Container '$container_name' existiert bereits."
+    if confirm "Container mit neuer Konfiguration neu erstellen?"; then
+      docker rm -f "$container_name" >/dev/null
+    else
+      if ! docker ps --filter "name=^${container_name}$" --filter "status=running" --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        docker start "$container_name" >/dev/null
+      fi
+      success "Vorhandener MinIO-Container wird weiterverwendet (Konsole: http://localhost:$console_port)."
+      return
+    fi
+  fi
+
+  info "Starte MinIO über Docker"
+  docker run -d \
+    --name "$container_name" \
+    --restart unless-stopped \
+    -p "$minio_port:9000" \
+    -p "$console_port:9001" \
+    -v "$data_dir:/data" \
+    -e MINIO_ROOT_USER="$minio_access_key" \
+    -e MINIO_ROOT_PASSWORD="$minio_secret_key" \
+    minio/minio server /data --console-address ":9001" >/dev/null
+  success "MinIO läuft jetzt im Container '$container_name' (Konsole: http://localhost:$console_port)."
 }
 
 info() {
@@ -122,6 +224,7 @@ create_env_if_missing() {
 require_command node
 require_command npm
 require_command python3
+ensure_docker_requirements
 
 info "Installiere Backend-Abhängigkeiten"
 (
@@ -226,6 +329,9 @@ if [ -n "${minio_region:-}" ]; then
   update_env_value "$BACKEND_DIR/.env" MINIO_REGION "$minio_region"
 fi
 success "Storage-Umgebung aktualisiert."
+
+setup_minio_container
+ensure_portainer
 
 if confirm "Soll 'npm run prisma:migrate' jetzt ausgeführt werden?"; then
   info "Führe Datenbankmigrationen aus"
