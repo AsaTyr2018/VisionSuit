@@ -57,3 +57,33 @@ export const getObjectUrl = (bucket: string, objectName: string) => {
   const baseUrl = appConfig.storage.publicUrl.replace(/\/$/, '');
   return `${baseUrl}/${bucket}/${encodeObjectName(objectName)}`;
 };
+
+export interface StorageLocation {
+  bucket: string | null;
+  objectName: string | null;
+  url: string | null;
+}
+
+export const resolveStorageLocation = (value?: string | null): StorageLocation => {
+  if (!value) {
+    return { bucket: null, objectName: null, url: null };
+  }
+
+  if (value.startsWith('s3://')) {
+    const withoutScheme = value.slice('s3://'.length);
+    const [bucket, ...rest] = withoutScheme.split('/');
+    const objectName = rest.join('/');
+
+    if (!bucket || !objectName) {
+      return { bucket: null, objectName: null, url: value };
+    }
+
+    return { bucket, objectName, url: getObjectUrl(bucket, objectName) };
+  }
+
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    return { bucket: null, objectName: null, url: value };
+  }
+
+  return { bucket: null, objectName: value, url: `${appConfig.storage.publicUrl.replace(/\/$/, '')}/${value.replace(/^\//, '')}` };
+};

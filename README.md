@@ -10,6 +10,7 @@ den Upload- und Kuration-Workflow.
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
+- **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 
 ## Architekturüberblick
 
@@ -126,9 +127,9 @@ reagieren.
 ### Upload-Pipeline & Backend
 
 1. **Session anlegen** – Der Wizard legt per `POST /api/uploads` einen `UploadDraft` inklusive Owner, Sichtbarkeit, Tags und erwarteter Dateien an.
-2. **Ingest & Validierung** – Der Endpunkt prüft Dateitypen, 2-GB-Gesamtlimit, Pflichtfelder sowie Galerie-Zuordnung und persistiert eine vollständige Dateiliste.
-3. **Analyse-Queue** – Hintergrund-Worker lesen Checksums, Safetensor-Header oder EXIF-/Prompt-Daten aus und schreiben Ergebnisse zurück in die Asset-Datenmodelle.
-4. **Release & Audit** – Nach erfolgreicher Analyse erscheinen Assets im Explorer; Audit-Timestamps bleiben in `UploadDraft` erhalten und dokumentieren den Workflow.
+2. **Direkter Storage-Ingest** – Dateien werden gestreamt nach MinIO übertragen (`s3://bucket/object`), inklusive SHA-256-Prüfsumme für LoRA-Safetensors und optionaler Preview-Grafiken.
+3. **Asset-Erzeugung & Linking** – Das Backend erzeugt sofort `ModelAsset`- bzw. `ImageAsset`-Datensätze, verknüpft Tags, erstellt auf Wunsch neue Galerien und setzt Cover-Bilder automatisch.
+4. **Explorer-Refresh & Audit** – UploadDrafts erhalten einen `processed`-Status, Explorer-Kacheln sind direkt sichtbar und alle Storage-Informationen (Bucket, Object-Key, Public-URL) werden im API-Response ausgespielt.
 
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.

@@ -37,11 +37,19 @@ export const AssetCard = ({ asset }: AssetCardProps) => {
       <p className="asset-card__description">{asset.description ?? 'Noch keine Beschreibung hinterlegt.'}</p>
       <dl className="asset-card__meta">
         <div>
-          <dt>Dateipfad</dt>
+          <dt>Storage</dt>
           <dd title={asset.storagePath} className="asset-card__mono">
-            {asset.storagePath}
+            <a href={asset.storagePath} target="_blank" rel="noopener noreferrer">
+              {asset.storageObject ?? asset.storagePath}
+            </a>
           </dd>
         </div>
+        {asset.storageBucket ? (
+          <div>
+            <dt>Bucket</dt>
+            <dd className="asset-card__mono">{asset.storageBucket}</dd>
+          </div>
+        ) : null}
         <div>
           <dt>Dateigröße</dt>
           <dd>{formatFileSize(asset.fileSize)}</dd>

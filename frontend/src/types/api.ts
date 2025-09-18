@@ -13,7 +13,11 @@ export interface ModelAsset {
   fileSize?: number | null;
   checksum?: string | null;
   storagePath: string;
+  storageBucket?: string | null;
+  storageObject?: string | null;
   previewImage?: string | null;
+  previewImageBucket?: string | null;
+  previewImageObject?: string | null;
   metadata?: Record<string, unknown> | null;
   owner: {
     id: string;
@@ -40,6 +44,8 @@ export interface ImageAsset {
   dimensions?: { width: number; height: number };
   fileSize?: number | null;
   storagePath: string;
+  storageBucket?: string | null;
+  storageObject?: string | null;
   prompt?: string | null;
   negativePrompt?: string | null;
   metadata: ImageAssetMetadata;
@@ -62,6 +68,8 @@ export interface Gallery {
   title: string;
   description?: string | null;
   coverImage?: string | null;
+  coverImageBucket?: string | null;
+  coverImageObject?: string | null;
   isPublic: boolean;
   owner: {
     id: string;

@@ -25,6 +25,10 @@ interface CreateUploadDraftPayload {
 interface CreateUploadDraftResponse {
   uploadId?: string;
   message?: string;
+  assetId?: string;
+  assetSlug?: string;
+  imageId?: string;
+  gallerySlug?: string;
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';

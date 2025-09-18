@@ -46,6 +46,7 @@ const matchesSearch = (asset: ModelAsset, query: string) => {
     asset.description ?? '',
     asset.owner.displayName,
     asset.version,
+    asset.storageObject ?? asset.storagePath,
     ...asset.tags.map((tag) => tag.label),
   ]
     .map((entry) => normalize(entry))
