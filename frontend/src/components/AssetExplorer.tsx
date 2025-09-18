@@ -8,6 +8,7 @@ import { FilterChip } from './FilterChip';
 interface AssetExplorerProps {
   assets: ModelAsset[];
   isLoading: boolean;
+  onStartUpload?: () => void;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -55,7 +56,7 @@ const matchesSearch = (asset: ModelAsset, query: string) => {
 
 const findModelType = (asset: ModelAsset) => asset.tags.find((tag) => tag.category === 'model-type');
 
-export const AssetExplorer = ({ assets, isLoading }: AssetExplorerProps) => {
+export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -202,12 +203,12 @@ export const AssetExplorer = ({ assets, isLoading }: AssetExplorerProps) => {
         <div>
           <h2 className="panel__title">LoRA-Datenbank</h2>
           <p className="panel__subtitle">
-            Durchsuche kuratierte Safetensor-Modelle, filtere nach Tags, Dateigrößen oder Kurator:innen und sortiere große Bestände
-            ohne Performance-Einbruch.
+            Produktionsreife LoRA-Bibliothek mit Volltext, Tagging und Kurator:innen-Filtern. Alle Einträge spiegeln den
+            aktuellen Analyse-Status und lassen sich ohne Performanceeinbruch über große Bestände hinweg sortieren.
           </p>
         </div>
-        <button type="button" className="panel__action panel__action--primary">
-          Upload-Workflow öffnen
+        <button type="button" className="panel__action panel__action--primary" onClick={() => onStartUpload?.()}>
+          Upload-Assistent starten
         </button>
       </header>
 
