@@ -35,8 +35,8 @@ Standard-Ports:
 
 > Tipp: Mit `HOST=0.0.0.0 ./dev-start.sh` lässt sich der Host explizit überschreiben, falls erforderlich.
 
-> Hinweis: Die Frontend-Toolchain liefert nun eine integrierte Polyfill-Lösung für `crypto.hash`, sodass der gemeinsame Starter
-> ab Node.js 18+ ohne zusätzliche Flags oder Workarounds lauffähig ist.
+> Hinweis: Für das Frontend ist Node.js **18 LTS** oder neuer erforderlich. Die Toolchain ist bewusst auf Vite 5 fixiert,
+> damit lokale Entwicklungsumgebungen mit Node 18 weiterhin funktionieren.
 
 ### Einzelne Services
 
@@ -61,6 +61,11 @@ Standard-Ports:
    ```bash
    npm run dev -- --host 0.0.0.0 --port 5173
    ```
+3. Node-Version prüfen:
+   ```bash
+   node -v
+   ```
+   Sollte die Ausgabe eine Version kleiner als 18 zeigen, bitte Node.js aktualisieren (z. B. via `nvm`).
 
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.
