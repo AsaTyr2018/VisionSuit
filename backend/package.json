@@ -13,9 +13,6 @@
     "prisma:studio": "prisma studio",
     "seed": "ts-node --transpile-only prisma/seed.ts"
   },
-  "prisma": {
-    "seed": "ts-node --transpile-only prisma/seed.ts"
-  },
   "dependencies": {
     "@prisma/client": "^6.16.2",
     "cors": "^2.8.5",

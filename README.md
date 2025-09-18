@@ -39,12 +39,15 @@ Standard-Ports:
 
 #### Backend
 1. `cd backend`
-2. Prisma-Schema anwenden und Seed laden (optional, für Demodaten):
+2. Prüfe die Prisma-Umgebung:
+   - Die Datei `prisma/.env` enthält standardmäßig `DATABASE_URL="file:./dev.db"` für die SQLite-Dev-Datenbank.
+   - Passe den Pfad bei Bedarf an (z. B. für persistente Volumes) und kopiere die Datei für weitere Umgebungen.
+3. Prisma-Schema anwenden und Seed laden (optional, für Demodaten):
    ```bash
    npm run prisma:migrate
    npm run seed
    ```
-3. Entwicklungsserver (ebenfalls auf `0.0.0.0`):
+4. Entwicklungsserver (ebenfalls auf `0.0.0.0`):
    ```bash
    HOST=0.0.0.0 PORT=4000 npm run dev
    ```
