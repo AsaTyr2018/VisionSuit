@@ -6,30 +6,55 @@ den Upload- und Kuration-Workflow.
 
 ## Architekturüberblick
 
-| Bereich     | Stack & Zweck |
-| ----------- | ------------- |
-| **Backend** | Express 5 (TypeScript) + Prisma + SQLite. Stellt REST-Endpunkte für Assets, Galerien und Systemstatistiken bereit. |
-| **Datenbank** | Prisma-Schema für Benutzer, LoRA-Assets, Galerie-Einträge und Tagging inklusive Referenzen & Constraints. |
-| **Frontend** | Vite + React (TypeScript). Liefert einen ersten UI-Entwurf mit Platzhalterkarten und Statusanzeigen. |
+| Bereich       | Stack & Zweck                                                                                   |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| **Backend**   | Express 5 (TypeScript) + Prisma + SQLite. Stellt REST-Endpunkte für Assets, Galerien und Statistiken bereit. |
+| **Datenbank** | Prisma-Schema für Benutzer, LoRA-Assets, Galerie-Einträge und Tagging inklusive Referenzen & Constraints.    |
+| **Frontend**  | Vite + React (TypeScript). Liefert einen ersten UI-Entwurf mit Platzhalterkarten und Statusanzeigen.         |
 
-## Schnellstart
+## Entwicklung starten
 
-### Backend
-1. `cd backend && npm install`
-2. `cp .env.example .env`
-3. Datenbank anwenden und befüllen:
+### Gemeinsamer Dev-Starter
+
+Der Befehl `./dev-start.sh` startet Backend und Frontend gemeinsam im Watch-Modus und bindet beide Services an `0.0.0.0`.
+So können sie von außen erreicht werden, z. B. in Container- oder Cloud-Umgebungen.
+
+1. Abhängigkeiten installieren:
+   ```bash
+   (cd backend && npm install)
+   (cd frontend && npm install)
+   ```
+2. Starter aufrufen:
+   ```bash
+   ./dev-start.sh
+   ```
+
+Standard-Ports:
+- Backend: `4000` (änderbar über `BACKEND_PORT`)
+- Frontend: `5173` (änderbar über `FRONTEND_PORT`)
+
+> Tipp: Mit `HOST=0.0.0.0 ./dev-start.sh` lässt sich der Host explizit überschreiben, falls erforderlich.
+
+### Einzelne Services
+
+#### Backend
+1. `cd backend`
+2. Prisma-Schema anwenden und Seed laden (optional, für Demodaten):
    ```bash
    npm run prisma:migrate
    npm run seed
    ```
-4. Entwicklungsserver starten: `npm run dev` (Standard: http://localhost:4000)
+3. Entwicklungsserver (ebenfalls auf `0.0.0.0`):
+   ```bash
+   HOST=0.0.0.0 PORT=4000 npm run dev
+   ```
 
-### Frontend
-1. `cd frontend && npm install`
-2. API-Basis anpassen (optional): `cp .env.example .env`
-3. Entwicklungsserver starten: `npm run dev` (Standard: http://localhost:5173)
-
-> **Hinweis:** Das Frontend zeigt Placeholder-Karten. Inhalte stammen aus dem Seed des Backends oder einer laufenden Instanz.
+#### Frontend
+1. `cd frontend`
+2. Entwicklungsserver starten:
+   ```bash
+   npm run dev -- --host 0.0.0.0 --port 5173
+   ```
 
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.
