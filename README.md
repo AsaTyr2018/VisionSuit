@@ -114,7 +114,21 @@ Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/S
 
 Für Test-Szenarien oder wenn ein kompletter Reset der Arbeitskopie benötigt wird, stellt das Repository das Skript
 `./rollback.sh` bereit. Es entfernt installierte Abhängigkeiten, löscht Build-Artefakte, setzt Konfigurationsdateien auf ihre
-Beispielwerte zurück und säubert Cache-Verzeichnisse für Front- und Backend.
+Beispielwerte zurück, säubert Cache-Verzeichnisse für Front- und Backend **und** räumt sämtliche lokal installierten Node.js
+Toolchains samt globalen npm/pnpm/yarn-Artefakten auf.
+
+**Was wird zurückgesetzt?**
+
+- npm-Abhängigkeiten und Build-Ordner in `backend/` und `frontend/`.
+- `.env`-Dateien werden aus den jeweiligen `*.env.example`-Vorlagen wiederhergestellt.
+- Projektweite Cache-Verzeichnisse (`.turbo`, `.cache`, `.eslintcache`, `.vite`, `tsconfig.tsbuildinfo`).
+- npm-Cache (`npm cache clean --force`, falls verfügbar) sowie globale Prefixes im Home-Verzeichnis (z. B. `~/.npm-global`).
+- Lokale Node-Versionen und Toolchains in Home- oder Projektpfaden (u. a. `~/.nvm`, `~/.fnm`, `~/.asdf/installs/nodejs`,
+  `~/.volta`, `./.toolchains`).
+
+> ⚠️ **Achtung**: Der Toolchain-Purge löscht alle lokal via nvm/fnm/asdf/volta installierten Node.js-Versionen sowie globale
+> npm-Installationen im Home-Verzeichnis. Prüfe mit `./rollback.sh --dry-run`, ob weitere Projekte betroffen wären, und sichere
+> ggf. benötigte Toolchains vor dem produktiven Lauf.
 
 ```bash
 # Übersicht der geplanten Schritte ohne Änderungen an der Arbeitskopie

@@ -68,6 +68,119 @@ restore_tracked_file() {
   fi
 }
 
+run_npm_cache_clean() {
+  if ! command -v npm >/dev/null 2>&1; then
+    log INFO 'npm nicht gefunden, überspringe Cache-Leerung'
+    return
+  fi
+
+  if $DRY_RUN; then
+    log INFO "Würde 'npm cache clean --force' ausführen"
+    return
+  fi
+
+  if npm cache clean --force >/dev/null 2>&1; then
+    log INFO 'npm Cache geleert'
+  else
+    log WARN 'npm Cache konnte nicht geleert werden'
+  fi
+}
+
+purge_npm_global_prefix() {
+  if ! command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  local prefix
+  prefix="$(npm config get prefix 2>/dev/null || true)"
+  prefix="${prefix%%$'\r'}"
+
+  if [ -z "$prefix" ] || [ "$prefix" = "null" ]; then
+    return
+  fi
+
+  if [[ "$prefix" == "$HOME" ]]; then
+    log WARN 'npm global Prefix entspricht dem Home-Verzeichnis und wird aus Sicherheitsgründen nicht entfernt'
+    return
+  fi
+
+  if [[ "$prefix" == /* ]] && [[ "$prefix" != "$HOME"* ]]; then
+    log INFO "npm global Prefix ($prefix) liegt außerhalb des Home-Verzeichnisses und wird nicht entfernt"
+    return
+  fi
+
+  remove_path "$prefix/lib/node_modules"
+  remove_path "$prefix/bin"
+  remove_path "$prefix/include/node"
+  remove_path "$prefix/share/man/man1/node.1"
+  remove_path "$prefix/share/doc/node"
+  remove_path "$prefix"
+}
+
+purge_node_caches() {
+  local cache_paths=(
+    "$HOME/.npm"
+    "$HOME/.npmrc"
+    "$HOME/.config/npm"
+    "$HOME/.config/node"
+    "$HOME/.cache/npm"
+    "$HOME/.cache/node-gyp"
+    "$HOME/.local/share/npm"
+    "$HOME/.local/state/npm"
+    "$HOME/.pnpm-store"
+    "$HOME/.local/share/pnpm"
+    "$HOME/.cache/pnpm"
+    "$HOME/.yarn"
+    "$HOME/.cache/yarn"
+    "$HOME/.local/share/yarn"
+    "$HOME/.corepack"
+    "$HOME/.cache/corepack"
+    "$ROOT_DIR/.npm"
+    "$ROOT_DIR/.cache/npm"
+    "$ROOT_DIR/.cache/node-gyp"
+    "$ROOT_DIR/.pnpm-store"
+  )
+
+  for cache_path in "${cache_paths[@]}"; do
+    remove_path "$cache_path"
+  done
+}
+
+purge_node_versions() {
+  local node_path
+  if command -v node >/dev/null 2>&1; then
+    node_path="$(command -v node)"
+    if [[ "$node_path" == "$HOME/"* ]]; then
+      local version_dir
+      version_dir="$(dirname "$(dirname "$node_path")")"
+      remove_path "$version_dir"
+    fi
+  fi
+
+  local version_dirs=(
+    "$HOME/.nvm/versions/node"
+    "$HOME/.fnm/installs"
+    "$HOME/.asdf/installs/nodejs"
+    "$HOME/.asdf/installs/node"
+    "$HOME/.local/share/node"
+    "$HOME/.local/share/nodejs"
+    "$HOME/.local/share/corepack"
+    "$HOME/.nodebrew/node"
+    "$HOME/.nodenv/versions"
+    "$HOME/.nvs/node"
+    "$HOME/.volta/tools/image/node"
+    "$HOME/.volta/tools/image/packages"
+    "$HOME/.volta/tools/inventory/node"
+    "$ROOT_DIR/.toolchains"
+    "$ROOT_DIR/.node"
+    "$ROOT_DIR/.volta"
+  )
+
+  for dir in "${version_dirs[@]}"; do
+    remove_path "$dir"
+  done
+}
+
 confirm() {
   if $ASSUME_YES; then
     return
@@ -138,6 +251,12 @@ log INFO 'Allgemeine temporäre Dateien bereinigen'
 remove_path "$ROOT_DIR/.turbo"
 remove_path "$ROOT_DIR/.cache"
 remove_path "$ROOT_DIR/.eslintcache"
+
+log INFO 'Node.js-Toolchains und globale Artefakte bereinigen'
+run_npm_cache_clean
+purge_npm_global_prefix
+purge_node_caches
+purge_node_versions
 
 if ! $DRY_RUN; then
   log INFO 'Rollback abgeschlossen. Installationen wurden entfernt.'
