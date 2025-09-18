@@ -87,3 +87,20 @@ Standard-Ports:
 - Kuratierte Galerie „Featured Cinematic Set“ als Startpunkt für UI-Iterationen.
 
 Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/Suchfunktionen.
+
+## Rollback & Bereinigung
+
+Für Test-Szenarien oder wenn ein kompletter Reset der Arbeitskopie benötigt wird, stellt das Repository das Skript
+`./rollback.sh` bereit. Es entfernt installierte Abhängigkeiten, löscht Build-Artefakte, setzt Konfigurationsdateien auf ihre
+Beispielwerte zurück und säubert Cache-Verzeichnisse für Front- und Backend.
+
+```bash
+# Übersicht der geplanten Schritte ohne Änderungen an der Arbeitskopie
+./rollback.sh --dry-run
+
+# Rollback ohne Rückfrage durchführen
+./rollback.sh --yes
+```
+
+> Hinweis: Die lokalen `.env`-Dateien werden durch die jeweiligen `*.env.example`-Vorlagen ersetzt. Eigene Anpassungen sollten
+> vor dem Rollback gesichert werden.
