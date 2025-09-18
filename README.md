@@ -35,6 +35,9 @@ Standard-Ports:
 
 > Tipp: Mit `HOST=0.0.0.0 ./dev-start.sh` lässt sich der Host explizit überschreiben, falls erforderlich.
 
+> Hinweis: Die Frontend-Toolchain liefert nun eine integrierte Polyfill-Lösung für `crypto.hash`, sodass der gemeinsame Starter
+> ab Node.js 18+ ohne zusätzliche Flags oder Workarounds lauffähig ist.
+
 ### Einzelne Services
 
 #### Backend
