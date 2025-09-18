@@ -12,6 +12,22 @@ den Upload- und Kuration-Workflow.
 | **Datenbank** | Prisma-Schema für Benutzer, LoRA-Assets, Galerie-Einträge und Tagging inklusive Referenzen & Constraints.    |
 | **Frontend**  | Vite + React (TypeScript). Liefert einen ersten UI-Entwurf mit Platzhalterkarten und Statusanzeigen.         |
 
+## Installation & Setup
+
+Das Skript `./install.sh` richtet Backend und Frontend gemeinsam ein und fragt nach den wichtigsten Parametern.
+
+```bash
+./install.sh
+```
+
+Funktionen im Überblick:
+
+- Installiert die npm-Abhängigkeiten für Backend und Frontend.
+- Erstellt fehlende `.env`-Dateien aus den jeweiligen Vorlagen und stimmt `HOST`, `PORT` sowie `VITE_API_URL` aufeinander ab.
+- Optionaler Direktaufruf von `npm run prisma:migrate` und `npm run seed` (Bestätigung per Prompt).
+
+Nach Abschluss ist das Projekt sofort bereit für den Entwicklungsstart mit `./dev-start.sh`.
+
 ## Entwicklung starten
 
 ### Gemeinsamer Dev-Starter
