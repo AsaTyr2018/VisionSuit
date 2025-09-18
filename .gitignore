@@ -15,7 +15,6 @@ backend/.env
 frontend/.env
 backend/.env.local
 frontend/.env.local
-!backend/prisma/.env
 
 # Prisma
 backend/prisma/dev.db

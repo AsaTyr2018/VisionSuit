@@ -119,7 +119,6 @@ remove_path "$BACKEND_DIR/prisma/test.db"
 remove_path "$BACKEND_DIR/.env.local"
 
 reset_from_example "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
-restore_tracked_file "backend/prisma/.env"
 restore_tracked_file "backend/package-lock.json"
 
 log INFO 'Rollback für Frontend starten'
