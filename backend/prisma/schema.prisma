@@ -1,0 +1,121 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  CURATOR
+  ADMIN
+}
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  displayName String
+  role        UserRole     @default(CURATOR)
+  bio         String?
+  avatarUrl   String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  galleries   Gallery[]    @relation("GalleryOwner")
+  assets      ModelAsset[] @relation("AssetOwner")
+}
+
+model Gallery {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  title       String
+  description String?
+  coverImage  String?
+  isPublic    Boolean        @default(true)
+  ownerId     String
+  owner       User           @relation("GalleryOwner", fields: [ownerId], references: [id])
+  entries     GalleryEntry[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model ModelAsset {
+  id           String       @id @default(cuid())
+  slug         String       @unique
+  title        String
+  description  String?
+  version      String
+  fileSize     Int?
+  checksum     String?
+  storagePath  String       @unique
+  previewImage String?
+  metadata     Json?
+  ownerId      String
+  owner        User         @relation("AssetOwner", fields: [ownerId], references: [id])
+  tags         AssetTag[]
+  galleryItems GalleryEntry[] @relation("GalleryModel")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model ImageAsset {
+  id             String         @id @default(cuid())
+  title          String
+  description    String?
+  width          Int?
+  height         Int?
+  fileSize       Int?
+  storagePath    String         @unique
+  prompt         String?
+  negativePrompt String?
+  seed           String?
+  model          String?
+  sampler        String?
+  cfgScale       Float?
+  steps          Int?
+  tags           ImageTag[]
+  galleries      GalleryEntry[] @relation("GalleryImage")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model GalleryEntry {
+  id        String   @id @default(cuid())
+  galleryId String
+  imageId   String?
+  assetId   String?
+  position  Int      @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+  gallery   Gallery  @relation(fields: [galleryId], references: [id])
+  image     ImageAsset? @relation("GalleryImage", fields: [imageId], references: [id])
+  asset     ModelAsset? @relation("GalleryModel", fields: [assetId], references: [id])
+}
+
+model Tag {
+  id        String     @id @default(cuid())
+  label     String     @unique
+  category  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  imageTags ImageTag[]
+  assetTags AssetTag[]
+}
+
+model ImageTag {
+  imageId String
+  tagId   String
+  image   ImageAsset @relation(fields: [imageId], references: [id])
+  tag     Tag        @relation(fields: [tagId], references: [id])
+
+  @@id([imageId, tagId])
+}
+
+model AssetTag {
+  assetId String
+  tagId   String
+  asset   ModelAsset @relation(fields: [assetId], references: [id])
+  tag     Tag        @relation(fields: [tagId], references: [id])
+
+  @@id([assetId, tagId])
+}
