@@ -1,10 +1,13 @@
 import crypto from 'node:crypto';
 
+import type { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
+import { buildUniqueSlug, sanitizeFilename, slugify } from '../lib/slug';
 
 const MAX_TOTAL_SIZE = 2_147_483_648; // 2 GB per Request
 
@@ -15,6 +18,98 @@ const upload = multer({
     fileSize: MAX_TOTAL_SIZE,
   },
 });
+
+type MulterFile = Express.Multer.File;
+
+const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
+
+const ensureDefaultOwner = async (tx: Prisma.TransactionClient) => {
+  const existing = await tx.user.findFirst({ orderBy: { createdAt: 'asc' } });
+  if (existing) {
+    return existing;
+  }
+
+  return tx.user.create({
+    data: {
+      email: `autogen-${Date.now()}@visionsuit.local`,
+      displayName: 'Auto Curator',
+    },
+  });
+};
+
+const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category?: string | null) => {
+  const normalized = Array.from(
+    new Set(
+      tags
+        .map((tag) => tag.trim().toLowerCase())
+        .filter((tag) => tag.length > 0),
+    ),
+  );
+
+  if (normalized.length === 0) {
+    return [] as { id: string }[];
+  }
+
+  return Promise.all(
+    normalized.map((label) =>
+      tx.tag.upsert({
+        where: { label },
+        update: category ? { category } : {},
+        create: { label, category: category ?? null },
+        select: { id: true },
+      }),
+    ),
+  );
+};
+
+const ensureLoraTypeTag = async (tx: Prisma.TransactionClient) =>
+  tx.tag.upsert({
+    where: { label: 'lora' },
+    update: { category: 'model-type' },
+    create: { label: 'lora', category: 'model-type' },
+    select: { id: true },
+  });
+
+const resolveGallery = async (
+  tx: Prisma.TransactionClient,
+  payload: z.infer<typeof createUploadSchema>,
+  ownerId: string,
+  fallbackCover?: string | null,
+) => {
+  if (payload.galleryMode === 'existing') {
+    if (!payload.targetGallery) {
+      return null;
+    }
+
+    const input = payload.targetGallery.trim();
+    const slugCandidate = slugify(input);
+
+    return tx.gallery.findFirst({
+      where: {
+        OR: [
+          { slug: input.toLowerCase() },
+          { slug: slugCandidate },
+          { title: input },
+        ],
+      },
+    });
+  }
+
+  const galleryTitle = payload.targetGallery?.trim() || `${payload.title.trim()} Collection`;
+  const slugBase = galleryTitle.length > 0 ? galleryTitle : payload.title;
+  const slug = await buildUniqueSlug(slugBase, (candidate) => tx.gallery.findUnique({ where: { slug: candidate } }).then(Boolean), 'gallery');
+
+  return tx.gallery.create({
+    data: {
+      slug,
+      title: galleryTitle,
+      description: payload.description ?? null,
+      coverImage: fallbackCover ?? null,
+      isPublic: payload.visibility === 'public',
+      ownerId,
+    },
+  });
+};
 
 const normalizeTagInput = (value: unknown): string[] => {
   if (value == null) {
@@ -82,7 +177,7 @@ export const uploadsRouter = Router();
 
 uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
   try {
-    const files = (req.files ?? []) as Express.Multer.File[];
+    const files = ((req as unknown as { files?: MulterFile[] }).files ?? []) as MulterFile[];
 
     if (files.length === 0) {
       res.status(400).json({ message: 'Mindestens eine Datei wird für den Upload benötigt.' });
@@ -113,33 +208,225 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
       });
       return;
     }
+    if (payload.galleryMode === 'existing' && payload.targetGallery) {
+      const input = payload.targetGallery.trim();
+      const slugCandidate = slugify(input);
+      const gallery = await prisma.gallery.findFirst({
+        where: {
+          OR: [
+            { slug: input.toLowerCase() },
+            { slug: slugCandidate },
+            { title: input },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (!gallery) {
+        res.status(404).json({ message: 'Die angegebene Galerie konnte nicht gefunden werden.' });
+        return;
+      }
+    }
+
     const uploadReference = crypto.randomUUID();
 
-    const draft = await prisma.uploadDraft.create({
-      data: {
-        id: uploadReference,
-        assetType: payload.assetType,
-        title: payload.title,
-        description: payload.description ?? null,
-        visibility: payload.visibility,
-        category: payload.category ?? null,
-        galleryMode: payload.galleryMode,
-        targetGallery: payload.galleryMode === 'existing' ? payload.targetGallery ?? null : null,
-        tags: payload.tags,
-        files: files.map((file) => ({
+    const storageFiles = await Promise.all(
+      files.map(async (file, index) => {
+        const isImage = file.mimetype.startsWith('image/');
+        const bucket = isImage ? storageBuckets.images : storageBuckets.models;
+        const objectName = `uploads/${uploadReference}/${index + 1}-${sanitizeFilename(
+          file.originalname || `asset-file-${index + 1}`,
+          'asset-file',
+        )}`;
+
+        await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
+          'Content-Type': file.mimetype || undefined,
+        });
+
+        return {
           name: file.originalname,
           size: file.size,
           type: file.mimetype,
-        })),
-        fileCount: files.length,
-        totalSize: BigInt(totalSize),
-      },
+          bucket,
+          objectName,
+          url: getObjectUrl(bucket, objectName),
+        };
+      }),
+    );
+
+    const primaryFile = files[0];
+    const primaryStored = storageFiles[0];
+
+    if (!primaryFile || !primaryStored) {
+      res.status(400).json({ message: 'Die erste Datei konnte nicht verarbeitet werden.' });
+      return;
+    }
+
+    const normalizedTags = Array.from(
+      new Set(payload.tags.map((tag) => tag.trim().toLowerCase()).filter((tag) => tag.length > 0)),
+    );
+
+    const checksum =
+      payload.assetType === 'lora'
+        ? crypto.createHash('sha256').update(primaryFile.buffer).digest('hex')
+        : undefined;
+
+    const previewStored = storageFiles.find((stored, index) => files[index]?.mimetype.startsWith('image/'));
+
+    const result = await prisma.$transaction(async (tx) => {
+      const owner = await ensureDefaultOwner(tx);
+      const gallery = await resolveGallery(tx, payload, owner.id, previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null);
+
+      if (!gallery) {
+        throw new Error('Gallery not found');
+      }
+
+      const tagRecords = await ensureTags(tx, normalizedTags, payload.category);
+      const tagIds = tagRecords.map((tag) => tag.id);
+
+      if (payload.assetType === 'lora') {
+        const loraTag = await ensureLoraTypeTag(tx);
+        if (!tagIds.includes(loraTag.id)) {
+          tagIds.push(loraTag.id);
+        }
+      }
+
+      const draft = await tx.uploadDraft.create({
+        data: {
+          id: uploadReference,
+          assetType: payload.assetType,
+          title: payload.title,
+          description: payload.description ?? null,
+          visibility: payload.visibility,
+          category: payload.category ?? null,
+          galleryMode: payload.galleryMode,
+          targetGallery: payload.galleryMode === 'existing' ? payload.targetGallery ?? null : null,
+          tags: normalizedTags,
+          files: storageFiles.map((file) => ({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            bucket: file.bucket,
+            objectName: file.objectName,
+            url: file.url,
+          })),
+          fileCount: files.length,
+          totalSize: BigInt(totalSize),
+          status: 'processed',
+        },
+      });
+
+      const lastEntry = await tx.galleryEntry.findFirst({
+        where: { galleryId: gallery.id },
+        orderBy: { position: 'desc' },
+      });
+      const nextPosition = (lastEntry?.position ?? 0) + 1;
+
+      if (payload.assetType === 'lora') {
+        const slug = await buildUniqueSlug(
+          payload.title,
+          (candidate) => tx.modelAsset.findUnique({ where: { slug: candidate } }).then(Boolean),
+          'model',
+        );
+
+        const modelAsset = await tx.modelAsset.create({
+          data: {
+            slug,
+            title: payload.title,
+            description: payload.description ?? null,
+            version: '1.0.0',
+            fileSize: primaryFile.size,
+            checksum: checksum ?? null,
+            storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
+            previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
+            metadata: {
+              originalFileName: primaryFile.originalname,
+              visibility: payload.visibility,
+              draftId: draft.id,
+            },
+            ownerId: owner.id,
+            tags: {
+              create: tagIds.map((tagId) => ({ tagId })),
+            },
+          },
+        });
+
+        await tx.galleryEntry.create({
+          data: {
+            galleryId: gallery.id,
+            assetId: modelAsset.id,
+            position: nextPosition,
+            note: payload.description ?? null,
+          },
+        });
+
+        if (modelAsset.previewImage && !gallery.coverImage) {
+          await tx.gallery.update({
+            where: { id: gallery.id },
+            data: { coverImage: modelAsset.previewImage },
+          });
+        }
+
+        return {
+          draftId: draft.id,
+          assetId: modelAsset.id,
+          gallerySlug: gallery.slug,
+          assetSlug: modelAsset.slug,
+        };
+      }
+
+      const imageAsset = await tx.imageAsset.create({
+        data: {
+          title: payload.title,
+          description: payload.description ?? null,
+          width: null,
+          height: null,
+          fileSize: primaryFile.size,
+          storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
+          prompt: null,
+          negativePrompt: null,
+          seed: null,
+          model: null,
+          sampler: null,
+          cfgScale: null,
+          steps: null,
+          tags: {
+            create: tagIds.map((tagId) => ({ tagId })),
+          },
+        },
+      });
+
+      await tx.galleryEntry.create({
+        data: {
+          galleryId: gallery.id,
+          imageId: imageAsset.id,
+          position: nextPosition,
+          note: payload.description ?? null,
+        },
+      });
+
+      if (!gallery.coverImage) {
+        await tx.gallery.update({
+          where: { id: gallery.id },
+          data: { coverImage: toS3Uri(primaryStored.bucket, primaryStored.objectName) },
+        });
+      }
+
+      return {
+        draftId: draft.id,
+        imageId: imageAsset.id,
+        gallerySlug: gallery.slug,
+      };
     });
 
     res.status(201).json({
-      uploadId: draft.id,
+      uploadId: result.draftId,
+      assetId: result.assetId,
+      imageId: result.imageId,
+      gallerySlug: result.gallerySlug,
+      assetSlug: result.assetSlug,
       message:
-        'Upload-Session wurde erstellt und für die Hintergrundverarbeitung vorgemerkt. Status: „queued“',
+        'Upload abgeschlossen. Dateien wurden nach MinIO übertragen und stehen im Explorer zur Verfügung.',
     });
   } catch (error) {
     next(error);

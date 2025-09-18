@@ -260,12 +260,23 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
       });
 
       setProgressValue(100);
+      const details = [
+        response.assetSlug ? `Asset: ${response.assetSlug}` : null,
+        response.gallerySlug ? `Galerie: ${response.gallerySlug}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
       const result: UploadWizardResult = {
         status: 'success',
         uploadId: response.uploadId,
         message:
           response.message ??
-          'Upload-Session erstellt. Die Analyse beginnt automatisch, sobald der Hintergrund-Worker verfügbar ist.',
+          `Upload abgeschlossen. ${
+            details.length > 0
+              ? `${details} stehen unmittelbar im Explorer bereit.`
+              : 'Dateien stehen unmittelbar im Explorer bereit.'
+          }`,
       };
       setSubmitResult(result);
       onComplete?.(result);

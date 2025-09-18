@@ -2,6 +2,11 @@ import { PrismaClient, UserRole } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const modelsBucket = process.env.MINIO_BUCKET_MODELS ?? 'visionsuit-models';
+const imagesBucket = process.env.MINIO_BUCKET_IMAGES ?? 'visionsuit-images';
+
+const toS3 = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
+
 const main = async () => {
   const curator = await prisma.user.upsert({
     where: { email: 'curator@visionsuit.local' },
@@ -41,8 +46,8 @@ const main = async () => {
       version: '0.1.0',
       fileSize: 128_000_000,
       checksum: 'sha256-demo-checksum',
-      storagePath: '/storage/lora/neosynth-cinematic-v0.1.0.safetensors',
-      previewImage: '/storage/previews/neosynth-cinematic.jpg',
+      storagePath: toS3(modelsBucket, 'demo/neosynth-cinematic-v0.1.0.safetensors'),
+      previewImage: toS3(imagesBucket, 'demo/neosynth-cinematic.jpg'),
       metadata: {
         baseModel: 'SDXL 1.0',
         trainingImages: 120,
@@ -57,8 +62,10 @@ const main = async () => {
     },
   });
 
+  const demoImagePath = toS3(imagesBucket, 'demo/neosynth-showcase.png');
+
   const demoImage = await prisma.imageAsset.upsert({
-    where: { storagePath: '/storage/images/neosynth-showcase.png' },
+    where: { storagePath: demoImagePath },
     update: {},
     create: {
       title: 'NeoSynth Showcase',
@@ -66,7 +73,7 @@ const main = async () => {
       width: 1024,
       height: 1024,
       fileSize: 4_520_112,
-      storagePath: '/storage/images/neosynth-showcase.png',
+      storagePath: demoImagePath,
       prompt: 'futuristic portrait of a female android, cinematic lighting, neosynth',
       negativePrompt: 'blurry, distorted, low detail',
       seed: '133742',
@@ -89,7 +96,7 @@ const main = async () => {
       slug: 'featured-cinematic-set',
       title: 'Featured Cinematic Set',
       description: 'Kuratiertes Set mit filmischen Renderings und LoRA-Assets.',
-      coverImage: demoImage.storagePath,
+      coverImage: demoImagePath,
       isPublic: true,
       ownerId: curator.id,
       entries: {

@@ -2,6 +2,7 @@ import { ImageAsset, ModelAsset, Tag, User } from '@prisma/client';
 import { Router } from 'express';
 
 import { prisma } from '../lib/prisma';
+import { resolveStorageLocation } from '../lib/storage';
 
 type HydratedModelAsset = ModelAsset & {
   tags: { tag: Tag }[];
@@ -12,44 +13,58 @@ type HydratedImageAsset = ImageAsset & {
   tags: { tag: Tag }[];
 };
 
-const mapModelAsset = (asset: HydratedModelAsset) => ({
-  id: asset.id,
-  slug: asset.slug,
-  title: asset.title,
-  description: asset.description,
-  version: asset.version,
-  fileSize: asset.fileSize,
-  checksum: asset.checksum,
-  storagePath: asset.storagePath,
-  previewImage: asset.previewImage,
-  metadata: asset.metadata,
-  owner: asset.owner,
-  tags: asset.tags.map(({ tag }) => tag),
-  createdAt: asset.createdAt,
-  updatedAt: asset.updatedAt,
-});
+const mapModelAsset = (asset: HydratedModelAsset) => {
+  const storage = resolveStorageLocation(asset.storagePath);
+  const preview = resolveStorageLocation(asset.previewImage);
 
-const mapImageAsset = (asset: HydratedImageAsset) => ({
-  id: asset.id,
-  title: asset.title,
-  description: asset.description,
-  dimensions:
-    asset.width && asset.height ? { width: asset.width, height: asset.height } : undefined,
-  fileSize: asset.fileSize,
-  storagePath: asset.storagePath,
-  prompt: asset.prompt,
-  negativePrompt: asset.negativePrompt,
-  metadata: {
-    seed: asset.seed,
-    model: asset.model,
-    sampler: asset.sampler,
-    cfgScale: asset.cfgScale,
-    steps: asset.steps,
-  },
-  tags: asset.tags.map(({ tag }) => tag),
-  createdAt: asset.createdAt,
-  updatedAt: asset.updatedAt,
-});
+  return {
+    id: asset.id,
+    slug: asset.slug,
+    title: asset.title,
+    description: asset.description,
+    version: asset.version,
+    fileSize: asset.fileSize,
+    checksum: asset.checksum,
+    storagePath: storage.url ?? asset.storagePath,
+    storageBucket: storage.bucket,
+    storageObject: storage.objectName,
+    previewImage: preview.url ?? asset.previewImage,
+    previewImageBucket: preview.bucket,
+    previewImageObject: preview.objectName,
+    metadata: asset.metadata,
+    owner: asset.owner,
+    tags: asset.tags.map(({ tag }) => tag),
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+  };
+};
+
+const mapImageAsset = (asset: HydratedImageAsset) => {
+  const storage = resolveStorageLocation(asset.storagePath);
+
+  return {
+    id: asset.id,
+    title: asset.title,
+    description: asset.description,
+    dimensions: asset.width && asset.height ? { width: asset.width, height: asset.height } : undefined,
+    fileSize: asset.fileSize,
+    storagePath: storage.url ?? asset.storagePath,
+    storageBucket: storage.bucket,
+    storageObject: storage.objectName,
+    prompt: asset.prompt,
+    negativePrompt: asset.negativePrompt,
+    metadata: {
+      seed: asset.seed,
+      model: asset.model,
+      sampler: asset.sampler,
+      cfgScale: asset.cfgScale,
+      steps: asset.steps,
+    },
+    tags: asset.tags.map(({ tag }) => tag),
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+  };
+};
 
 export const assetsRouter = Router();
 
