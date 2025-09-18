@@ -4,6 +4,13 @@ VisionSuit ist eine selbst-hostbare Plattform für kuratierte KI-Bildgalerien un
 liefert eine lauffähige Node.js-API, ein Prisma-Datenmodell mit Seed-Daten sowie ein React-Frontend als visuelles Konzept für
 den Upload- und Kuration-Workflow.
 
+## Highlights
+
+- **Upload-Wizard** – dreistufiger Assistent für Basisdaten, Dateiupload & Review inklusive Validierungen, Drag & Drop sowie Rückmeldung aus dem produktiven Upload-Endpunkt (`POST /api/uploads`).
+- **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
+- **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB) und automatischem Übergang in die Analyse-Queue.
+- **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
+
 ## Architekturüberblick
 
 | Bereich       | Stack & Zweck                                                                                   |
@@ -105,18 +112,23 @@ Standard-Ports:
 
 ## Frontend-Erlebnis
 
-Der aktuelle Prototyp stellt zwei kuratierte Übersichten bereit, die mit realen API-Daten arbeiten und auch bei sehr großen
-Beständen performant bleiben:
+Der aktuelle Prototyp setzt auf ein produktionsnahes Panel mit Echtzeitdaten und hochwertiger UI:
 
-- **LoRA-Datenbank** – Volltextsuche, Tag- und Typ-Filter, Dateigrößen-Buckets sowie Kurator:innen-Auswahl. Ein Lazy-Loading
-  reduziert das Rendering bei mehr als 100.000 Assets auf handliche Batches.
-- **Galerie-Explorer** – Sichtbarkeitsumschalter, Inhaltstyp-Filter (Bilder, LoRAs, leere Galerien) und Sortierungen nach
-  Aktualität oder Umfang. Ein Vorschauraster zeigt die ersten Einträge jeder Galerie.
-- **Filter-Feedback** – Aktive Filter werden als Badges visualisiert und lassen sich einzeln oder gesammelt zurücksetzen, um den
-  Workflow transparent zu halten.
+- **Produktionsstartseite** – Sticky-Topbar mit Statusindikator, Hero-Layout samt Pipeline-Karte, Trust-Metriken und CTA-Panels für sofortige Aktionen.
+- **Upload-Wizard** – Start aus Hero, Topbar oder LoRA-Explorer, validiert Pflichtangaben, verwaltet Tag-Chips, Drag-and-Drop-Dateien und übergibt an den realen Upload-Endpunkt inklusive Server-Feedback.
+- **LoRA-Datenbank** – Volltextsuche, Tag- und Typ-Filter, Dateigrößen-Buckets sowie Kurator:innen-Auswahl. Ein Lazy-Loading reduziert das Rendering bei mehr als 100.000 Assets auf handliche Batches.
+- **Galerie-Explorer** – Sichtbarkeitsumschalter, Inhaltstyp-Filter (Bilder, LoRAs, leere Galerien) und Sortierungen nach Aktualität oder Umfang. Ein Vorschauraster zeigt die ersten Einträge jeder Galerie.
+- **Filter-Feedback** – Aktive Filter werden als Badges visualisiert und lassen sich einzeln oder gesammelt zurücksetzen, um den Workflow transparent zu halten.
 
 Die Filterleisten nutzen ausschließlich clientseitige Daten und können ohne zusätzliche Servercalls auf große Resultsets
 reagieren.
+
+### Upload-Pipeline & Backend
+
+1. **Session anlegen** – Der Wizard legt per `POST /api/uploads` einen `UploadDraft` inklusive Owner, Sichtbarkeit, Tags und erwarteter Dateien an.
+2. **Ingest & Validierung** – Der Endpunkt prüft Dateitypen, 2-GB-Gesamtlimit, Pflichtfelder sowie Galerie-Zuordnung und persistiert eine vollständige Dateiliste.
+3. **Analyse-Queue** – Hintergrund-Worker lesen Checksums, Safetensor-Header oder EXIF-/Prompt-Daten aus und schreiben Ergebnisse zurück in die Asset-Datenmodelle.
+4. **Release & Audit** – Nach erfolgreicher Analyse erscheinen Assets im Explorer; Audit-Timestamps bleiben in `UploadDraft` erhalten und dokumentieren den Workflow.
 
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.
@@ -124,12 +136,14 @@ reagieren.
 - `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
 - `GET /api/assets/images` – Bild-Assets (Prompt, Modelldaten, Tags).
 - `GET /api/galleries` – Kuratierte Galerien mit zugehörigen Assets & Bildern.
+- `POST /api/uploads` – Legt eine UploadDraft-Session an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
 
 ## Datenmodell-Highlights
 - **User** verwaltet Kurator:innen inklusive Rollen & Profilinfos.
 - **ModelAsset** & **ImageAsset** besitzen eindeutige `storagePath`-Constraints für Dateiverweise.
 - **Gallery** bündelt Assets/Bilder über `GalleryEntry` (Positionierung + Notizen).
 - **Tag** wird über Pivot-Tabellen (`AssetTag`, `ImageTag`) zugewiesen.
+- **UploadDraft** protokolliert Upload-Sessions mit Dateiliste, Gesamtgröße, Status und Audit-Timestamps.
 
 ## Seed-Inhalte
 - Demo-Kurator*in inklusive Basisprofil.

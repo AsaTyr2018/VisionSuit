@@ -119,3 +119,21 @@ model AssetTag {
 
   @@id([assetId, tagId])
 }
+
+model UploadDraft {
+  id            String   @id @default(cuid())
+  assetType     String
+  title         String
+  description   String?
+  visibility    String
+  category      String?
+  galleryMode   String
+  targetGallery String?
+  tags          Json
+  files         Json
+  fileCount     Int
+  totalSize     BigInt
+  status        String   @default("queued")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
