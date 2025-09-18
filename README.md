@@ -11,7 +11,7 @@ den Upload- und Kuration-Workflow.
 | **Backend**   | Express 5 (TypeScript) + Prisma + SQLite. Stellt REST-Endpunkte für Assets, Galerien und Statistiken bereit. |
 | **Datenbank** | Prisma-Schema für Benutzer, LoRA-Assets, Galerie-Einträge und Tagging inklusive Referenzen & Constraints.    |
 | **Storage**   | MinIO (S3-kompatibel) verwaltet Buckets für Modell- und Bilddateien und wird automatisch provisioniert.      |
-| **Frontend**  | Vite + React (TypeScript). Liefert einen ersten UI-Entwurf mit Platzhalterkarten und Statusanzeigen.         |
+| **Frontend**  | Vite + React (TypeScript). Enthält einen datengetriebenen Explorer für LoRA-Assets & Galerien inkl. Filter. |
 
 ## Installation & Setup
 
@@ -101,6 +101,22 @@ Standard-Ports:
    node -v
    ```
    Sollte die Ausgabe eine Version kleiner als 18 zeigen, bitte Node.js aktualisieren (z. B. via `nvm`).
+4. Öffne `http://localhost:5173`, um den Explorer mit Echtzeit-Filtern für LoRAs und Galerien zu testen.
+
+## Frontend-Erlebnis
+
+Der aktuelle Prototyp stellt zwei kuratierte Übersichten bereit, die mit realen API-Daten arbeiten und auch bei sehr großen
+Beständen performant bleiben:
+
+- **LoRA-Datenbank** – Volltextsuche, Tag- und Typ-Filter, Dateigrößen-Buckets sowie Kurator:innen-Auswahl. Ein Lazy-Loading
+  reduziert das Rendering bei mehr als 100.000 Assets auf handliche Batches.
+- **Galerie-Explorer** – Sichtbarkeitsumschalter, Inhaltstyp-Filter (Bilder, LoRAs, leere Galerien) und Sortierungen nach
+  Aktualität oder Umfang. Ein Vorschauraster zeigt die ersten Einträge jeder Galerie.
+- **Filter-Feedback** – Aktive Filter werden als Badges visualisiert und lassen sich einzeln oder gesammelt zurücksetzen, um den
+  Workflow transparent zu halten.
+
+Die Filterleisten nutzen ausschließlich clientseitige Daten und können ohne zusätzliche Servercalls auf große Resultsets
+reagieren.
 
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.

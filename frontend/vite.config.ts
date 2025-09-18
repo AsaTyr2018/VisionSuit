@@ -2,7 +2,23 @@ import { createHash, webcrypto } from 'node:crypto'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-type HashCapableCrypto = Crypto & {
+type SupportedDataView =
+  | ArrayBuffer
+  | DataView
+  | Int8Array
+  | Uint8Array
+  | Uint8ClampedArray
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | BigInt64Array
+  | BigUint64Array
+  | Float32Array
+  | Float64Array
+  | Buffer
+
+type HashCapableCrypto = typeof webcrypto & {
   hash?: (
     algorithm: string | { name?: string },
     data: SupportedDataView | string,
@@ -29,22 +45,6 @@ const ensureNodeCryptoHashPolyfill = () => {
 
       throw new TypeError('Unsupported algorithm supplied to crypto.hash polyfill')
     }
-
-    type SupportedDataView =
-      | ArrayBuffer
-      | DataView
-      | Int8Array
-      | Uint8Array
-      | Uint8ClampedArray
-      | Int16Array
-      | Uint16Array
-      | Int32Array
-      | Uint32Array
-      | BigInt64Array
-      | BigUint64Array
-      | Float32Array
-      | Float64Array
-      | Buffer
 
     const toBuffer = (data: SupportedDataView | string) => {
       if (typeof data === 'string') {

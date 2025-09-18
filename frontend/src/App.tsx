@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { AssetCard } from './components/AssetCard';
-import { GalleryCard } from './components/GalleryCard';
+import { AssetExplorer } from './components/AssetExplorer';
+import { GalleryExplorer } from './components/GalleryExplorer';
 import { StatCard } from './components/StatCard';
 import { api } from './lib/api';
 import type { Gallery, MetaStats, ModelAsset } from './types/api';
 
-const loadingPlaceholder = {
-  assets: Array.from({ length: 3 }, (_, index) => index),
-  galleries: Array.from({ length: 2 }, (_, index) => index),
-};
+const statsPlaceholder = Array.from({ length: 3 }, (_, index) => index);
 
 export const App = () => {
   const [stats, setStats] = useState<MetaStats | null>(null);
@@ -31,6 +28,7 @@ export const App = () => {
         setStats(fetchedStats);
         setAssets(fetchedAssets);
         setGalleries(fetchedGalleries);
+        setErrorMessage(null);
       } catch (error) {
         console.error(error);
         setErrorMessage('Backend noch nicht erreichbar. Bitte Server prüfen oder später erneut versuchen.');
@@ -85,59 +83,14 @@ export const App = () => {
           </header>
           <div className="panel__grid panel__grid--stats">
             {isLoading && statsList.length === 0
-              ? loadingPlaceholder.assets.map((key) => <div key={key} className="skeleton" />)
+              ? statsPlaceholder.map((key) => <div key={key} className="skeleton" />)
               : statsList.map((item) => <StatCard key={item.label} {...item} />)}
           </div>
           {errorMessage ? <p className="panel__error">{errorMessage}</p> : null}
         </section>
 
-        <section className="panel">
-          <header className="panel__header">
-            <div>
-              <h2 className="panel__title">LoRA Assets</h2>
-              <p className="panel__subtitle">
-                Erste Liste deiner Safetensor-Modelle. In den nächsten Iterationen folgen Filter, Versionierung und Download-Handling.
-              </p>
-            </div>
-            <button type="button" className="panel__action panel__action--primary">
-              Upload-Workflow öffnen
-            </button>
-          </header>
-          <div className="panel__grid panel__grid--columns">
-            {isLoading
-              ? loadingPlaceholder.assets.map((key) => <div key={key} className="skeleton skeleton--card" />)
-              : assets.map((asset) => <AssetCard key={asset.id} asset={asset} />)}
-          </div>
-          {!isLoading && assets.length === 0 ? (
-            <p className="panel__empty">
-              Noch keine Assets vorhanden. Nutze den Seed oder lade dein erstes LoRA hoch.
-            </p>
-          ) : null}
-        </section>
-
-        <section className="panel">
-          <header className="panel__header">
-            <div>
-              <h2 className="panel__title">Kurierte Galerien</h2>
-              <p className="panel__subtitle">
-                VisionSuit bündelt Renderings, Modelle und Kontextinformationen für deine Community.
-              </p>
-            </div>
-            <button type="button" className="panel__action">
-              Galerie-Entwurf starten
-            </button>
-          </header>
-          <div className="panel__grid panel__grid--columns">
-            {isLoading
-              ? loadingPlaceholder.galleries.map((key) => <div key={key} className="skeleton skeleton--card" />)
-              : galleries.map((gallery) => <GalleryCard key={gallery.id} gallery={gallery} />)}
-          </div>
-          {!isLoading && galleries.length === 0 ? (
-            <p className="panel__empty">
-              Noch keine Galerie angelegt. Nutze den Workflow-Button, um deinen ersten Entwurf zu starten.
-            </p>
-          ) : null}
-        </section>
+        <AssetExplorer assets={assets} isLoading={isLoading} />
+        <GalleryExplorer galleries={galleries} isLoading={isLoading} />
       </div>
     </div>
   );
