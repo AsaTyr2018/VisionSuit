@@ -1,4 +1,0 @@
-name: SDUnity
-repo: https://github.com/AsaTyr2018/SDUnity
-description: Stable Diffusion web UI built with Gradio
-default_port: 7860
