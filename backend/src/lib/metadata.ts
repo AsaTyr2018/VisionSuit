@@ -88,6 +88,102 @@ const toNullableInt = (value: unknown): number | null => {
   return null;
 };
 
+const looksLikeJsonStructure = (value: string) => {
+  const trimmed = value.trim();
+  return (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  );
+};
+
+const normalizeMetadataTree = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    if (looksLikeJsonStructure(value)) {
+      try {
+        return normalizeMetadataTree(JSON.parse(value));
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeMetadataTree(entry));
+  }
+
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+      result[key] = normalizeMetadataTree(entry);
+    });
+    return result;
+  }
+
+  return value;
+};
+
+const addCandidateValue = (collector: Set<string>, value: unknown) => {
+  if (value == null) {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => addCandidateValue(collector, entry));
+    return;
+  }
+
+  if (typeof value === 'object') {
+    return;
+  }
+
+  const normalized = toNullableString(value);
+  if (normalized) {
+    collector.add(normalized);
+  }
+};
+
+const collectValuesForPath = (source: Record<string, unknown>, path: string): string[] => {
+  const values = new Set<string>();
+
+  if (Object.prototype.hasOwnProperty.call(source, path)) {
+    addCandidateValue(values, source[path]);
+  }
+
+  const segments = path.split('.');
+  let current: unknown = source;
+
+  for (const segment of segments) {
+    if (!current || typeof current !== 'object') {
+      current = undefined;
+      break;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  if (current !== undefined) {
+    addCandidateValue(values, current);
+  }
+
+  return Array.from(values.values());
+};
+
+const collectCandidateValues = (source: Record<string, unknown>, paths: string[]): string[] => {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  paths.forEach((path) => {
+    collectValuesForPath(source, path).forEach((value) => {
+      if (!seen.has(value)) {
+        seen.add(value);
+        ordered.push(value);
+      }
+    });
+  });
+
+  return ordered;
+};
+
 const parseStableDiffusionBlock = (raw: string) => {
   const result: ImageMetadataResult = { extras: {} };
   const normalized = raw.replace(/\r\n/g, '\n');
@@ -583,54 +679,79 @@ export const extractSafetensorsMetadata = (buffer: Buffer): SafetensorsMetadataR
     }
   }
 
-  const aliases = new Set<string>();
-  const candidateKeys = [
+  const normalizedMetadata = normalizeMetadataTree(metadata) as Record<string, unknown>;
+
+  const aliasPaths = [
     'ss_base_model',
-    'sshs_model_name',
     'base_model',
     'model',
     'model_name',
     'ss_training_model',
+    'modelspec.architecture',
+    'modelspec.base',
+    'modelspec.base_model',
+    'modelspec.model',
+    'metadata.modelspec.architecture',
+    'metadata.modelspec.base_model',
+    'metadata.modelspec.model',
+    'ss_metadata.ss_base_model',
+    'ss_metadata.base_model',
+    'ss_metadata.model',
+    'ss_metadata.model_name',
+    'ss_metadata.ssid_model_name',
+    'ss_metadata.sshs_model_name',
   ];
-
-  for (const key of candidateKeys) {
-    const value = metadata[key];
-    const normalized = toNullableString(value);
-    if (normalized) {
-      aliases.add(normalized);
+  const aliasList = collectCandidateValues(normalizedMetadata, aliasPaths);
+  const aliasSet = new Set(aliasList);
+  const pushAlias = (value: string | null | undefined) => {
+    if (!value) {
+      return;
     }
-  }
+    if (!aliasSet.has(value)) {
+      aliasSet.add(value);
+      aliasList.push(value);
+    }
+  };
 
-  const metadataModelAliases = metadata.model_names;
+  const metadataModelAliases = normalizedMetadata.model_names;
   if (Array.isArray(metadataModelAliases)) {
     for (const entry of metadataModelAliases) {
       const normalized = toNullableString(entry);
-      if (normalized) {
-        aliases.add(normalized);
-      }
+      pushAlias(normalized);
     }
   }
 
-  if (metadata.ss_metadata && typeof metadata.ss_metadata === 'object') {
-    const nested = metadata.ss_metadata as Record<string, unknown>;
-    const nestedModel = toNullableString(nested.ssid_model_name ?? nested.model);
-    if (nestedModel) {
-      aliases.add(nestedModel);
-    }
+  if (normalizedMetadata.ss_metadata && typeof normalizedMetadata.ss_metadata === 'object') {
+    const nested = normalizedMetadata.ss_metadata as Record<string, unknown>;
+    pushAlias(toNullableString(nested.ssid_model_name));
+    pushAlias(toNullableString(nested.sshs_model_name));
+    pushAlias(toNullableString(nested.model));
   }
 
-  const aliasList = Array.from(aliases);
+  const namePaths = [
+    'ss_output_name',
+    'ss_model_name',
+    'modelspec.name',
+    'metadata.modelspec.name',
+    'ss_metadata.ssid_model_name',
+    'ss_metadata.sshs_model_name',
+    'ss_metadata.model_name',
+    'model_name',
+    'lora_name',
+    'name',
+  ];
+  const nameCandidates = collectCandidateValues(normalizedMetadata, namePaths);
+
   const primary = aliasList[0] ?? null;
-
-  const payload: SafetensorsMetadataResult = { metadata };
-
-  if (primary) {
-    payload.baseModel = primary;
-    payload.modelName = primary;
-  } else {
-    payload.baseModel = null;
-    payload.modelName = null;
+  const preferredName = nameCandidates.find((entry) => entry.length > 0) ?? primary ?? null;
+  if (preferredName) {
+    pushAlias(preferredName);
   }
+
+  const payload: SafetensorsMetadataResult = { metadata: normalizedMetadata };
+
+  payload.baseModel = primary ?? null;
+  payload.modelName = preferredName ?? null;
 
   if (aliasList.length > 0) {
     payload.modelAliases = aliasList;

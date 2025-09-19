@@ -26,6 +26,7 @@ type TagOption = { id: string; label: string; count: number };
 type TypeOption = { id: string; label: string; count: number };
 
 type MetadataRow = { key: string; value: string };
+type TagFrequencyGroup = { scope: string; tags: { label: string; count: number }[] };
 
 const ASSET_BATCH_SIZE = 25;
 
@@ -113,20 +114,34 @@ const formatPrimitiveMetadataValue = (value: unknown) => {
   return String(value);
 };
 
-const flattenMetadataValue = (value: unknown, key: string, rows: MetadataRow[]) => {
+const flattenMetadataValue = (
+  value: unknown,
+  key: string,
+  rows: MetadataRow[],
+  options: { omit?: (candidateKey: string) => boolean } = {},
+) => {
+  if (options.omit?.(key)) {
+    return;
+  }
+
   if (value == null) {
-    rows.push({ key, value: '–' });
+    if (key) {
+      rows.push({ key, value: '–' });
+    }
     return;
   }
 
   if (Array.isArray(value)) {
     if (value.length === 0) {
-      rows.push({ key, value: '[]' });
+      if (key) {
+        rows.push({ key, value: '[]' });
+      }
       return;
     }
 
     value.forEach((entry, index) => {
-      flattenMetadataValue(entry, `${key}[${index}]`, rows);
+      const nextKey = key ? `${key}[${index}]` : `[${index}]`;
+      flattenMetadataValue(entry, nextKey, rows, options);
     });
     return;
   }
@@ -134,18 +149,30 @@ const flattenMetadataValue = (value: unknown, key: string, rows: MetadataRow[]) 
   if (value && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>);
     if (entries.length === 0) {
-      rows.push({ key, value: '{}' });
+      if (key) {
+        rows.push({ key, value: '{}' });
+      }
       return;
     }
 
     entries.forEach(([childKey, childValue]) => {
       const nextKey = key ? `${key}.${childKey}` : childKey;
-      flattenMetadataValue(childValue, nextKey, rows);
+      flattenMetadataValue(childValue, nextKey, rows, options);
     });
     return;
   }
 
-  rows.push({ key, value: formatPrimitiveMetadataValue(value) });
+  if (key) {
+    rows.push({ key, value: formatPrimitiveMetadataValue(value) });
+  }
+};
+
+const metadataKeyShouldBeOmitted = (key: string) => {
+  if (!key) {
+    return false;
+  }
+  const sanitized = key.replace(/\[\d+\]/g, '');
+  return sanitized.split('.').pop() === 'ss_tag_frequency';
 };
 
 const buildMetadataRows = (metadata?: Record<string, unknown> | null) => {
@@ -158,14 +185,21 @@ const buildMetadataRows = (metadata?: Record<string, unknown> | null) => {
 
   if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
     Object.entries(normalized as Record<string, unknown>).forEach(([key, value]) => {
-      flattenMetadataValue(value, key, rows);
+      if (key === 'extracted' && value && typeof value === 'object' && !Array.isArray(value)) {
+        Object.entries(value as Record<string, unknown>).forEach(([childKey, childValue]) => {
+          flattenMetadataValue(childValue, childKey, rows, { omit: metadataKeyShouldBeOmitted });
+        });
+        return;
+      }
+
+      flattenMetadataValue(value, key, rows, { omit: metadataKeyShouldBeOmitted });
     });
     return rows;
   }
 
   if (Array.isArray(normalized)) {
     normalized.forEach((entry, index) => {
-      flattenMetadataValue(entry, `[${index}]`, rows);
+      flattenMetadataValue(entry, `[${index}]`, rows, { omit: metadataKeyShouldBeOmitted });
     });
     return rows;
   }
@@ -208,6 +242,145 @@ const collectMetadataStrings = (metadata?: Record<string, unknown> | null) => {
   visit(normalized);
 
   return Array.from(values);
+};
+
+const resolveNestedValue = (source: unknown, path: string): unknown => {
+  if (!source || typeof source !== 'object') {
+    return undefined;
+  }
+
+  const record = source as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(record, path)) {
+    return record[path];
+  }
+
+  const segments = path.split('.');
+  let current: unknown = record;
+
+  for (const segment of segments) {
+    if (!current || typeof current !== 'object') {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+
+  return current;
+};
+
+const findFirstMatchingValue = (
+  value: unknown,
+  predicate: (key: string) => boolean,
+): unknown => {
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const result = findFirstMatchingValue(entry, predicate);
+      if (result !== undefined) {
+        return result;
+      }
+    }
+    return undefined;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const [key, entry] of Object.entries(record)) {
+    if (predicate(key)) {
+      return entry;
+    }
+
+    const nested = findFirstMatchingValue(entry, predicate);
+    if (nested !== undefined) {
+      return nested;
+    }
+  }
+
+  return undefined;
+};
+
+const toTagFrequencyGroups = (value: unknown): TagFrequencyGroup[] => {
+  if (value == null) {
+    return [];
+  }
+
+  let working = value;
+  if (typeof working === 'string') {
+    const trimmed = working.trim();
+    if (trimmed) {
+      try {
+        working = JSON.parse(trimmed) as unknown;
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  if (!working || typeof working !== 'object') {
+    return [];
+  }
+
+  const groups: TagFrequencyGroup[] = [];
+
+  Object.entries(working as Record<string, unknown>).forEach(([scope, entry]) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+
+    const tags: { label: string; count: number }[] = [];
+    Object.entries(entry as Record<string, unknown>).forEach(([label, countValue]) => {
+      if (countValue == null) {
+        return;
+      }
+
+      const numeric =
+        typeof countValue === 'number'
+          ? countValue
+          : Number.parseFloat(String(countValue).replace(/,/g, '.'));
+
+      if (Number.isFinite(numeric)) {
+        tags.push({ label, count: Math.trunc(numeric) });
+      }
+    });
+
+    if (tags.length > 0) {
+      tags.sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.label.localeCompare(b.label, 'de');
+      });
+      groups.push({ scope, tags });
+    }
+  });
+
+  return groups.sort((a, b) => a.scope.localeCompare(b.scope, 'de'));
+};
+
+const extractTagFrequency = (metadata?: Record<string, unknown> | null): TagFrequencyGroup[] => {
+  if (!metadata) {
+    return [];
+  }
+
+  const normalized = normalizeMetadataValue(metadata);
+  const candidatePaths = [
+    'ss_tag_frequency',
+    'extracted.ss_tag_frequency',
+    'extracted.ss_metadata.ss_tag_frequency',
+    'ss_metadata.ss_tag_frequency',
+  ];
+
+  for (const path of candidatePaths) {
+    const resolved = resolveNestedValue(normalized, path);
+    const groups = toTagFrequencyGroups(resolved);
+    if (groups.length > 0) {
+      return groups;
+    }
+  }
+
+  const fallback = findFirstMatchingValue(normalized, (key) => key.endsWith('ss_tag_frequency'));
+  return toTagFrequencyGroups(fallback);
 };
 
 const matchesSearch = (asset: ModelAsset, query: string) => {
@@ -270,6 +443,7 @@ export const AssetExplorer = ({
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [visibleLimit, setVisibleLimit] = useState(ASSET_BATCH_SIZE);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+  const [isTagDialogOpen, setTagDialogOpen] = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -363,10 +537,14 @@ export const AssetExplorer = ({
     }
   }, [initialAssetId]);
 
+  const closeTagDialog = useCallback(() => setTagDialogOpen(false), []);
+  const openTagDialog = useCallback(() => setTagDialogOpen(true), []);
+
   const closeDetail = useCallback(() => {
+    closeTagDialog();
     setActiveAssetId(null);
     onCloseDetail?.();
-  }, [onCloseDetail]);
+  }, [closeTagDialog, onCloseDetail]);
 
   useEffect(() => {
     if (activeAssetId && !assets.some((asset) => asset.id === activeAssetId)) {
@@ -424,6 +602,9 @@ export const AssetExplorer = ({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (isTagDialogOpen) {
+          return;
+        }
         event.preventDefault();
         closeDetail();
       }
@@ -431,7 +612,7 @@ export const AssetExplorer = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeAssetId, closeDetail]);
+  }, [activeAssetId, closeDetail, isTagDialogOpen]);
 
   const relatedGalleries = useMemo(() => {
     if (!activeAsset) {
@@ -452,6 +633,39 @@ export const AssetExplorer = ({
     () => buildMetadataRows(activeAsset?.metadata as Record<string, unknown> | null),
     [activeAsset?.metadata],
   );
+
+  const tagFrequencyGroups = useMemo(
+    () => extractTagFrequency(activeAsset?.metadata as Record<string, unknown> | null),
+    [activeAsset?.metadata],
+  );
+
+  useEffect(() => {
+    if (!isTagDialogOpen) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeTagDialog();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [closeTagDialog, isTagDialogOpen]);
+
+  useEffect(() => {
+    if (!activeAsset) {
+      closeTagDialog();
+    }
+  }, [activeAsset, closeTagDialog]);
+
+  useEffect(() => {
+    if (tagFrequencyGroups.length === 0) {
+      closeTagDialog();
+    }
+  }, [closeTagDialog, tagFrequencyGroups.length]);
 
   const activeFilters = useMemo(() => {
     const filters: { id: string; label: string; onClear: () => void }[] = [];
@@ -770,7 +984,14 @@ export const AssetExplorer = ({
               </section>
 
               <section className="asset-detail__section">
-                <h4>Metadaten</h4>
+                <div className="asset-detail__section-heading">
+                  <h4>Metadaten</h4>
+                  {tagFrequencyGroups.length > 0 ? (
+                    <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
+                      Datensatz-Tags anzeigen
+                    </button>
+                  ) : null}
+                </div>
                 {metadataEntries.length > 0 ? (
                   <div className="asset-detail__metadata">
                     <div className="asset-detail__metadata-scroll">
@@ -826,6 +1047,56 @@ export const AssetExplorer = ({
                 )}
               </section>
             </div>
+            {isTagDialogOpen && tagFrequencyGroups.length > 0 ? (
+              <div className="tag-frequency-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-frequency-title">
+                <div className="tag-frequency-dialog__backdrop" onClick={closeTagDialog} aria-hidden="true" />
+                <div className="tag-frequency-dialog__container" role="presentation">
+                  <div className="tag-frequency">
+                    <header className="tag-frequency__header">
+                      <div>
+                        <h4 id="tag-frequency-title">Datensatz-Tags</h4>
+                        <p>Häufigkeiten der Trainings-Tags, die das Modell beim Fine-Tuning gesehen hat.</p>
+                      </div>
+                      <button type="button" className="tag-frequency__close" onClick={closeTagDialog}>
+                        Schließen
+                      </button>
+                    </header>
+                    <div className="tag-frequency__body">
+                      {tagFrequencyGroups.map((group) => {
+                        const groupId = `tag-frequency-${
+                          group.scope.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'gruppe'
+                        }`;
+                        return (
+                          <section key={group.scope} className="tag-frequency__group" aria-labelledby={groupId}>
+                            <header className="tag-frequency__group-header">
+                              <h5 id={groupId}>{group.scope}</h5>
+                            </header>
+                            <div className="tag-frequency__table-wrapper">
+                              <table className="tag-frequency__table">
+                                <thead>
+                                  <tr>
+                                    <th scope="col">Tag</th>
+                                    <th scope="col">Vorkommen</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {group.tags.map((tag) => (
+                                    <tr key={tag.label}>
+                                      <th scope="row">{tag.label}</th>
+                                      <td>{tag.count}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
