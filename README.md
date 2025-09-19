@@ -13,7 +13,7 @@ den Upload- und Kuration-Workflow.
 - **Galerie-Entwürfe** – separater Bild-Upload aus dem Galerie-Explorer, Multi-Upload (bis 12 Dateien/2 GB) mit rollenbasiertem Galerie-Dropdown oder direkter Neuanlage.
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
-- **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
+- **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, 5-Spalten-Kacheln und nahtlosem Infinite Scroll samt aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
 - **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten, Detailpanel pro Sammlung und EXIF-Lightbox für jedes Bild.
@@ -142,7 +142,7 @@ Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-
 - **Admin-Panel** – Skaliert für vierstellige Bestände mit Filterchips, Mehrfachauswahl, Bulk-Löschungen sowie direkter Galerie-
   und Albumbearbeitung inklusive Reihung und Metadatenpflege.
 - **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
-- **Models** – Der ausgebaute Model Explorer bleibt Dreh- und Angelpunkt für LoRA-Recherchen mit Volltext, Typ- und Größenfiltern sowie Lazy-Loading.
+- **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Sidebar samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien.
 - **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination, Detailpanel pro Sammlung sowie EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
 - **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback – inklusive eigenem Galerie-Modus für Bildserien.
 

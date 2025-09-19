@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 
-import type { Gallery, ImageAsset } from '../types/api';
+import type { Gallery, ImageAsset, ModelAsset } from '../types/api';
 
 import { resolveStorageUrl } from '../lib/storage';
 
@@ -10,6 +10,8 @@ interface GalleryExplorerProps {
   galleries: Gallery[];
   isLoading: boolean;
   onStartGalleryDraft: () => void;
+  onNavigateToModel?: (modelId: string) => void;
+  initialGalleryId?: string | null;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -165,7 +167,13 @@ const buildMetadataRows = (image: ImageAsset) => {
   ];
 };
 
-export const GalleryExplorer = ({ galleries, isLoading, onStartGalleryDraft }: GalleryExplorerProps) => {
+export const GalleryExplorer = ({
+  galleries,
+  isLoading,
+  onStartGalleryDraft,
+  onNavigateToModel,
+  initialGalleryId,
+}: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
@@ -216,6 +224,12 @@ export const GalleryExplorer = ({ galleries, isLoading, onStartGalleryDraft }: G
   useEffect(() => {
     setVisibleLimit(GALLERY_BATCH_SIZE);
   }, [normalizedQuery, visibility, entryFilter, ownerId, sortOption]);
+
+  useEffect(() => {
+    if (initialGalleryId) {
+      setActiveGalleryId(initialGalleryId);
+    }
+  }, [initialGalleryId]);
 
   useEffect(() => {
     if (activeGalleryId && !galleries.some((gallery) => gallery.id === activeGalleryId)) {
@@ -286,6 +300,20 @@ export const GalleryExplorer = ({ galleries, isLoading, onStartGalleryDraft }: G
   );
 
   const activeGalleryImages = useMemo(() => (activeGallery ? getImageEntries(activeGallery) : []), [activeGallery]);
+
+  const activeGalleryModels = useMemo(() => {
+    if (!activeGallery) {
+      return [] as ModelAsset[];
+    }
+
+    const map = new Map<string, ModelAsset>();
+    activeGallery.entries.forEach((entry) => {
+      if (entry.modelAsset) {
+        map.set(entry.modelAsset.id, entry.modelAsset);
+      }
+    });
+    return Array.from(map.values());
+  }, [activeGallery]);
 
   useEffect(() => {
     if (!activeImage) {
@@ -462,6 +490,29 @@ export const GalleryExplorer = ({ galleries, isLoading, onStartGalleryDraft }: G
                   Noch keine Galerie-Beschreibung hinterlegt.
                 </p>
               )}
+
+              {activeGalleryModels.length > 0 ? (
+                <section className="gallery-detail__models">
+                  <h4>Verknüpfte LoRAs</h4>
+                  <ul>
+                    {activeGalleryModels.map((model) => (
+                      <li key={model.id}>
+                        {onNavigateToModel ? (
+                          <button
+                            type="button"
+                            className="gallery-detail__model-button"
+                            onClick={() => onNavigateToModel(model.id)}
+                          >
+                            {model.title} · v{model.version}
+                          </button>
+                        ) : (
+                          <span>{model.title} · v{model.version}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
 
               <div className="gallery-detail__grid" role="list">
                 {activeGalleryImages.length > 0 ? (
