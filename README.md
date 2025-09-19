@@ -49,13 +49,20 @@ Das Skript `./install.sh` richtet Backend und Frontend gemeinsam ein und fragt n
 ./install.sh
 ```
 
+Während der Ausführung erkennt das Skript automatisch die erreichbare Server-IP, ersetzt Loopback-Adressen durch diese Adresse
+und schlägt stimmige Standardwerte vor (u. a. Backend-Port `4000`, Frontend-Port `5173`, MinIO-Port `9000`). Die vorgeschlagene
+Konfiguration wird kompakt angezeigt; mit `Y` übernimmst du alle Werte, mit `N` wechselst du in eine manuelle Eingabe. Nur die
+externen Ports `4000` (API) und `5173` (Frontend) werden aktiv abgefragt, alle internen Komponenten nutzen bewährte Defaults.
+Am Ende bietet das Skript optional die Erstellung eines Admin-Accounts über `npm run create-admin` an.
+
 Funktionen im Überblick:
 
 - Prüft, ob Docker, Docker Compose und Portainer verfügbar sind und bietet ggf. die automatische Installation von Portainer CE an.
 - Installiert die npm-Abhängigkeiten für Backend und Frontend.
-- Erstellt fehlende `.env`-Dateien aus den jeweiligen Vorlagen und stimmt `HOST`, `PORT` sowie `VITE_API_URL` aufeinander ab.
+- Erstellt fehlende `.env`-Dateien aus den jeweiligen Vorlagen, ersetzt `HOST`/`VITE_API_URL` durch die Server-IP und stimmt die Ports automatisch ab.
 - Richtet den MinIO-Zugangspunkt samt Zugangsdaten und Bucket-Namen ein (Secret-Key wird bei Bedarf automatisch generiert) und startet anschließend einen passenden Docker-Container (`visionsuit-minio`).
 - Optionaler Direktaufruf von `npm run prisma:migrate` und `npm run seed` (Bestätigung per Prompt).
+- Optionaler Direktaufruf von `npm run create-admin`, um sofort einen administrativen Benutzer zu hinterlegen.
 
 Nach Abschluss ist das Projekt sofort bereit für den Entwicklungsstart mit `./dev-start.sh`.
 
@@ -78,24 +85,26 @@ Das Skript erstellt den Account (oder aktualisiert ihn bei erneutem Aufruf) mit 
 
 ### Gemeinsamer Dev-Starter
 
-Der Befehl `./dev-start.sh` startet Backend und Frontend gemeinsam im Watch-Modus und bindet beide Services an `0.0.0.0`.
-So können sie von außen erreicht werden, z. B. in Container- oder Cloud-Umgebungen.
+Der Befehl `./dev-start.sh` startet Backend und Frontend gemeinsam im Watch-Modus und bindet beide Services an die per
+`HOST`-Variable übergebene Server-IP. Standardmäßig nutzt das Skript die im Installer ermittelte Adresse; gib bei Bedarf deine
+Server-IP explizit an, um Missverständnisse mit `localhost` oder Docker-Netzen zu vermeiden.
 
 1. Abhängigkeiten installieren:
    ```bash
    (cd backend && npm install)
    (cd frontend && npm install)
    ```
-2. Starter aufrufen:
+2. Starter aufrufen (Beispiel mit expliziter IP):
    ```bash
-   ./dev-start.sh
+   HOST=<deine-server-ip> ./dev-start.sh
    ```
 
 Standard-Ports:
 - Backend: `4000` (änderbar über `BACKEND_PORT`)
 - Frontend: `5173` (änderbar über `FRONTEND_PORT`)
 
-> Tipp: Mit `HOST=0.0.0.0 ./dev-start.sh` lässt sich der Host explizit überschreiben, falls erforderlich.
+> Tipp: Setze `HOST` stets auf die tatsächliche Server-IP (z. B. `HOST=192.168.1.50 ./dev-start.sh`), wenn du die Dienste aus
+> dem lokalen Netzwerk oder aus Containern erreichbar machen möchtest.
 
 ### Node.js-Versionen & Kompatibilität
 
@@ -118,23 +127,23 @@ Standard-Ports:
    npm run prisma:migrate
    npm run seed
    ```
-4. Entwicklungsserver (ebenfalls auf `0.0.0.0`):
+4. Entwicklungsserver (ideal mit Server-IP):
    ```bash
-   HOST=0.0.0.0 PORT=4000 npm run dev
+   HOST=<deine-server-ip> PORT=4000 npm run dev
    ```
 
 #### Frontend
 1. `cd frontend`
-2. Entwicklungsserver starten:
+2. Entwicklungsserver starten (mit Server-IP):
    ```bash
-   npm run dev -- --host 0.0.0.0 --port 5173
+   npm run dev -- --host <deine-server-ip> --port 5173
    ```
 3. Node-Version prüfen:
    ```bash
    node -v
    ```
    Sollte die Ausgabe eine Version kleiner als 18 zeigen, bitte Node.js aktualisieren (z. B. via `nvm`).
-4. Öffne `http://localhost:5173`, um den Explorer mit Echtzeit-Filtern für LoRAs und Galerien zu testen.
+4. Öffne `http://<deine-server-ip>:5173`, um den Explorer mit Echtzeit-Filtern für LoRAs und Galerien zu testen.
 
 ## Frontend-Erlebnis
 

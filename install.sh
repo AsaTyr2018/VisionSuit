@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 DOCKER_COMPOSE_CMD=""
+SERVER_IP=""
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -55,7 +56,7 @@ ensure_portainer() {
       info "Starte vorhandenen Portainer-Container"
       docker start "$container_name" >/dev/null
     fi
-    success "Portainer ist bereits installiert (https://localhost:9443)."
+    success "Portainer ist bereits installiert (https://$SERVER_IP:9443)."
     return
   fi
 
@@ -72,7 +73,7 @@ ensure_portainer() {
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "$volume_name:/data" \
       portainer/portainer-ce:latest >/dev/null
-    success "Portainer CE wurde gestartet (UI: https://localhost:9443)."
+    success "Portainer CE wurde gestartet (UI: https://$SERVER_IP:9443)."
   else
     info "Portainer-Installation übersprungen. Du kannst sie später jederzeit mit 'docker run portainer/portainer-ce' nachholen."
   fi
@@ -97,7 +98,7 @@ setup_minio_container() {
       if ! docker ps --filter "name=^${container_name}$" --filter "status=running" --format '{{.Names}}' | grep -q "^${container_name}$"; then
         docker start "$container_name" >/dev/null
       fi
-      success "Vorhandener MinIO-Container wird weiterverwendet (Konsole: http://localhost:$console_port)."
+      success "Vorhandener MinIO-Container wird weiterverwendet (Konsole: http://$SERVER_IP:$console_port)."
       return
     fi
   fi
@@ -112,7 +113,7 @@ setup_minio_container() {
     -e MINIO_ROOT_USER="$minio_access_key" \
     -e MINIO_ROOT_PASSWORD="$minio_secret_key" \
     minio/minio server /data --console-address ":9001" >/dev/null
-  success "MinIO läuft jetzt im Container '$container_name' (Konsole: http://localhost:$console_port)."
+  success "MinIO läuft jetzt im Container '$container_name' (Konsole: http://$SERVER_IP:$console_port)."
 }
 
 info() {
@@ -153,6 +154,168 @@ confirm() {
       *) echo "Bitte mit 'y' oder 'n' antworten." ;;
     esac
   done
+}
+
+is_valid_ipv4() {
+  local ip="$1"
+  if [[ ! $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    return 1
+  fi
+
+  IFS='.' read -r o1 o2 o3 o4 <<<"$ip"
+  for octet in "$o1" "$o2" "$o3" "$o4"; do
+    if [ "$octet" -lt 0 ] || [ "$octet" -gt 255 ]; then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+is_local_ipv4() {
+  local ip="$1"
+  case "$ip" in
+    0.*|127.*|169.254.*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+prompt_ipv4_with_default() {
+  local prompt="$1"
+  local default_value="$2"
+  local value
+
+  while true; do
+    read -r -p "$prompt [$default_value]: " value || true
+    if [ -z "$value" ]; then
+      printf '%s' "$default_value"
+      return
+    fi
+
+    if is_valid_ipv4 "$value" && ! is_local_ipv4 "$value"; then
+      printf '%s' "$value"
+      return
+    fi
+
+    echo "Bitte eine gültige Server-IP-Adresse (keine Loopback- oder Link-Local-IP) eingeben."
+  done
+}
+
+prompt_for_ipv4() {
+  local prompt="$1"
+  local value
+
+  while true; do
+    read -r -p "$prompt: " value || true
+    if is_valid_ipv4 "$value" && ! is_local_ipv4 "$value"; then
+      printf '%s' "$value"
+      return
+    fi
+    echo "Bitte eine gültige Server-IP-Adresse (keine Loopback- oder Link-Local-IP) eingeben."
+  done
+}
+
+prompt_port_with_default() {
+  local prompt="$1"
+  local default_value="$2"
+  local value
+
+  while true; do
+    read -r -p "$prompt [$default_value]: " value || true
+    if [ -z "$value" ]; then
+      printf '%s' "$default_value"
+      return
+    fi
+
+    if [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 65535 ]; then
+      printf '%s' "$value"
+      return
+    fi
+
+    echo "Bitte eine gültige Portnummer zwischen 1 und 65535 eingeben."
+  done
+}
+
+mask_secret() {
+  local value="$1"
+  local length="${#value}"
+
+  if [ "$length" -le 4 ]; then
+    printf '****'
+    return
+  fi
+
+  printf '%s***%s' "${value:0:2}" "${value: -2}"
+}
+
+detect_server_ip() {
+  info "Ermittle Server-IP-Adresse"
+  local -a candidates=()
+  local line
+
+  while IFS= read -r line; do
+    candidates+=("$line")
+  done < <(ip -4 -o addr show scope global 2>/dev/null | awk '!($2 ~ /^(docker|br-|veth|lo|cni|flannel|virbr|vz|lxc|kube|tun|tap)/) {print $4}' | cut -d'/' -f1 | sort -u)
+
+  if [ "${#candidates[@]}" -eq 0 ]; then
+    echo "Es konnte keine geeignete IP automatisch ermittelt werden."
+    SERVER_IP="$(prompt_for_ipv4 "Bitte Server-IP-Adresse eingeben")"
+    return
+  fi
+
+  if [ "${#candidates[@]}" -eq 1 ]; then
+    local candidate="${candidates[0]}"
+    echo "Gefundene IP-Adresse: $candidate"
+    if confirm "Diese IP verwenden?"; then
+      SERVER_IP="$candidate"
+      return
+    fi
+
+    SERVER_IP="$(prompt_for_ipv4 "Bitte Server-IP-Adresse eingeben")"
+    return
+  fi
+
+  echo "Mehrere mögliche IP-Adressen wurden gefunden:"
+  local idx
+  for idx in "${!candidates[@]}"; do
+    printf '  [%d] %s\n' "$((idx + 1))" "${candidates[idx]}"
+  done
+
+  local selection
+  while true; do
+    read -r -p "Auswahl [1-${#candidates[@]}]: " selection || true
+    if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 1 ] && [ "$selection" -le "${#candidates[@]}" ]; then
+      SERVER_IP="${candidates[selection-1]}"
+      break
+    fi
+    echo "Bitte eine gültige Zahl eingeben."
+  done
+
+  if ! confirm "IP ${SERVER_IP} verwenden?"; then
+    SERVER_IP="$(prompt_for_ipv4 "Bitte Server-IP-Adresse eingeben")"
+  fi
+}
+
+apply_configuration() {
+  update_env_value "$BACKEND_DIR/.env" HOST "$backend_host"
+  update_env_value "$BACKEND_DIR/.env" PORT "$backend_port"
+  update_env_value "$BACKEND_DIR/.env" STORAGE_DRIVER "$storage_driver"
+  update_env_value "$BACKEND_DIR/.env" MINIO_ENDPOINT "$minio_endpoint"
+  update_env_value "$BACKEND_DIR/.env" MINIO_PORT "$minio_port"
+  update_env_value "$BACKEND_DIR/.env" MINIO_USE_SSL "${minio_use_ssl,,}"
+  update_env_value "$BACKEND_DIR/.env" MINIO_ACCESS_KEY "$minio_access_key"
+  update_env_value "$BACKEND_DIR/.env" MINIO_SECRET_KEY "$minio_secret_key"
+  update_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_MODELS "$minio_bucket_models"
+  update_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_IMAGES "$minio_bucket_images"
+  update_env_value "$BACKEND_DIR/.env" MINIO_AUTO_CREATE_BUCKETS "${minio_auto_create,,}"
+  update_env_value "$BACKEND_DIR/.env" MINIO_PUBLIC_URL "$minio_public_url"
+
+  if [ -n "${minio_region:-}" ]; then
+    update_env_value "$BACKEND_DIR/.env" MINIO_REGION "$minio_region"
+  fi
+
+  update_env_value "$FRONTEND_DIR/.env" VITE_API_URL "$frontend_api_url"
+  update_env_value "$FRONTEND_DIR/.env" FRONTEND_PORT "$frontend_port"
 }
 
 read_env_value() {
@@ -241,93 +404,150 @@ info "Installiere Frontend-Abhängigkeiten"
 create_env_if_missing "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
 create_env_if_missing "$FRONTEND_DIR/.env.example" "$FRONTEND_DIR/.env"
 
-backend_host_default="$(read_env_value "$BACKEND_DIR/.env" HOST || printf '0.0.0.0')"
+detect_server_ip
+
 backend_port_default="$(read_env_value "$BACKEND_DIR/.env" PORT || printf '4000')"
-frontend_api_default="$(read_env_value "$FRONTEND_DIR/.env" VITE_API_URL || printf 'http://localhost:%s' "$backend_port_default")"
-
-info "Backend-Konfiguration"
-backend_host="$(prompt_default "Backend Host" "$backend_host_default")"
-backend_port="$(prompt_default "Backend Port" "$backend_port_default")"
-update_env_value "$BACKEND_DIR/.env" HOST "$backend_host"
-update_env_value "$BACKEND_DIR/.env" PORT "$backend_port"
-success "Backend-Umgebung aktualisiert."
-
-info "Frontend-Konfiguration"
-api_default_fallback="http://localhost:$backend_port"
-if [ -z "$frontend_api_default" ]; then
-  frontend_api_default="$api_default_fallback"
+if [[ ! "$backend_port_default" =~ ^[0-9]+$ ]]; then
+  backend_port_default="4000"
 fi
-frontend_api_url="$(prompt_default "Basis-URL der Backend-API für das Frontend" "$frontend_api_default")"
-if [ -z "$frontend_api_url" ]; then
-  frontend_api_url="$api_default_fallback"
-fi
-update_env_value "$FRONTEND_DIR/.env" VITE_API_URL "$frontend_api_url"
-success "Frontend-Umgebung aktualisiert."
 
-info "Storage-Konfiguration (MinIO)"
-storage_driver_default="$(read_env_value "$BACKEND_DIR/.env" STORAGE_DRIVER || printf 'minio')"
-storage_driver="$(prompt_default "Storage-Treiber" "$storage_driver_default")"
-if [ "$storage_driver" != "minio" ]; then
-  echo "Warnung: Aktuell wird nur MinIO unterstützt. Der Treiber wird auf 'minio' gesetzt." >&2
-  storage_driver="minio"
+frontend_port_default="$(read_env_value "$FRONTEND_DIR/.env" FRONTEND_PORT || printf '5173')"
+if [[ ! "$frontend_port_default" =~ ^[0-9]+$ ]]; then
+  frontend_port_default="5173"
 fi
-update_env_value "$BACKEND_DIR/.env" STORAGE_DRIVER "$storage_driver"
-
-minio_endpoint_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_ENDPOINT || printf '127.0.0.1')"
-minio_endpoint="$(prompt_default "MinIO Endpoint (Hostname oder IP)" "$minio_endpoint_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_ENDPOINT "$minio_endpoint"
 
 minio_port_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_PORT || printf '9000')"
-minio_port="$(prompt_default "MinIO Port" "$minio_port_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_PORT "$minio_port"
+if [[ ! "$minio_port_default" =~ ^[0-9]+$ ]]; then
+  minio_port_default="9000"
+fi
 
 minio_use_ssl_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_USE_SSL || printf 'false')"
-minio_use_ssl="$(prompt_default "MinIO HTTPS verwenden? (true/false)" "$minio_use_ssl_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_USE_SSL "$minio_use_ssl"
+minio_use_ssl_default="${minio_use_ssl_default,,}"
+if [ "$minio_use_ssl_default" != "true" ]; then
+  minio_use_ssl_default="false"
+fi
 
 minio_access_key_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_ACCESS_KEY || printf 'visionsuit')"
-minio_access_key="$(prompt_default "MinIO Access Key" "$minio_access_key_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_ACCESS_KEY "$minio_access_key"
-
-minio_secret_key_existing="$(read_env_value "$BACKEND_DIR/.env" MINIO_SECRET_KEY || true)"
-if [ -z "$minio_secret_key_existing" ]; then
-  minio_secret_key_existing="$(generate_secret)"
+minio_secret_key_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_SECRET_KEY || true)"
+if [ -z "$minio_secret_key_default" ]; then
+  minio_secret_key_default="$(generate_secret)"
 fi
-minio_secret_key="$(prompt_default "MinIO Secret Key" "$minio_secret_key_existing")"
-update_env_value "$BACKEND_DIR/.env" MINIO_SECRET_KEY "$minio_secret_key"
 
 minio_bucket_models_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_MODELS || printf 'visionsuit-models')"
-minio_bucket_models="$(prompt_default "Bucket für Modell-Assets" "$minio_bucket_models_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_MODELS "$minio_bucket_models"
-
 minio_bucket_images_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_IMAGES || printf 'visionsuit-images')"
-minio_bucket_images="$(prompt_default "Bucket für Bild-Assets" "$minio_bucket_images_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_BUCKET_IMAGES "$minio_bucket_images"
-
 minio_auto_create_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_AUTO_CREATE_BUCKETS || printf 'true')"
-minio_auto_create="$(prompt_default "Buckets automatisch erstellen? (true/false)" "$minio_auto_create_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_AUTO_CREATE_BUCKETS "$minio_auto_create"
+minio_auto_create_default="${minio_auto_create_default,,}"
+if [ "$minio_auto_create_default" != "false" ]; then
+  minio_auto_create_default="true"
+fi
 
 minio_public_url_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_PUBLIC_URL || true)"
-if [ -z "$minio_public_url_default" ]; then
-  if [ "${minio_use_ssl,,}" = "true" ]; then
-    minio_public_url_default="https://$minio_endpoint:$minio_port"
+minio_region_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_REGION || true)"
+
+storage_driver="minio"
+backend_host="$SERVER_IP"
+backend_port="$backend_port_default"
+frontend_port="$frontend_port_default"
+frontend_api_url="http://$SERVER_IP:$backend_port"
+minio_endpoint="$SERVER_IP"
+minio_port="$minio_port_default"
+minio_use_ssl="$minio_use_ssl_default"
+minio_access_key="$minio_access_key_default"
+minio_secret_key="$minio_secret_key_default"
+minio_bucket_models="$minio_bucket_models_default"
+minio_bucket_images="$minio_bucket_images_default"
+minio_auto_create="$minio_auto_create_default"
+minio_public_url="$minio_public_url_default"
+minio_region="$minio_region_default"
+
+if [ -z "$minio_public_url" ]; then
+  if [ "$minio_use_ssl" = "true" ]; then
+    minio_public_url="https://$SERVER_IP:$minio_port"
   else
-    minio_public_url_default="http://$minio_endpoint:$minio_port"
+    minio_public_url="http://$SERVER_IP:$minio_port"
+  fi
+else
+  case "$minio_public_url" in
+    *localhost*|127.*|0.0.0.0*)
+      if [ "$minio_use_ssl" = "true" ]; then
+        minio_public_url="https://$SERVER_IP:$minio_port"
+      else
+        minio_public_url="http://$SERVER_IP:$minio_port"
+      fi
+      ;;
+  esac
+fi
+
+info "Konfigurationsvorschlag"
+printf '  %-28s %s\n' "Server-IP:" "$SERVER_IP"
+printf '  %-28s %s\n' "Backend Host:" "$backend_host"
+printf '  %-28s %s\n' "Backend Port:" "$backend_port"
+printf '  %-28s %s\n' "Frontend API URL:" "$frontend_api_url"
+printf '  %-28s %s\n' "Frontend Dev-Port:" "$frontend_port"
+printf '  %-28s %s\n' "MinIO Endpoint:" "$minio_endpoint"
+printf '  %-28s %s\n' "MinIO Port:" "$minio_port"
+printf '  %-28s %s\n' "MinIO Access Key:" "$minio_access_key"
+printf '  %-28s %s\n' "MinIO Secret Key:" "$(mask_secret "$minio_secret_key")"
+printf '  %-28s %s / %s\n' "MinIO Buckets:" "$minio_bucket_models" "$minio_bucket_images"
+printf '  %-28s %s\n' "MinIO Auto Buckets:" "$minio_auto_create"
+printf '  %-28s %s\n' "MinIO Public URL:" "$minio_public_url"
+printf '  %-28s %s\n' "MinIO Region:" "${minio_region:-(nicht gesetzt)}"
+
+if ! confirm "Diese Einstellungen übernehmen?"; then
+  info "Manuelle Konfiguration"
+  backend_host="$(prompt_ipv4_with_default "Backend Host" "$backend_host")"
+  backend_port="$(prompt_port_with_default "Backend Port" "$backend_port")"
+  frontend_port="$(prompt_port_with_default "Frontend Dev-Port" "$frontend_port")"
+
+  api_default="http://$backend_host:$backend_port"
+  frontend_api_url="$(prompt_default "Frontend API URL" "$api_default")"
+  if [ -z "$frontend_api_url" ]; then
+    frontend_api_url="$api_default"
+  fi
+
+  minio_endpoint="$(prompt_ipv4_with_default "MinIO Endpoint" "$minio_endpoint")"
+  minio_port="$(prompt_port_with_default "MinIO Port" "$minio_port")"
+  minio_use_ssl="$(prompt_default "MinIO HTTPS verwenden? (true/false)" "$minio_use_ssl")"
+  minio_use_ssl="${minio_use_ssl,,}"
+  if [ "$minio_use_ssl" != "true" ]; then
+    minio_use_ssl="false"
+  fi
+
+  minio_access_key="$(prompt_default "MinIO Access Key" "$minio_access_key")"
+  secret_input=""
+  read -r -p "MinIO Secret Key ($(mask_secret "$minio_secret_key")) []: " secret_input || true
+  if [ -n "$secret_input" ]; then
+    minio_secret_key="$secret_input"
+  fi
+
+  minio_bucket_models="$(prompt_default "Bucket für Modell-Assets" "$minio_bucket_models")"
+  minio_bucket_images="$(prompt_default "Bucket für Bild-Assets" "$minio_bucket_images")"
+  minio_auto_create="$(prompt_default "Buckets automatisch erstellen? (true/false)" "$minio_auto_create")"
+  minio_auto_create="${minio_auto_create,,}"
+  if [ "$minio_auto_create" != "false" ]; then
+    minio_auto_create="true"
+  fi
+
+  scheme="http"
+  if [ "$minio_use_ssl" = "true" ]; then
+    scheme="https"
+  fi
+  public_url_default="$scheme://$minio_endpoint:$minio_port"
+  minio_public_url="$(prompt_default "MinIO Public URL" "${minio_public_url:-$public_url_default}")"
+  if [ -z "$minio_public_url" ]; then
+    minio_public_url="$public_url_default"
+  fi
+
+  region_input=""
+  read -r -p "MinIO Region (optional) [${minio_region:-}]: " region_input || true
+  if [ -n "$region_input" ]; then
+    minio_region="$region_input"
   fi
 fi
-minio_public_url="$(prompt_default "Öffentliche Basis-URL für MinIO" "$minio_public_url_default")"
-update_env_value "$BACKEND_DIR/.env" MINIO_PUBLIC_URL "$minio_public_url"
 
-minio_region_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_REGION || true)"
-if [ -n "$minio_region_default" ]; then
-  minio_region="$(prompt_default "MinIO Region (optional)" "$minio_region_default")"
-else
-  read -r -p "MinIO Region (optional) []: " minio_region || true
-fi
-if [ -n "${minio_region:-}" ]; then
-  update_env_value "$BACKEND_DIR/.env" MINIO_REGION "$minio_region"
-fi
+apply_configuration
+success "Backend-Umgebung aktualisiert."
+success "Frontend-Umgebung aktualisiert."
 success "Storage-Umgebung aktualisiert."
 
 setup_minio_container
@@ -347,6 +567,48 @@ if confirm "Soll 'npm run seed' jetzt ausgeführt werden?"; then
     cd "$BACKEND_DIR"
     npm run seed
   )
+fi
+
+if confirm "Jetzt einen Admin-Benutzer anlegen?"; then
+  info "Lege Admin-Benutzer an"
+  admin_email=""
+  admin_password=""
+  admin_name=""
+  admin_bio=""
+
+  while [ -z "$admin_email" ]; do
+    read -r -p "Admin E-Mail: " admin_email || true
+    if [ -z "$admin_email" ]; then
+      echo "Die E-Mail darf nicht leer sein."
+    fi
+  done
+
+  while [ -z "$admin_password" ]; do
+    read -s -p "Admin Passwort: " admin_password || true
+    echo
+    if [ -z "$admin_password" ]; then
+      echo "Das Passwort darf nicht leer sein."
+    fi
+  done
+
+  while [ -z "$admin_name" ]; do
+    read -r -p "Admin Anzeigename: " admin_name || true
+    if [ -z "$admin_name" ]; then
+      echo "Der Anzeigename darf nicht leer sein."
+    fi
+  done
+
+  read -r -p "Admin Bio (optional): " admin_bio || true
+
+  (
+    cd "$BACKEND_DIR"
+    npm run create-admin -- \
+      --email="$admin_email" \
+      --password="$admin_password" \
+      --name="$admin_name" \
+      --bio="${admin_bio:-}"
+  )
+  success "Admin-Benutzer wurde angelegt oder aktualisiert."
 fi
 
 success "Installation abgeschlossen."
