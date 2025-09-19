@@ -2,35 +2,115 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AssetExplorer } from './components/AssetExplorer';
 import { GalleryExplorer } from './components/GalleryExplorer';
-import { StatCard } from './components/StatCard';
+import { ImageGallery } from './components/ImageGallery';
 import { UploadWizard } from './components/UploadWizard';
 import type { UploadWizardResult } from './components/UploadWizard';
 import { api } from './lib/api';
-import type { Gallery, MetaStats, ModelAsset } from './types/api';
+import { resolveStorageUrl } from './lib/storage';
+import type { Gallery, ImageAsset, ModelAsset } from './types/api';
 
-const statsPlaceholder = Array.from({ length: 3 }, (_, index) => index);
+type ViewKey = 'home' | 'models' | 'images';
+type ServiceStatusKey = 'frontend' | 'backend' | 'minio';
+type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
+
+interface ServiceIndicator {
+  label: string;
+  status: ServiceState;
+  message: string;
+}
+
+const viewMeta: Record<ViewKey, { title: string; description: string }> = {
+  home: {
+    title: 'Home',
+    description: 'Überblick über neue Modelle und Bild-Uploads – direkt aus Backend und Storage gespeist.',
+  },
+  models: {
+    title: 'Models',
+    description: 'LoRA-Explorer mit Volltextsuche, Typfiltern und Kurator:innen-Ansicht.',
+  },
+  images: {
+    title: 'Images',
+    description: 'Bildgalerie mit Prompt-Details und kuratierten Sets für Präsentationen.',
+  },
+};
+
+const statusLabels: Record<ServiceState, string> = {
+  online: 'Online',
+  offline: 'Offline',
+  degraded: 'Eingeschränkt',
+  unknown: 'Unbekannt',
+};
+
+const truncate = (value: string, length = 140) => {
+  if (value.length <= length) {
+    return value;
+  }
+
+  return `${value.slice(0, length - 1)}…`;
+};
+
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString('de-DE', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
+  frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
+  backend: { label: 'Backend', status: 'unknown', message: 'Status wird geprüft …' },
+  minio: { label: 'MinIO', status: 'unknown', message: 'Status wird geprüft …' },
+});
 
 export const App = () => {
-  const [stats, setStats] = useState<MetaStats | null>(null);
+  const [activeView, setActiveView] = useState<ViewKey>('home');
   const [assets, setAssets] = useState<ModelAsset[]>([]);
+  const [images, setImages] = useState<ImageAsset[]>([]);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUploadWizardOpen, setIsUploadWizardOpen] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<Record<ServiceStatusKey, ServiceIndicator>>(createInitialStatus);
+
+  const fetchServiceStatus = useCallback(async () => {
+    try {
+      const status = await api.getServiceStatus();
+      setServiceStatus({
+        frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
+        backend: {
+          label: 'Backend',
+          status: status.services.backend.status ?? 'online',
+          message: status.services.backend.message ?? 'API erreichbar.',
+        },
+        minio: {
+          label: 'MinIO',
+          status: status.services.minio.status ?? 'online',
+          message: status.services.minio.message ?? 'Storage verfügbar.',
+        },
+      });
+    } catch (error) {
+      console.error('Service status fetch failed', error);
+      setServiceStatus({
+        frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
+        backend: { label: 'Backend', status: 'offline', message: 'Backend nicht erreichbar.' },
+        minio: { label: 'MinIO', status: 'offline', message: 'Storage nicht erreichbar.' },
+      });
+    }
+  }, []);
 
   const refreshData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [fetchedStats, fetchedAssets, fetchedGalleries] = await Promise.all([
-        api.getStats(),
+      const [fetchedAssets, fetchedGalleries, fetchedImages] = await Promise.all([
         api.getModelAssets(),
         api.getGalleries(),
+        api.getImageAssets(),
       ]);
 
-      setStats(fetchedStats);
       setAssets(fetchedAssets);
       setGalleries(fetchedGalleries);
+      setImages(fetchedImages);
       setErrorMessage(null);
     } catch (error) {
       console.error(error);
@@ -38,7 +118,9 @@ export const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+
+    fetchServiceStatus().catch((statusError) => console.error('Failed to refresh service status', statusError));
+  }, [fetchServiceStatus]);
 
   useEffect(() => {
     refreshData().catch((error) => console.error('Unexpected fetch error', error));
@@ -64,300 +146,224 @@ export const App = () => {
     }
   };
 
-  const statsList = useMemo(
-    () =>
-      stats
-        ? [
-            { label: 'LoRA Assets', value: stats.modelCount, helper: 'Versionierte Safetensors & Metadaten' },
-            { label: 'Galerie-Einträge', value: stats.imageCount, helper: 'Gerenderte Beispiele & Referenzen' },
-            { label: 'Kuratiere Galerien', value: stats.galleryCount, helper: 'Moderierte Sammlungen' },
-            { label: 'Tags', value: stats.tagCount, helper: 'Verschlagwortung für Suche & Filter' },
-          ]
-        : [],
-    [stats],
+  const latestModels = useMemo(() => assets.slice(0, 6), [assets]);
+  const latestImages = useMemo(() => images.slice(0, 6), [images]);
+
+  const modelTiles = latestModels.map((asset) => {
+    const previewUrl =
+      resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ?? asset.previewImage;
+    return (
+      <article key={asset.id} className="tile tile--model">
+        <div className="tile__media">
+          {previewUrl ? (
+            <img src={previewUrl} alt={asset.title} loading="lazy" />
+          ) : (
+            <span className="tile__placeholder">Kein Vorschaubild verfügbar</span>
+          )}
+        </div>
+        <div className="tile__body">
+          <header className="tile__header">
+            <h3 className="tile__title">{asset.title}</h3>
+            <span className="tile__meta">v{asset.version}</span>
+          </header>
+          <p className="tile__description">
+            {asset.description ? truncate(asset.description, 150) : 'Noch keine Beschreibung hinterlegt.'}
+          </p>
+          <dl className="tile__details">
+            <div>
+              <dt>Kurator:in</dt>
+              <dd>{asset.owner.displayName}</dd>
+            </div>
+            <div>
+              <dt>Aktualisiert</dt>
+              <dd>{formatDate(asset.updatedAt)}</dd>
+            </div>
+          </dl>
+          {asset.tags.length > 0 ? (
+            <ul className="tile__tags">
+              {asset.tags.slice(0, 4).map((tag) => (
+                <li key={tag.id}>#{tag.label}</li>
+              ))}
+              {asset.tags.length > 4 ? <li>+{asset.tags.length - 4}</li> : null}
+            </ul>
+          ) : null}
+        </div>
+      </article>
+    );
+  });
+
+  const imageTiles = latestImages.map((image) => {
+    const imageUrl =
+      resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+    return (
+      <article key={image.id} className="tile tile--image">
+        <div className="tile__media">
+          {imageUrl ? (
+            <img src={imageUrl} alt={image.title} loading="lazy" />
+          ) : (
+            <span className="tile__placeholder">Kein Bild verfügbar</span>
+          )}
+        </div>
+        <div className="tile__body">
+          <header className="tile__header">
+            <h3 className="tile__title">{image.title}</h3>
+            <span className="tile__meta">{formatDate(image.updatedAt)}</span>
+          </header>
+          <p className="tile__description">{image.prompt ? truncate(image.prompt, 140) : 'Kein Prompt hinterlegt.'}</p>
+          <dl className="tile__details">
+            <div>
+              <dt>Model</dt>
+              <dd>{image.metadata.model ?? 'Unbekannt'}</dd>
+            </div>
+            <div>
+              <dt>Sampler</dt>
+              <dd>{image.metadata.sampler ?? '–'}</dd>
+            </div>
+          </dl>
+          {image.tags.length > 0 ? (
+            <ul className="tile__tags">
+              {image.tags.slice(0, 4).map((tag) => (
+                <li key={tag.id}>#{tag.label}</li>
+              ))}
+              {image.tags.length > 4 ? <li>+{image.tags.length - 4}</li> : null}
+            </ul>
+          ) : null}
+        </div>
+      </article>
+    );
+  });
+
+  const renderHome = () => (
+    <div className="home-grid">
+      <section className="home-section">
+        <header className="home-section__header">
+          <h2>Neueste Modelle</h2>
+          <p>Die jüngsten Uploads aus dem Model-Explorer als kompakte Kacheln.</p>
+        </header>
+        <div className="tile-grid">
+          {isLoading && assets.length === 0
+            ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+            : modelTiles}
+        </div>
+        {!isLoading && modelTiles.length === 0 ? (
+          <p className="empty-state">Noch keine Modelle verfügbar.</p>
+        ) : null}
+      </section>
+
+      <section className="home-section">
+        <header className="home-section__header">
+          <h2>Neueste Bilder</h2>
+          <p>Frisch gerenderte Referenzen inklusive Prompt-Auszügen.</p>
+        </header>
+        <div className="tile-grid">
+          {isLoading && images.length === 0
+            ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+            : imageTiles}
+        </div>
+        {!isLoading && imageTiles.length === 0 ? (
+          <p className="empty-state">Noch keine Bilder vorhanden.</p>
+        ) : null}
+      </section>
+    </div>
   );
+
+  const renderContent = () => {
+    if (activeView === 'models') {
+      return (
+        <AssetExplorer
+          assets={assets}
+          isLoading={isLoading}
+          onStartUpload={() => setIsUploadWizardOpen(true)}
+        />
+      );
+    }
+
+    if (activeView === 'images') {
+      return (
+        <div className="content__stack">
+          <ImageGallery images={images} isLoading={isLoading} />
+          <GalleryExplorer galleries={galleries} isLoading={isLoading} />
+        </div>
+      );
+    }
+
+    return renderHome();
+  };
 
   return (
     <div className="app">
-      <div className="app__wrapper">
-        {toast ? (
-          <div className={`toast toast--${toast.type}`} role="status">
-            {toast.message}
+      <div className="layout">
+        <aside className="sidebar">
+          <div className="sidebar__brand">
+            <span className="sidebar__logo">VisionSuit</span>
+            <span className="sidebar__tagline">AI Asset Control</span>
           </div>
-        ) : null}
-
-        <header className="topbar">
-          <div className="topbar__brand">
-            <span className="topbar__logo">VisionSuit</span>
-            <span className="topbar__tag">AI Ops Platform</span>
-          </div>
-          <nav className="topbar__nav" aria-label="Hauptnavigation">
-            <a href="#features">Features</a>
-            <a href="#governance">Governance</a>
-            <a href="#pipeline">Pipeline</a>
-            <a href="#explorer">Explorer</a>
-          </nav>
-          <div className="topbar__meta">
-            <div className={`status-indicator status-indicator--${errorMessage ? 'danger' : 'success'}`}>
-              <span aria-hidden="true" />
-              <span className="status-indicator__label">{errorMessage ? 'Backend Offline' : 'Systems nominal'}</span>
-            </div>
-            <button
-              type="button"
-              className="topbar__cta"
-              onClick={() => setIsUploadWizardOpen(true)}
-            >
-              Upload starten
-            </button>
-          </div>
-        </header>
-
-        <main>
-          <section className="hero" id="overview">
-            <span className="hero__badge">Production Control Center</span>
-            <div className="hero__layout">
-              <div className="hero__content">
-                <h1 className="hero__title">
-                  VisionSuit orchestriert deinen gesamten KI-Asset-Lifecycle – nachvollziehbar, auditierbar und skalierbar.
-                </h1>
-                <p className="hero__description">
-                  Plane Uploads, führe Governance-Regeln durch und veröffentliche kuratierte Galerien ohne Medienbruch. Die
-                  Plattform konsolidiert Prüfungen, Storage und Monitoring in einer produktionsreifen Oberfläche.
-                </p>
-                <div className="hero__actions">
-                  <button
-                    type="button"
-                    className="panel__action panel__action--primary"
-                    onClick={() => setIsUploadWizardOpen(true)}
-                  >
-                    Upload-Wizard öffnen
-                  </button>
-                  <button
-                    type="button"
-                    className="panel__action"
-                    onClick={() => document.getElementById('explorer')?.scrollIntoView({ behavior: 'smooth' })}
-                  >
-                    Explorer ansehen
-                  </button>
-                </div>
-                <dl className="hero__metrics">
-                  <div>
-                    <dt>API Base</dt>
-                    <dd>{import.meta.env.VITE_API_URL ?? 'http://localhost:4000'}</dd>
-                  </div>
-                  <div>
-                    <dt>Audit Trail</dt>
-                    <dd>Session-Protokolle &amp; Queue Monitoring aktiv</dd>
-                  </div>
-                  <div>
-                    <dt>SLA</dt>
-                    <dd>&lt; 5 Minuten bis Analyse-Start</dd>
-                  </div>
-                </dl>
-              </div>
-              <aside className="hero__card" aria-label="Wizard Pipeline">
-                <h3>Upload-Pipeline</h3>
-                <p className="hero__card-helper">Validierung, Dateiannahme und Übergabe an Worker – automatisiert in drei
-                  Schritten.</p>
-                <ul className="hero__card-list">
-                  <li>
-                    <span>1</span>
-                    <div>
-                      <strong>Erfassung</strong>
-                      <p>Titel, Sichtbarkeit, Tags und Governance-Vorgaben werden live geprüft.</p>
-                    </div>
-                  </li>
-                  <li>
-                    <span>2</span>
-                    <div>
-                      <strong>Validierung</strong>
-                      <p>Drag &amp; Drop, Duplikat-Prüfung sowie Größenlimits garantieren konsistente Ingests.</p>
-                    </div>
-                  </li>
-                  <li>
-                    <span>3</span>
-                    <div>
-                      <strong>Freigabe</strong>
-                      <p>Review-Summary mit Gallery-Zuordnung &amp; Übergabe an Analyse-Worker.</p>
-                    </div>
-                  </li>
-                </ul>
-                <div className="hero__card-footer">
-                  <span>Analyse-Queue aktiv</span>
-                  <span>Checksum &amp; Prompt-Parsing inklusive</span>
-                </div>
-              </aside>
-            </div>
-          </section>
-
-          <section className="trust" aria-label="Kundennutzen">
-            <h2>Vertrauenswürdige KI-Produktionen</h2>
-            <p>Studios wie <strong>NeoFrame Labs</strong>, <strong>FrameForge</strong> und <strong>Atlas Render</strong> setzen
-              auf VisionSuit für revisionssichere Uploads und transparente Datenströme.</p>
-            <div className="trust__stats">
-              <article>
-                <h3>99,8%</h3>
-                <p>erfolgreiche Upload-Validierungen dank Zod-gestützter Eingangsprüfung.</p>
-              </article>
-              <article>
-                <h3>24/7</h3>
-                <p>Self-Service Uploads über Wizard &amp; API – inklusive Audit Logging.</p>
-              </article>
-              <article>
-                <h3>&lt; 60s</h3>
-                <p>bis zur Worker-Queue für Safetensors, Prompts und Referenzbilder.</p>
-              </article>
-            </div>
-          </section>
-
-          <section className="panel panel--accent hero__highlights" id="features">
-            <header className="panel__header">
-              <div>
-                <h2 className="panel__title">Feature Matrix</h2>
-                <p className="panel__subtitle">
-                  Tools für Operations, Sicherheit und Automatisierung – einsatzbereit für produktive Teams.
-                </p>
-              </div>
-            </header>
-            <div className="hero__highlight-grid">
-              <article className="hero__highlight">
-                <h3>Operations &amp; Sicherheit</h3>
-                <p>Jede Upload-Session erhält eine eindeutige Referenz inklusive Status, Owner und Audit-Log.</p>
-                <ul className="hero__highlight-list">
-                  <li>Versionierung pro Upload-Lauf</li>
-                  <li>Visibility-Policies (Privat/Public)</li>
-                  <li>Robuste Validierungen &amp; Limits</li>
-                </ul>
-              </article>
-              <article className="hero__highlight">
-                <h3>Analyse &amp; Automatisierung</h3>
-                <p>Worker extrahieren Checksums, Prompt-Daten und Tag-Empfehlungen direkt nach Abschluss des Uploads.</p>
-                <ul className="hero__highlight-list">
-                  <li>Safetensor-Checksum-Berechnung</li>
-                  <li>EXIF/Prompt Parsing für Renders</li>
-                  <li>Automatische Gallery-Vorschläge</li>
-                </ul>
-              </article>
-              <article className="hero__highlight">
-                <h3>Integrationen</h3>
-                <p>Out-of-the-box Integration für MinIO-Speicher, Prisma-Datenmodell und CI/CD-taugliche Deployments.</p>
-                <ul className="hero__highlight-list">
-                  <li>S3-kompatibler Storage</li>
-                  <li>API-ready für Automationen</li>
-                  <li>CLI-Installer inkl. Secrets</li>
-                </ul>
-              </article>
-            </div>
-          </section>
-
-          <section className="panel panel--frosted" aria-labelledby="governance-title" id="governance">
-            <header className="panel__header">
-              <div>
-                <h2 className="panel__title" id="governance-title">Governance Cockpit</h2>
-                <p className="panel__subtitle">
-                  Überblick über Assets, Galerien, Tags und Aktivität – aktualisiert mit jedem Upload.
-                </p>
-              </div>
-            </header>
-            <div className="panel__grid panel__grid--stats">
-              {isLoading && statsList.length === 0
-                ? statsPlaceholder.map((key) => <div key={key} className="skeleton" />)
-                : statsList.map((item) => <StatCard key={item.label} {...item} />)}
-            </div>
-            {errorMessage ? <p className="panel__error">{errorMessage}</p> : null}
-          </section>
-
-          <section className="panel panel--outline process" id="pipeline">
-            <header className="panel__header">
-              <div>
-                <h2 className="panel__title">Upload-Governance in vier Phasen</h2>
-                <p className="panel__subtitle">
-                  Von der initialen Validierung bis zur Veröffentlichung in der Asset-Bibliothek – jede Phase ist nachvollziehbar
-                  dokumentiert.
-                </p>
-              </div>
-            </header>
-            <ol className="process__timeline">
-              <li>
-                <span className="process__index">1</span>
-                <div>
-                  <h3>Session anlegen</h3>
-                  <p>Wizard erstellt eine Upload-Session mit Owner, Sichtbarkeit und erwarteten Artefakten.</p>
-                </div>
-              </li>
-              <li>
-                <span className="process__index">2</span>
-                <div>
-                  <h3>Ingest &amp; Prüfungen</h3>
-                  <p>MIME-Checks, Größenlimits und Checksums sichern Assets bereits vor der Worker-Verarbeitung ab.</p>
-                </div>
-              </li>
-              <li>
-                <span className="process__index">3</span>
-                <div>
-                  <h3>Analyse-Worker</h3>
-                  <p>EXIF-/Prompt-Parsing, Safetensor-Metadaten sowie Tag-Suggestions laufen asynchron im Hintergrund.</p>
-                </div>
-              </li>
-              <li>
-                <span className="process__index">4</span>
-                <div>
-                  <h3>Release &amp; Monitoring</h3>
-                  <p>Nach erfolgreicher Analyse erscheinen Assets im Explorer, inklusive Audit-Trail und Gallery-Verknüpfung.</p>
-                </div>
-              </li>
-            </ol>
-          </section>
-
-          <section className="cta-panel" aria-label="Onboarding">
-            <div>
-              <h2>Bereit für produktive Teams</h2>
-              <p>
-                Der Wizard führt dein Team vom ersten Upload bis zum Review mit klaren Statusangaben und strukturierter
-                Übergabe. Überwache Fortschritt, wiederhole Uploads oder erweitere Metadaten – alles in einem Panel.
-              </p>
-            </div>
-            <div className="cta-panel__actions">
+          <nav className="sidebar__nav" aria-label="Hauptnavigation">
+            {(Object.keys(viewMeta) as ViewKey[]).map((view) => (
               <button
+                key={view}
                 type="button"
-                className="panel__action panel__action--primary"
-                onClick={() => setIsUploadWizardOpen(true)}
+                className={`sidebar__nav-button${activeView === view ? ' sidebar__nav-button--active' : ''}`}
+                onClick={() => setActiveView(view)}
               >
-                Jetzt Upload planen
+                {viewMeta[view].title}
               </button>
-              <span>Keine Sorge: Demo-Daten bleiben erhalten.</span>
-            </div>
-          </section>
+            ))}
+          </nav>
 
-          <section id="explorer" className="panel-anchor">
-            <AssetExplorer
-              assets={assets}
-              isLoading={isLoading}
-              onStartUpload={() => setIsUploadWizardOpen(true)}
-            />
-          </section>
-          <section className="panel-anchor">
-            <GalleryExplorer galleries={galleries} isLoading={isLoading} />
-          </section>
-        </main>
+          <div className="sidebar__status" aria-label="Service Status">
+            <h2>Service Status</h2>
+            <ul className="sidebar__status-list">
+              {(['frontend', 'backend', 'minio'] as ServiceStatusKey[]).map((key) => {
+                const entry = serviceStatus[key];
+                return (
+                  <li key={key} className="sidebar__status-item">
+                    <div className="sidebar__status-header">
+                      <span>{entry.label}</span>
+                      <span className={`status-pill status-pill--${entry.status}`}>{statusLabels[entry.status]}</span>
+                    </div>
+                    <p>{entry.message}</p>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </aside>
 
-        <footer className="footer" aria-label="Footer">
-          <div>
-            <span className="footer__title">VisionSuit</span>
-            <p>Produktionsreifes Control Panel für KI-Assets &amp; Galerien.</p>
+        <div className="content">
+          <div className="content__inner">
+            {toast ? (
+              <div className={`toast toast--${toast.type}`} role="status">
+                {toast.message}
+              </div>
+            ) : null}
+
+            <header className="content__header">
+              <div>
+                <h1 className="content__title">{viewMeta[activeView].title}</h1>
+                <p className="content__subtitle">{viewMeta[activeView].description}</p>
+              </div>
+              <div className="content__actions">
+                <button type="button" className="content__action" onClick={() => refreshData()}>
+                  Aktualisieren
+                </button>
+                <button
+                  type="button"
+                  className="content__action content__action--primary"
+                  onClick={() => setIsUploadWizardOpen(true)}
+                >
+                  Upload starten
+                </button>
+              </div>
+            </header>
+
+            {errorMessage ? <div className="content__alert">{errorMessage}</div> : null}
+
+            {renderContent()}
           </div>
-          <div className="footer__links">
-            <a href="#overview">Overview</a>
-            <a href="#features">Features</a>
-            <a href="#pipeline">Pipeline</a>
-            <a href="#explorer">Explorer</a>
-          </div>
-          <div className="footer__status">
-            <strong>Status</strong>
-            <span>{errorMessage ? 'Backend aktuell offline' : 'Alle Systeme grün'}</span>
-          </div>
-        </footer>
+        </div>
       </div>
+
       <UploadWizard
         isOpen={isUploadWizardOpen}
         onClose={() => setIsUploadWizardOpen(false)}

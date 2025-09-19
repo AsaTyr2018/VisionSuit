@@ -87,3 +87,18 @@ export interface MetaStats {
   galleryCount: number;
   tagCount: number;
 }
+
+export type ServiceHealthStatus = 'online' | 'offline' | 'degraded';
+
+export interface ServiceStatusDetails {
+  status: ServiceHealthStatus;
+  message?: string | null;
+}
+
+export interface ServiceStatusResponse {
+  timestamp: string;
+  services: {
+    backend: ServiceStatusDetails;
+    minio: ServiceStatusDetails;
+  };
+}
