@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { Gallery, ModelAsset } from '../types/api';
 
@@ -12,6 +12,7 @@ interface AssetExplorerProps {
   onStartUpload?: () => void;
   onNavigateToGallery?: (galleryId: string) => void;
   initialAssetId?: string | null;
+  onCloseDetail?: () => void;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -127,6 +128,7 @@ export const AssetExplorer = ({
   onStartUpload,
   onNavigateToGallery,
   initialAssetId,
+  onCloseDetail,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -219,11 +221,16 @@ export const AssetExplorer = ({
     }
   }, [initialAssetId]);
 
+  const closeDetail = useCallback(() => {
+    setActiveAssetId(null);
+    onCloseDetail?.();
+  }, [onCloseDetail]);
+
   useEffect(() => {
     if (activeAssetId && !assets.some((asset) => asset.id === activeAssetId)) {
-      setActiveAssetId(null);
+      closeDetail();
     }
-  }, [activeAssetId, assets]);
+  }, [activeAssetId, assets, closeDetail]);
 
   const visibleAssets = useMemo(() => filteredAssets.slice(0, visibleLimit), [filteredAssets, visibleLimit]);
 
@@ -259,6 +266,30 @@ export const AssetExplorer = ({
     () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
     [activeAssetId, assets],
   );
+
+  const handleNavigateFromDetail = useCallback(
+    (galleryId: string) => {
+      closeDetail();
+      onNavigateToGallery?.(galleryId);
+    },
+    [closeDetail, onNavigateToGallery],
+  );
+
+  useEffect(() => {
+    if (!activeAssetId) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDetail();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeAssetId, closeDetail]);
 
   const relatedGalleries = useMemo(() => {
     if (!activeAsset) {
@@ -485,55 +516,56 @@ export const AssetExplorer = ({
         {isLoading && assets.length === 0 ? 'Lade LoRA-Assets …' : `Zeigt ${visibleAssets.length} von ${filteredAssets.length} Assets`}
       </div>
 
-      <div className="asset-explorer__layout">
-        <div className="asset-explorer__grid" role="list" aria-label="LoRA-Assets">
-          {isLoading && assets.length === 0
-            ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
-            : visibleAssets.map((asset) => {
-                const previewUrl =
-                  resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ??
-                  asset.previewImage ?? undefined;
-                const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA';
-                const isActive = activeAssetId === asset.id;
-                return (
-                  <button
-                    key={asset.id}
-                    type="button"
-                    role="listitem"
-                    className={`asset-tile${isActive ? ' asset-tile--active' : ''}`}
-                    onClick={() => setActiveAssetId(asset.id)}
-                  >
-                    <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
-                      {previewUrl ? (
-                        <img src={previewUrl} alt={`Preview von ${asset.title}`} loading="lazy" />
-                      ) : (
-                        <span>Kein Preview</span>
-                      )}
+      <div className="asset-explorer__grid" role="list" aria-label="LoRA-Assets">
+        {isLoading && assets.length === 0
+          ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+          : visibleAssets.map((asset) => {
+              const previewUrl =
+                resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ??
+                asset.previewImage ?? undefined;
+              const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA';
+              const isActive = activeAssetId === asset.id;
+              return (
+                <button
+                  key={asset.id}
+                  type="button"
+                  role="listitem"
+                  className={`asset-tile${isActive ? ' asset-tile--active' : ''}`}
+                  onClick={() => setActiveAssetId(asset.id)}
+                >
+                  <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
+                    {previewUrl ? (
+                      <img src={previewUrl} alt={`Preview von ${asset.title}`} loading="lazy" />
+                    ) : (
+                      <span>Kein Preview</span>
+                    )}
+                  </div>
+                  <div className="asset-tile__body">
+                    <div className="asset-tile__headline">
+                      <h3>{asset.title}</h3>
+                      <span>{modelType}</span>
                     </div>
-                    <div className="asset-tile__body">
-                      <div className="asset-tile__headline">
-                        <h3>{asset.title}</h3>
-                        <span>{modelType}</span>
-                      </div>
-                      <p>Version {asset.version}</p>
-                      <p className="asset-tile__owner">{asset.owner.displayName}</p>
-                    </div>
-                  </button>
-                );
-              })}
-        </div>
+                    <p>Version {asset.version}</p>
+                    <p className="asset-tile__owner">{asset.owner.displayName}</p>
+                  </div>
+                </button>
+              );
+            })}
+      </div>
 
-        <aside className="asset-explorer__detail">
-          {activeAsset ? (
-            <div className="asset-detail" role="region" aria-live="polite">
+      {activeAsset ? (
+        <div className="asset-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="asset-detail-title">
+          <div className="asset-detail-dialog__backdrop" onClick={closeDetail} aria-hidden="true" />
+          <div className="asset-detail-dialog__container">
+            <div className="asset-detail" role="document">
               <header className="asset-detail__header">
                 <div>
                   <span className="asset-detail__version">Version {activeAsset.version}</span>
-                  <h3>{activeAsset.title}</h3>
+                  <h3 id="asset-detail-title">{activeAsset.title}</h3>
                   <p>Kuratiert von {activeAsset.owner.displayName}</p>
                 </div>
-                <button type="button" className="asset-detail__close" onClick={() => setActiveAssetId(null)}>
-                  Auswahl aufheben
+                <button type="button" className="asset-detail__close" onClick={closeDetail}>
+                  Zurück zur Modellliste
                 </button>
               </header>
 
@@ -637,7 +669,7 @@ export const AssetExplorer = ({
                         {onNavigateToGallery ? (
                           <button
                             type="button"
-                            onClick={() => onNavigateToGallery(gallery.id)}
+                            onClick={() => handleNavigateFromDetail(gallery.id)}
                             className="asset-detail__gallery-button"
                           >
                             {gallery.title}
@@ -655,13 +687,9 @@ export const AssetExplorer = ({
                 )}
               </section>
             </div>
-          ) : (
-            <div className="asset-detail asset-detail--empty">
-              <p>Wähle ein LoRA aus der Liste, um Metadaten und zugehörige Galerien zu sehen.</p>
-            </div>
-          )}
-        </aside>
-      </div>
+          </div>
+        </div>
+      ) : null}
 
       {!isLoading && filteredAssets.length === 0 ? (
         <p className="panel__empty">Keine Assets entsprechen den aktuellen Filtern.</p>

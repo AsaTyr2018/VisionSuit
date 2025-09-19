@@ -16,7 +16,7 @@ den Upload- und Kuration-Workflow.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, 5-Spalten-Kacheln und nahtlosem Infinite Scroll samt aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
-- **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten, Detailpanel pro Sammlung und EXIF-Lightbox für jedes Bild.
+- **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten sowie einem eigenständigen Detail-Dialog pro Sammlung inklusive EXIF-Lightbox für jedes Bild.
 - **Robuste Metadatenanzeige** – Galerie- und Bildansichten bleiben stabil, selbst wenn Einträge ohne ausgefüllte Bild-Metadaten vom Backend geliefert werden.
 - **Automatische Metadatenerfassung** – Uploads lesen EXIF-/Stable-Diffusion-Prompts sowie Safetensors-Header aus, speichern Basismodelle direkt in der Datenbank und machen sie in Galerie- und Modell-Explorer durchsuchbar.
 
@@ -142,8 +142,8 @@ Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-
 - **Admin-Panel** – Skaliert für vierstellige Bestände mit Filterchips, Mehrfachauswahl, Bulk-Löschungen sowie direkter Galerie-
   und Albumbearbeitung inklusive Reihung und Metadatenpflege.
 - **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
-- **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Sidebar samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien.
-- **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination, Detailpanel pro Sammlung sowie EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
+- **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Dialog samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien.
+- **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination sowie eine dialogbasierte Detailansicht pro Sammlung mit EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
 - **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback – inklusive eigenem Galerie-Modus für Bildserien.
 
 Die Explorer-Filter arbeiten vollständig clientseitig und reagieren selbst auf große Datenmengen ohne zusätzliche Server-Requests.
