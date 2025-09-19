@@ -14,41 +14,41 @@ interface GalleryAlbumItem {
 }
 
 const buildAlbumItems = (gallery: Gallery): GalleryAlbumItem[] =>
-  gallery.entries
-    .map((entry) => {
-      if (entry.imageAsset) {
-        return {
-          id: entry.id,
-          type: 'image' as const,
-          title: entry.imageAsset.title,
-          subtitle: entry.note ?? entry.imageAsset.metadata.model ?? null,
-          description: entry.imageAsset.prompt ?? null,
-          src: resolveStorageUrl(
-            entry.imageAsset.storagePath,
-            entry.imageAsset.storageBucket,
-            entry.imageAsset.storageObject,
-          ),
-        } satisfies GalleryAlbumItem;
-      }
+  gallery.entries.reduce<GalleryAlbumItem[]>((items, entry) => {
+    if (entry.imageAsset) {
+      items.push({
+        id: entry.id,
+        type: 'image',
+        title: entry.imageAsset.title,
+        subtitle: entry.note ?? entry.imageAsset.metadata?.model ?? null,
+        description: entry.imageAsset.prompt ?? null,
+        src: resolveStorageUrl(
+          entry.imageAsset.storagePath,
+          entry.imageAsset.storageBucket,
+          entry.imageAsset.storageObject,
+        ),
+      });
+      return items;
+    }
 
-      if (entry.modelAsset) {
-        return {
-          id: entry.id,
-          type: 'model' as const,
-          title: entry.modelAsset.title,
-          subtitle: entry.modelAsset.version ? `Version ${entry.modelAsset.version}` : null,
-          description: entry.note ?? entry.modelAsset.description ?? null,
-          src: resolveStorageUrl(
-            entry.modelAsset.previewImage,
-            entry.modelAsset.previewImageBucket,
-            entry.modelAsset.previewImageObject,
-          ),
-        } satisfies GalleryAlbumItem;
-      }
+    if (entry.modelAsset) {
+      items.push({
+        id: entry.id,
+        type: 'model',
+        title: entry.modelAsset.title,
+        subtitle: entry.modelAsset.version ? `Version ${entry.modelAsset.version}` : null,
+        description: entry.note ?? entry.modelAsset.description ?? null,
+        src: resolveStorageUrl(
+          entry.modelAsset.previewImage,
+          entry.modelAsset.previewImageBucket,
+          entry.modelAsset.previewImageObject,
+        ),
+      });
+      return items;
+    }
 
-      return null;
-    })
-    .filter((item): item is GalleryAlbumItem => Boolean(item));
+    return items;
+  }, []);
 
 const COUNT_LABEL: Record<GalleryAlbumItem['type'], string> = {
   image: 'Bild',

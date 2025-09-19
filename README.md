@@ -15,6 +15,7 @@ den Upload- und Kuration-Workflow.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
 - **Galerie-Alben** – Collections zeigen mehrteilige Sets mit heroischen Vorschaubildern, Thumbnail-Leiste und Zoom-Lightbox für fokussierte Präsentationen.
+- **Robuste Metadatenanzeige** – Galerie- und Bildansichten bleiben stabil, selbst wenn Einträge ohne ausgefüllte Bild-Metadaten vom Backend geliefert werden.
 
 ## Architekturüberblick
 

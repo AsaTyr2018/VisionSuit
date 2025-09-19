@@ -214,11 +214,11 @@ export const App = () => {
           <dl className="tile__details">
             <div>
               <dt>Model</dt>
-              <dd>{image.metadata.model ?? 'Unbekannt'}</dd>
+              <dd>{image.metadata?.model ?? 'Unbekannt'}</dd>
             </div>
             <div>
               <dt>Sampler</dt>
-              <dd>{image.metadata.sampler ?? '–'}</dd>
+              <dd>{image.metadata?.sampler ?? '–'}</dd>
             </div>
           </dl>
           {image.tags.length > 0 ? (
