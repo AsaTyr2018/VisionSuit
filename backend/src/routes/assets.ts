@@ -1,15 +1,22 @@
+import crypto from 'node:crypto';
+
 import type { Prisma } from '@prisma/client';
-import { ImageAsset, ModelAsset, Tag, User } from '@prisma/client';
+import { ImageAsset, ModelAsset, ModelVersion, Tag, User } from '@prisma/client';
+import type { Express } from 'express';
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../lib/middleware/auth';
-import { resolveStorageLocation, storageClient } from '../lib/storage';
+import { extractModelMetadataFromFile } from '../lib/metadata';
+import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
+import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 
 type HydratedModelAsset = ModelAsset & {
   tags: { tag: Tag }[];
   owner: Pick<User, 'id' | 'displayName' | 'email'>;
+  versions: ModelVersion[];
 };
 
 type HydratedImageAsset = ImageAsset & {
@@ -17,29 +24,119 @@ type HydratedImageAsset = ImageAsset & {
   owner: Pick<User, 'id' | 'displayName' | 'email'>;
 };
 
+type MappedModelVersion = {
+  id: string;
+  version: string;
+  storagePath: string;
+  storageBucket: string | null;
+  storageObject: string | null;
+  previewImage: string | null;
+  previewImageBucket: string | null;
+  previewImageObject: string | null;
+  fileSize: number | null;
+  checksum: string | null;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  isPrimary: boolean;
+};
+
+const mapModelVersion = (
+  version: {
+    id: string;
+    version: string;
+    storagePath: string;
+    previewImage?: string | null;
+    fileSize?: number | null;
+    checksum?: string | null;
+    metadata?: Prisma.JsonValue | null;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  options: { isPrimary?: boolean } = {},
+): MappedModelVersion => {
+  const storage = resolveStorageLocation(version.storagePath);
+  const preview = resolveStorageLocation(version.previewImage);
+
+  return {
+    id: version.id,
+    version: version.version,
+    storagePath: storage.url ?? version.storagePath,
+    storageBucket: storage.bucket,
+    storageObject: storage.objectName,
+    previewImage: preview.url ?? version.previewImage ?? null,
+    previewImageBucket: preview.bucket,
+    previewImageObject: preview.objectName,
+    fileSize: version.fileSize ?? null,
+    checksum: version.checksum ?? null,
+    metadata: version.metadata ?? null,
+    createdAt: version.createdAt,
+    updatedAt: version.updatedAt,
+    isPrimary: Boolean(options.isPrimary),
+  };
+};
+
+const sortVersions = (a: MappedModelVersion, b: MappedModelVersion) =>
+  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
 const mapModelAsset = (asset: HydratedModelAsset) => {
-  const storage = resolveStorageLocation(asset.storagePath);
-  const preview = resolveStorageLocation(asset.previewImage);
+  const primaryVersion = mapModelVersion(
+    {
+      id: asset.id,
+      version: asset.version,
+      storagePath: asset.storagePath,
+      previewImage: asset.previewImage,
+      fileSize: asset.fileSize,
+      checksum: asset.checksum,
+      metadata: asset.metadata,
+      createdAt: asset.createdAt,
+      updatedAt: asset.updatedAt,
+    },
+    { isPrimary: true },
+  );
+
+  const mappedAdditionalVersions = asset.versions.map((entry) =>
+    mapModelVersion(
+      {
+        id: entry.id,
+        version: entry.version,
+        storagePath: entry.storagePath,
+        previewImage: entry.previewImage,
+        fileSize: entry.fileSize,
+        checksum: entry.checksum,
+        metadata: entry.metadata,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      },
+      { isPrimary: false },
+    ),
+  );
+
+  const orderedVersions = [primaryVersion, ...mappedAdditionalVersions].sort(sortVersions);
+  const latestVersion = orderedVersions[0] ?? primaryVersion;
 
   return {
     id: asset.id,
     slug: asset.slug,
     title: asset.title,
     description: asset.description,
-    version: asset.version,
-    fileSize: asset.fileSize,
-    checksum: asset.checksum,
-    storagePath: storage.url ?? asset.storagePath,
-    storageBucket: storage.bucket,
-    storageObject: storage.objectName,
-    previewImage: preview.url ?? asset.previewImage,
-    previewImageBucket: preview.bucket,
-    previewImageObject: preview.objectName,
-    metadata: asset.metadata,
+    version: latestVersion.version,
+    fileSize: latestVersion.fileSize,
+    checksum: latestVersion.checksum,
+    storagePath: latestVersion.storagePath,
+    storageBucket: latestVersion.storageBucket,
+    storageObject: latestVersion.storageObject,
+    previewImage: latestVersion.previewImage,
+    previewImageBucket: latestVersion.previewImageBucket,
+    previewImageObject: latestVersion.previewImageObject,
+    metadata: latestVersion.metadata,
     owner: asset.owner,
     tags: asset.tags.map(({ tag }) => tag),
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,
+    versions: orderedVersions,
+    latestVersionId: latestVersion.id,
+    primaryVersionId: primaryVersion.id,
   };
 };
 
@@ -189,6 +286,20 @@ const bulkDeleteSchema = z.object({
   ids: z.array(z.string().trim().min(1)).min(1),
 });
 
+const versionUploadSchema = z.object({
+  version: z.string().trim().min(1).max(80),
+});
+
+const versionUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 2,
+    fileSize: MAX_TOTAL_SIZE_BYTES,
+  },
+});
+
+const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
+
 export const assetsRouter = Router();
 
 assetsRouter.get('/models', async (_req, res, next) => {
@@ -197,6 +308,7 @@ assetsRouter.get('/models', async (_req, res, next) => {
       include: {
         tags: { include: { tag: true } },
         owner: { select: { id: true, displayName: true, email: true } },
+        versions: { orderBy: { createdAt: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -239,7 +351,13 @@ assetsRouter.post('/models/bulk-delete', requireAuth, async (req, res, next) => 
     const ids = Array.from(new Set(parsed.data.ids));
     const assets = await prisma.modelAsset.findMany({
       where: { id: { in: ids } },
-      select: { id: true, ownerId: true, storagePath: true, previewImage: true },
+      select: {
+        id: true,
+        ownerId: true,
+        storagePath: true,
+        previewImage: true,
+        versions: { select: { id: true, storagePath: true, previewImage: true } },
+      },
     });
 
     if (assets.length === 0) {
@@ -260,17 +378,35 @@ assetsRouter.post('/models/bulk-delete', requireAuth, async (req, res, next) => 
       storage: resolveStorageLocation(asset.storagePath),
       preview: resolveStorageLocation(asset.previewImage),
       previewImage: asset.previewImage,
+      versions: asset.versions.map((version) => ({
+        id: version.id,
+        storage: resolveStorageLocation(version.storagePath),
+        preview: resolveStorageLocation(version.previewImage),
+        previewImage: version.previewImage,
+      })),
     }));
 
     await prisma.$transaction(async (tx) => {
       for (const entry of deletionPlan) {
         await tx.galleryEntry.deleteMany({ where: { assetId: entry.id } });
         await tx.assetTag.deleteMany({ where: { assetId: entry.id } });
+        await tx.modelVersion.deleteMany({ where: { modelId: entry.id } });
         if (entry.storage.objectName) {
           await tx.storageObject.deleteMany({ where: { id: entry.storage.objectName } });
         }
         if (entry.preview.objectName) {
           await tx.storageObject.deleteMany({ where: { id: entry.preview.objectName } });
+        }
+        for (const version of entry.versions) {
+          if (version.storage.objectName) {
+            await tx.storageObject.deleteMany({ where: { id: version.storage.objectName } });
+          }
+          if (version.preview.objectName) {
+            await tx.storageObject.deleteMany({ where: { id: version.preview.objectName } });
+          }
+          if (version.previewImage) {
+            await tx.gallery.updateMany({ where: { coverImage: version.previewImage }, data: { coverImage: null } });
+          }
         }
         if (entry.previewImage) {
           await tx.gallery.updateMany({ where: { coverImage: entry.previewImage }, data: { coverImage: null } });
@@ -283,6 +419,12 @@ assetsRouter.post('/models/bulk-delete', requireAuth, async (req, res, next) => 
       deletionPlan.map(async (entry) => {
         await removeStorageObject(entry.storage.bucket, entry.storage.objectName);
         await removeStorageObject(entry.preview.bucket, entry.preview.objectName);
+        await Promise.all(
+          entry.versions.map(async (version) => {
+            await removeStorageObject(version.storage.bucket, version.storage.objectName);
+            await removeStorageObject(version.preview.bucket, version.preview.objectName);
+          }),
+        );
       }),
     );
 
@@ -291,6 +433,201 @@ assetsRouter.post('/models/bulk-delete', requireAuth, async (req, res, next) => 
     next(error);
   }
 });
+
+assetsRouter.post(
+  '/models/:id/versions',
+  requireAuth,
+  versionUpload.fields([
+    { name: 'model', maxCount: 1 },
+    { name: 'preview', maxCount: 1 },
+  ]),
+  async (req, res, next) => {
+    try {
+      if (!req.user) {
+        res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+        return;
+      }
+
+      const { id: assetId } = req.params;
+      if (!assetId) {
+        res.status(400).json({ message: 'Model-ID fehlt.' });
+        return;
+      }
+
+      const parseResult = versionUploadSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parseResult.error.flatten() });
+        return;
+      }
+
+      const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+      const modelFile = files?.model?.[0];
+      const previewFile = files?.preview?.[0];
+
+      if (!modelFile) {
+        res.status(400).json({ message: 'Es wurde keine Safetensors-Datei übermittelt.' });
+        return;
+      }
+
+      if (!modelFile.originalname.toLowerCase().endsWith('.safetensors')) {
+        res.status(400).json({ message: 'Nur Safetensors-Dateien werden als Modellversion akzeptiert.' });
+        return;
+      }
+
+      if (!previewFile) {
+        res.status(400).json({ message: 'Bitte lade ein Vorschaubild für die neue Version hoch.' });
+        return;
+      }
+
+      if (!previewFile.mimetype.startsWith('image/')) {
+        res.status(400).json({ message: 'Das Vorschaubild muss ein gültiges Bildformat besitzen.' });
+        return;
+      }
+
+      const asset = await prisma.modelAsset.findUnique({
+        where: { id: assetId },
+        include: {
+          owner: { select: { id: true, displayName: true, email: true } },
+          tags: { include: { tag: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+
+      if (!asset) {
+        res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+        return;
+      }
+
+      if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+        res.status(403).json({ message: 'Keine Berechtigung zum Aktualisieren dieses Modells.' });
+        return;
+      }
+
+      const requestedVersion = parseResult.data.version.trim();
+      const normalizedRequested = requestedVersion.toLowerCase();
+      const existingVersions = [asset.version, ...asset.versions.map((entry) => entry.version.toLowerCase())];
+      if (existingVersions.some((entry) => entry === normalizedRequested)) {
+        res.status(409).json({ message: `Version "${requestedVersion}" ist bereits vorhanden.` });
+        return;
+      }
+
+      const modelBucket = storageBuckets.models;
+      const previewBucket = storageBuckets.images;
+      const modelObjectName = crypto.randomUUID();
+      const previewObjectName = crypto.randomUUID();
+
+      let modelUpload: { bucket: string; objectName: string } | null = null;
+      let previewUpload: { bucket: string; objectName: string } | null = null;
+
+      try {
+        await storageClient.putObject(modelBucket, modelObjectName, modelFile.buffer, modelFile.size, {
+          'Content-Type': modelFile.mimetype || 'application/octet-stream',
+        });
+        modelUpload = { bucket: modelBucket, objectName: modelObjectName };
+
+        await storageClient.putObject(previewBucket, previewObjectName, previewFile.buffer, previewFile.size, {
+          'Content-Type': previewFile.mimetype || 'image/jpeg',
+        });
+        previewUpload = { bucket: previewBucket, objectName: previewObjectName };
+      } catch (error) {
+        if (modelUpload) {
+          await removeStorageObject(modelUpload.bucket, modelUpload.objectName);
+          modelUpload = null;
+        }
+        if (previewUpload) {
+          await removeStorageObject(previewUpload.bucket, previewUpload.objectName);
+          previewUpload = null;
+        }
+        throw error;
+      }
+
+      const checksum = crypto.createHash('sha256').update(modelFile.buffer).digest('hex');
+      const extractedMetadata = extractModelMetadataFromFile(modelFile);
+      const metadataPayload: Prisma.JsonObject = {
+        originalFileName: modelFile.originalname,
+        checksum,
+      };
+
+      if (extractedMetadata) {
+        metadataPayload.baseModel = extractedMetadata.baseModel ?? null;
+        metadataPayload.modelName = extractedMetadata.modelName ?? extractedMetadata.baseModel ?? null;
+        if (extractedMetadata.modelAliases && extractedMetadata.modelAliases.length > 0) {
+          metadataPayload.modelAliases = extractedMetadata.modelAliases;
+        }
+        if (extractedMetadata.metadata && typeof extractedMetadata.metadata === 'object') {
+          metadataPayload.extracted = extractedMetadata.metadata as Prisma.JsonObject;
+        }
+      }
+
+      let updatedAsset: HydratedModelAsset;
+      try {
+        updatedAsset = await prisma.$transaction(async (tx) => {
+          await tx.storageObject.create({
+            data: {
+              id: modelObjectName,
+              bucket: modelBucket,
+              objectName: modelObjectName,
+              originalName: modelFile.originalname,
+              contentType: modelFile.mimetype || null,
+              size: BigInt(modelFile.size),
+            },
+          });
+
+          if (previewUpload) {
+            await tx.storageObject.create({
+              data: {
+                id: previewObjectName,
+                bucket: previewBucket,
+                objectName: previewObjectName,
+                originalName: previewFile.originalname,
+                contentType: previewFile.mimetype || null,
+                size: BigInt(previewFile.size),
+              },
+            });
+          }
+
+          await tx.modelVersion.create({
+            data: {
+              modelId: asset.id,
+              version: requestedVersion,
+              storagePath: toS3Uri(modelBucket, modelObjectName),
+              previewImage: toS3Uri(previewBucket, previewObjectName),
+              fileSize: modelFile.size,
+              checksum,
+              metadata: metadataPayload,
+            },
+          });
+
+          return tx.modelAsset.update({
+            where: { id: asset.id },
+            data: { updatedAt: new Date() },
+            include: {
+              owner: { select: { id: true, displayName: true, email: true } },
+              tags: { include: { tag: true } },
+              versions: { orderBy: { createdAt: 'desc' } },
+            },
+          });
+        });
+        modelUpload = null;
+        previewUpload = null;
+      } catch (error) {
+        if (modelUpload) {
+          await removeStorageObject(modelUpload.bucket, modelUpload.objectName);
+          modelUpload = null;
+        }
+        if (previewUpload) {
+          await removeStorageObject(previewUpload.bucket, previewUpload.objectName);
+          previewUpload = null;
+        }
+        throw error;
+      }
+
+      res.status(201).json(mapModelAsset(updatedAsset));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 assetsRouter.post('/images/bulk-delete', requireAuth, async (req, res, next) => {
   try {
@@ -434,6 +771,7 @@ assetsRouter.put('/models/:id', requireAuth, async (req, res, next) => {
         include: {
           tags: { include: { tag: true } },
           owner: { select: { id: true, displayName: true, email: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
         },
       });
     });
@@ -454,7 +792,13 @@ assetsRouter.delete('/models/:id', requireAuth, async (req, res, next) => {
 
     const asset = await prisma.modelAsset.findUnique({
       where: { id: assetId },
-      select: { id: true, ownerId: true, storagePath: true, previewImage: true },
+      select: {
+        id: true,
+        ownerId: true,
+        storagePath: true,
+        previewImage: true,
+        versions: { select: { id: true, storagePath: true, previewImage: true } },
+      },
     });
 
     if (!asset) {
@@ -474,15 +818,33 @@ assetsRouter.delete('/models/:id', requireAuth, async (req, res, next) => {
 
     const storage = resolveStorageLocation(asset.storagePath);
     const preview = resolveStorageLocation(asset.previewImage);
+    const versionLocations = asset.versions.map((version) => ({
+      id: version.id,
+      storage: resolveStorageLocation(version.storagePath),
+      preview: resolveStorageLocation(version.previewImage),
+      previewImage: version.previewImage,
+    }));
 
     await prisma.$transaction(async (tx) => {
       await tx.galleryEntry.deleteMany({ where: { assetId: asset.id } });
       await tx.assetTag.deleteMany({ where: { assetId: asset.id } });
+      await tx.modelVersion.deleteMany({ where: { modelId: asset.id } });
       if (storage.objectName) {
         await tx.storageObject.deleteMany({ where: { id: storage.objectName } });
       }
       if (preview.objectName) {
         await tx.storageObject.deleteMany({ where: { id: preview.objectName } });
+      }
+      for (const version of versionLocations) {
+        if (version.storage.objectName) {
+          await tx.storageObject.deleteMany({ where: { id: version.storage.objectName } });
+        }
+        if (version.preview.objectName) {
+          await tx.storageObject.deleteMany({ where: { id: version.preview.objectName } });
+        }
+        if (version.previewImage) {
+          await tx.gallery.updateMany({ where: { coverImage: version.previewImage }, data: { coverImage: null } });
+        }
       }
       if (asset.previewImage) {
         await tx.gallery.updateMany({
@@ -493,8 +855,14 @@ assetsRouter.delete('/models/:id', requireAuth, async (req, res, next) => {
       await tx.modelAsset.delete({ where: { id: asset.id } });
     });
 
-    await removeStorageObject(storage.bucket, storage.objectName);
-    await removeStorageObject(preview.bucket, preview.objectName);
+    await Promise.all([
+      removeStorageObject(storage.bucket, storage.objectName),
+      removeStorageObject(preview.bucket, preview.objectName),
+      ...versionLocations.flatMap((version) => [
+        removeStorageObject(version.storage.bucket, version.storage.objectName),
+        removeStorageObject(version.preview.bucket, version.preview.objectName),
+      ]),
+    ]);
 
     res.status(204).send();
   } catch (error) {

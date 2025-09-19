@@ -4,6 +4,7 @@ import type { Gallery, ModelAsset } from '../types/api';
 
 import { resolveStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
+import { ModelVersionDialog } from './ModelVersionDialog';
 
 interface AssetExplorerProps {
   assets: ModelAsset[];
@@ -15,6 +16,8 @@ interface AssetExplorerProps {
   onCloseDetail?: () => void;
   externalSearchQuery?: string | null;
   onExternalSearchApplied?: () => void;
+  onAssetUpdated?: (asset: ModelAsset) => void;
+  authToken?: string | null;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -385,16 +388,17 @@ const extractTagFrequency = (metadata?: Record<string, unknown> | null): TagFreq
 
 const matchesSearch = (asset: ModelAsset, query: string) => {
   if (!query) return true;
-  const metadataValues = collectMetadataStrings(asset.metadata);
+  const versionValues = asset.versions.flatMap((version) => {
+    const metadataValues = collectMetadataStrings(version.metadata as Record<string, unknown> | null);
+    return [version.version, version.storageObject ?? version.storagePath, ...metadataValues];
+  });
   const haystack = [
     asset.title,
     asset.slug,
     asset.description ?? '',
     asset.owner.displayName,
-    asset.version,
-    asset.storageObject ?? asset.storagePath,
     ...asset.tags.map((tag) => tag.label),
-    ...metadataValues,
+    ...versionValues,
   ]
     .map((entry) => normalize(entry))
     .join(' ');
@@ -434,6 +438,8 @@ export const AssetExplorer = ({
   onCloseDetail,
   externalSearchQuery,
   onExternalSearchApplied,
+  onAssetUpdated,
+  authToken,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -443,7 +449,10 @@ export const AssetExplorer = ({
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [visibleLimit, setVisibleLimit] = useState(ASSET_BATCH_SIZE);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [isTagDialogOpen, setTagDialogOpen] = useState(false);
+  const [isVersionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [versionFeedback, setVersionFeedback] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -534,15 +543,29 @@ export const AssetExplorer = ({
   useEffect(() => {
     if (initialAssetId) {
       setActiveAssetId(initialAssetId);
+      const presetAsset = assets.find((asset) => asset.id === initialAssetId);
+      if (presetAsset) {
+        setActiveVersionId(presetAsset.latestVersionId ?? presetAsset.versions[0]?.id ?? null);
+      }
     }
-  }, [initialAssetId]);
+  }, [assets, initialAssetId]);
 
   const closeTagDialog = useCallback(() => setTagDialogOpen(false), []);
   const openTagDialog = useCallback(() => setTagDialogOpen(true), []);
+  const openVersionDialog = useCallback(() => {
+    if (!authToken) {
+      return;
+    }
+    setVersionDialogOpen(true);
+  }, [authToken]);
+  const closeVersionDialog = useCallback(() => setVersionDialogOpen(false), []);
 
   const closeDetail = useCallback(() => {
     closeTagDialog();
     setActiveAssetId(null);
+    setActiveVersionId(null);
+    setVersionDialogOpen(false);
+    setVersionFeedback(null);
     onCloseDetail?.();
   }, [closeTagDialog, onCloseDetail]);
 
@@ -587,6 +610,46 @@ export const AssetExplorer = ({
     [activeAssetId, assets],
   );
 
+  useEffect(() => {
+    if (!activeAsset) {
+      setActiveVersionId(null);
+      setVersionDialogOpen(false);
+      setVersionFeedback(null);
+      return;
+    }
+
+    setActiveVersionId((previous) => {
+      if (previous && activeAsset.versions.some((version) => version.id === previous)) {
+        return previous;
+      }
+      return activeAsset.latestVersionId ?? activeAsset.versions[0]?.id ?? null;
+    });
+    setVersionFeedback(null);
+  }, [activeAsset]);
+
+  useEffect(() => {
+    if (!versionFeedback) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setVersionFeedback(null), 4800);
+    return () => window.clearTimeout(timer);
+  }, [versionFeedback]);
+
+  const activeVersion = useMemo(() => {
+    if (!activeAsset) {
+      return null;
+    }
+
+    const fallbackId = activeAsset.latestVersionId ?? activeAsset.versions[0]?.id ?? null;
+    const targetId = activeVersionId ?? fallbackId;
+    if (!targetId) {
+      return activeAsset.versions[0] ?? null;
+    }
+
+    return activeAsset.versions.find((version) => version.id === targetId) ?? activeAsset.versions[0] ?? null;
+  }, [activeAsset, activeVersionId]);
+
   const handleNavigateFromDetail = useCallback(
     (galleryId: string) => {
       closeDetail();
@@ -630,25 +693,25 @@ export const AssetExplorer = ({
   }, [activeAsset, galleries]);
 
   const metadataEntries = useMemo(
-    () => buildMetadataRows(activeAsset?.metadata as Record<string, unknown> | null),
-    [activeAsset?.metadata],
+    () => buildMetadataRows(activeVersion?.metadata as Record<string, unknown> | null),
+    [activeVersion?.metadata],
   );
 
   const tagFrequencyGroups = useMemo(
-    () => extractTagFrequency(activeAsset?.metadata as Record<string, unknown> | null),
-    [activeAsset?.metadata],
+    () => extractTagFrequency(activeVersion?.metadata as Record<string, unknown> | null),
+    [activeVersion?.metadata],
   );
 
   const modelDownloadUrl = useMemo(() => {
-    if (!activeAsset) {
+    if (!activeVersion) {
       return null;
     }
 
     return (
-      resolveStorageUrl(activeAsset.storagePath, activeAsset.storageBucket, activeAsset.storageObject) ??
-      activeAsset.storagePath
+      resolveStorageUrl(activeVersion.storagePath, activeVersion.storageBucket, activeVersion.storageObject) ??
+      activeVersion.storagePath
     );
-  }, [activeAsset]);
+  }, [activeVersion]);
 
   useEffect(() => {
     if (!isTagDialogOpen) {
@@ -881,7 +944,10 @@ export const AssetExplorer = ({
                   type="button"
                   role="listitem"
                   className={`asset-tile${isActive ? ' asset-tile--active' : ''}`}
-                  onClick={() => setActiveAssetId(asset.id)}
+                  onClick={() => {
+                    setActiveAssetId(asset.id);
+                    setActiveVersionId(asset.latestVersionId ?? asset.versions[0]?.id ?? null);
+                  }}
                 >
                   <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
                     {previewUrl ? (
@@ -910,22 +976,50 @@ export const AssetExplorer = ({
             <div className="asset-detail" role="document">
               <header className="asset-detail__header">
                 <div>
-                  <span className="asset-detail__version">Version {activeAsset.version}</span>
+                  <span className="asset-detail__eyebrow">Modelcard</span>
                   <h3 id="asset-detail-title">{activeAsset.title}</h3>
-                  <p>Kuratiert von {activeAsset.owner.displayName}</p>
+                  {activeAsset.description ? (
+                    <p className="asset-detail__subtitle">{activeAsset.description}</p>
+                  ) : (
+                    <p className="asset-detail__subtitle asset-detail__subtitle--muted">
+                      Noch keine Beschreibung hinterlegt.
+                    </p>
+                  )}
+                  <div className="asset-detail__version-switcher" role="group" aria-label="Modelversionen">
+                    {activeAsset.versions.map((version) => {
+                      const isCurrent = activeVersion?.id === version.id;
+                      return (
+                        <button
+                          key={version.id}
+                          type="button"
+                          className={`asset-detail__version-chip${isCurrent ? ' asset-detail__version-chip--active' : ''}`}
+                          onClick={() => setActiveVersionId(version.id)}
+                          aria-pressed={isCurrent}
+                        >
+                          Version {version.version}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="asset-detail__version-add"
+                      onClick={openVersionDialog}
+                      disabled={!authToken}
+                      title={
+                        !authToken ? 'Nur angemeldete Kurator:innen können neue Versionen hochladen.' : undefined
+                      }
+                    >
+                      Neue Version hinzufügen
+                    </button>
+                  </div>
+                  {versionFeedback ? (
+                    <p className="asset-detail__version-feedback" role="status">{versionFeedback}</p>
+                  ) : null}
                 </div>
                 <button type="button" className="asset-detail__close" onClick={closeDetail}>
                   Zurück zur Modellliste
                 </button>
               </header>
-
-              {activeAsset.description ? (
-                <p className="asset-detail__description">{activeAsset.description}</p>
-              ) : (
-                <p className="asset-detail__description asset-detail__description--muted">
-                  Noch keine Beschreibung hinterlegt.
-                </p>
-              )}
 
               <div className="asset-detail__summary">
                 <div className="asset-detail__info">
@@ -937,7 +1031,7 @@ export const AssetExplorer = ({
                       </tr>
                       <tr>
                         <th scope="row">Version</th>
-                        <td>{activeAsset.version}</td>
+                        <td>{activeVersion?.version ?? '–'}</td>
                       </tr>
                       <tr>
                         <th scope="row">Kurator</th>
@@ -945,31 +1039,31 @@ export const AssetExplorer = ({
                       </tr>
                       <tr>
                         <th scope="row">Upload am</th>
-                        <td>{formatDate(activeAsset.createdAt)}</td>
+                        <td>{activeVersion ? formatDate(activeVersion.createdAt) : '–'}</td>
                       </tr>
                       <tr>
                         <th scope="row">Dateigröße</th>
-                        <td>{formatFileSize(activeAsset.fileSize)}</td>
+                        <td>{formatFileSize(activeVersion?.fileSize)}</td>
                       </tr>
                       <tr>
                         <th scope="row">Checksumme</th>
-                        <td>{activeAsset.checksum ?? '–'}</td>
+                        <td>{activeVersion?.checksum ?? '–'}</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
                 <div className="asset-detail__preview-card">
-                  {activeAsset.previewImage ? (
+                  {activeVersion?.previewImage ? (
                     <div className="asset-detail__preview">
                       <img
                         src={
                           resolveStorageUrl(
-                            activeAsset.previewImage,
-                            activeAsset.previewImageBucket,
-                            activeAsset.previewImageObject,
-                          ) ?? activeAsset.previewImage
+                            activeVersion.previewImage,
+                            activeVersion.previewImageBucket,
+                            activeVersion.previewImageObject,
+                          ) ?? activeVersion.previewImage
                         }
-                        alt={`Preview von ${activeAsset.title}`}
+                        alt={`Preview von ${activeAsset.title} – Version ${activeVersion?.version ?? ''}`}
                       />
                     </div>
                   ) : (
@@ -1124,6 +1218,26 @@ export const AssetExplorer = ({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {activeAsset ? (
+        <ModelVersionDialog
+          isOpen={isVersionDialogOpen}
+          onClose={closeVersionDialog}
+          model={activeAsset}
+          token={authToken ?? null}
+          onSuccess={(updatedAsset, createdVersion) => {
+            onAssetUpdated?.(updatedAsset);
+            setActiveVersionId(
+              createdVersion?.id ?? updatedAsset.latestVersionId ?? updatedAsset.versions[0]?.id ?? null,
+            );
+            setVersionFeedback(
+              createdVersion
+                ? `Version ${createdVersion.version} wurde hinzugefügt.`
+                : 'Modell wurde aktualisiert.',
+            );
+          }}
+        />
       ) : null}
 
       {!isLoading && filteredAssets.length === 0 ? (

@@ -151,6 +151,43 @@ const postUploadDraft = async (payload: CreateUploadDraftPayload, token: string)
   }
 };
 
+const postModelVersion = async (
+  token: string,
+  modelId: string,
+  payload: { version: string; modelFile: File; previewFile: File },
+) => {
+  const formData = new FormData();
+  formData.append('version', payload.version);
+  formData.append('model', payload.modelFile, payload.modelFile.name);
+  formData.append('preview', payload.previewFile, payload.previewFile.name);
+
+  try {
+    const response = await fetch(buildApiUrl(`/api/assets/models/${modelId}/versions`), {
+      method: 'POST',
+      body: formData,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+
+    if (!response.ok) {
+      await parseError(response);
+    }
+
+    return (await response.json()) as ModelAsset;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    if (error instanceof TypeError) {
+      throw new ApiError('Version konnte nicht hochgeladen werden. Backend nicht erreichbar?', [error.message]);
+    }
+
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Unbekannter Fehler beim Hochladen der Modellversion.',
+    );
+  }
+};
+
 export const api = {
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: () => request<ModelAsset[]>('/api/assets/models'),
@@ -158,6 +195,7 @@ export const api = {
   getImageAssets: () => request<ImageAsset[]>('/api/assets/images'),
   getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
   createUploadDraft: postUploadDraft,
+  createModelVersion: postModelVersion,
   login: (email: string, password: string) =>
     request<AuthResponse>('/api/auth/login', {
       method: 'POST',

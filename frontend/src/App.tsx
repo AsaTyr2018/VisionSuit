@@ -186,6 +186,18 @@ export const App = () => {
     }
   };
 
+  const handleAssetUpdated = useCallback((updatedAsset: ModelAsset) => {
+    setAssets((previous) => {
+      const index = previous.findIndex((asset) => asset.id === updatedAsset.id);
+      if (index === -1) {
+        return previous;
+      }
+      const next = [...previous];
+      next[index] = updatedAsset;
+      return next;
+    });
+  }, []);
+
   const handleOpenAssetUpload = () => {
     if (!isAuthenticated) {
       setIsLoginOpen(true);
@@ -419,6 +431,8 @@ export const App = () => {
           onCloseDetail={() => setFocusedAssetId(null)}
           externalSearchQuery={modelTagQuery}
           onExternalSearchApplied={() => setModelTagQuery(null)}
+          onAssetUpdated={handleAssetUpdated}
+          authToken={token}
         />
       );
     }

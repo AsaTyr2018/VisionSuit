@@ -59,8 +59,25 @@ model ModelAsset {
   owner        User         @relation("AssetOwner", fields: [ownerId], references: [id])
   tags         AssetTag[]
   galleryItems GalleryEntry[] @relation("GalleryModel")
+  versions     ModelVersion[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+}
+
+model ModelVersion {
+  id           String      @id @default(cuid())
+  modelId      String
+  model        ModelAsset  @relation(fields: [modelId], references: [id])
+  version      String
+  storagePath  String      @unique
+  previewImage String?
+  metadata     Json?
+  fileSize     Int?
+  checksum     String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([modelId, version])
 }
 
 model ImageAsset {
