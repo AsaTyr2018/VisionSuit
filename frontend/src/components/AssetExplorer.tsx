@@ -639,6 +639,17 @@ export const AssetExplorer = ({
     [activeAsset?.metadata],
   );
 
+  const modelDownloadUrl = useMemo(() => {
+    if (!activeAsset) {
+      return null;
+    }
+
+    return (
+      resolveStorageUrl(activeAsset.storagePath, activeAsset.storageBucket, activeAsset.storageObject) ??
+      activeAsset.storagePath
+    );
+  }, [activeAsset]);
+
   useEffect(() => {
     if (!isTagDialogOpen) {
       return undefined;
@@ -916,59 +927,73 @@ export const AssetExplorer = ({
                 </p>
               )}
 
-              {activeAsset.previewImage ? (
-                <div className="asset-detail__preview">
-                  <img
-                    src={
-                      resolveStorageUrl(
-                        activeAsset.previewImage,
-                        activeAsset.previewImageBucket,
-                        activeAsset.previewImageObject,
-                      ) ?? activeAsset.previewImage
-                    }
-                    alt={`Preview von ${activeAsset.title}`}
-                  />
+              <div className="asset-detail__summary">
+                <div className="asset-detail__info">
+                  <table className="asset-detail__info-table">
+                    <tbody>
+                      <tr>
+                        <th scope="row">Name</th>
+                        <td>{activeAsset.title}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Version</th>
+                        <td>{activeAsset.version}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Kurator</th>
+                        <td>{activeAsset.owner.displayName}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Upload am</th>
+                        <td>{formatDate(activeAsset.createdAt)}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Dateigröße</th>
+                        <td>{formatFileSize(activeAsset.fileSize)}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Checksumme</th>
+                        <td>{activeAsset.checksum ?? '–'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-              ) : null}
-
-              <section className="asset-detail__section">
-                <h4>Speicher &amp; Größe</h4>
-                <dl>
-                  <div>
-                    <dt>Storage Objekt</dt>
-                    <dd>
-                      <a
-                        href={
-                          resolveStorageUrl(activeAsset.storagePath, activeAsset.storageBucket, activeAsset.storageObject) ??
-                          activeAsset.storagePath
+                <div className="asset-detail__preview-card">
+                  {activeAsset.previewImage ? (
+                    <div className="asset-detail__preview">
+                      <img
+                        src={
+                          resolveStorageUrl(
+                            activeAsset.previewImage,
+                            activeAsset.previewImageBucket,
+                            activeAsset.previewImageObject,
+                          ) ?? activeAsset.previewImage
                         }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {activeAsset.storageObject ?? activeAsset.storagePath}
-                      </a>
-                    </dd>
-                  </div>
-                  {activeAsset.storageBucket ? (
-                    <div>
-                      <dt>Bucket</dt>
-                      <dd>{activeAsset.storageBucket}</dd>
+                        alt={`Preview von ${activeAsset.title}`}
+                      />
                     </div>
-                  ) : null}
-                  <div>
-                    <dt>Dateigröße</dt>
-                    <dd>{formatFileSize(activeAsset.fileSize)}</dd>
-                  </div>
-                  <div>
-                    <dt>Checksumme</dt>
-                    <dd>{activeAsset.checksum ?? '–'}</dd>
-                  </div>
-                  <div>
-                    <dt>Aktualisiert</dt>
-                    <dd>{formatDate(activeAsset.updatedAt)}</dd>
-                  </div>
-                </dl>
-              </section>
+                  ) : (
+                    <div className="asset-detail__preview asset-detail__preview--empty">
+                      <span>Kein Vorschaubild vorhanden.</span>
+                    </div>
+                  )}
+                  {modelDownloadUrl ? (
+                    <a
+                      className="asset-detail__download"
+                      href={modelDownloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                    >
+                      Modell herunterladen
+                    </a>
+                  ) : (
+                    <span className="asset-detail__download asset-detail__download--disabled">
+                      Download nicht verfügbar
+                    </span>
+                  )}
+                </div>
+              </div>
 
               <section className="asset-detail__section">
                 <h4>Tags</h4>
