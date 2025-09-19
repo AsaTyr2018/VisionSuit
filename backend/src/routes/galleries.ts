@@ -13,7 +13,12 @@ type HydratedGallery = Prisma.GalleryGetPayload<{
     owner: { select: { id: true; displayName: true; email: true } };
     entries: {
       include: {
-        image: { include: { tags: { include: { tag: true } } } };
+        image: {
+          include: {
+            tags: { include: { tag: true } };
+            owner: { select: { id: true; displayName: true; email: true } };
+          };
+        };
         asset: {
           include: {
             tags: { include: { tag: true } };
@@ -24,6 +29,36 @@ type HydratedGallery = Prisma.GalleryGetPayload<{
     };
   };
 }>;
+
+type HydratedGalleryImage = NonNullable<HydratedGallery['entries'][number]['image']>;
+
+const mapGalleryImageAsset = (image: HydratedGalleryImage) => {
+  const storage = resolveStorageLocation(image.storagePath);
+
+  return {
+    id: image.id,
+    title: image.title,
+    description: image.description,
+    dimensions: image.width && image.height ? { width: image.width, height: image.height } : undefined,
+    fileSize: image.fileSize,
+    storagePath: storage.url ?? image.storagePath,
+    storageBucket: storage.bucket,
+    storageObject: storage.objectName,
+    prompt: image.prompt,
+    negativePrompt: image.negativePrompt,
+    metadata: {
+      seed: image.seed,
+      model: image.model,
+      sampler: image.sampler,
+      cfgScale: image.cfgScale,
+      steps: image.steps,
+    },
+    owner: image.owner,
+    tags: image.tags.map(({ tag }) => tag),
+    createdAt: image.createdAt,
+    updatedAt: image.updatedAt,
+  };
+};
 
 const mapGallery = (gallery: HydratedGallery) => {
   const cover = resolveStorageLocation(gallery.coverImage);
@@ -43,7 +78,6 @@ const mapGallery = (gallery: HydratedGallery) => {
     entries: gallery.entries.map((entry) => {
       const modelStorage = entry.asset ? resolveStorageLocation(entry.asset.storagePath) : null;
       const modelPreview = entry.asset ? resolveStorageLocation(entry.asset.previewImage) : null;
-      const imageStorage = entry.image ? resolveStorageLocation(entry.image.storagePath) : null;
 
       return {
         id: entry.id,
@@ -61,15 +95,7 @@ const mapGallery = (gallery: HydratedGallery) => {
               tags: entry.asset.tags.map(({ tag }) => tag),
             }
           : null,
-        imageAsset: entry.image
-          ? {
-              ...entry.image,
-              storagePath: imageStorage?.url ?? entry.image.storagePath,
-              storageBucket: imageStorage?.bucket ?? null,
-              storageObject: imageStorage?.objectName ?? null,
-              tags: entry.image.tags.map(({ tag }) => tag),
-            }
-          : null,
+        imageAsset: entry.image ? mapGalleryImageAsset(entry.image) : null,
       };
     }),
   };
@@ -140,6 +166,7 @@ galleriesRouter.get('/', async (_req, res, next) => {
             image: {
               include: {
                 tags: { include: { tag: true } },
+                owner: { select: { id: true, displayName: true, email: true } },
               },
             },
             asset: {
@@ -186,7 +213,12 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
         owner: { select: { id: true, displayName: true, email: true } },
         entries: {
           include: {
-            image: { include: { tags: { include: { tag: true } } } },
+            image: {
+              include: {
+                tags: { include: { tag: true } },
+                owner: { select: { id: true, displayName: true, email: true } },
+              },
+            },
             asset: {
               include: {
                 tags: { include: { tag: true } },
@@ -281,13 +313,18 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
           include: {
             owner: { select: { id: true, displayName: true, email: true } },
             entries: {
+          include: {
+            image: {
               include: {
-                image: { include: { tags: { include: { tag: true } } } },
-                asset: {
-                  include: {
-                    tags: { include: { tag: true } },
-                    owner: { select: { id: true, displayName: true } },
-                  },
+                tags: { include: { tag: true } },
+                owner: { select: { id: true, displayName: true, email: true } },
+              },
+            },
+            asset: {
+              include: {
+                tags: { include: { tag: true } },
+                owner: { select: { id: true, displayName: true } },
+              },
                 },
               },
               orderBy: { position: 'asc' },
@@ -302,7 +339,12 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
           owner: { select: { id: true, displayName: true, email: true } },
           entries: {
             include: {
-              image: { include: { tags: { include: { tag: true } } } },
+              image: {
+                include: {
+                  tags: { include: { tag: true } },
+                  owner: { select: { id: true, displayName: true, email: true } },
+                },
+              },
               asset: {
                 include: {
                   tags: { include: { tag: true } },

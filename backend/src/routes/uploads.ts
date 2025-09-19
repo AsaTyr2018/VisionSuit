@@ -10,6 +10,12 @@ import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, slugify } from '../lib/slug';
 import { requireAuth } from '../lib/middleware/auth';
+import {
+  extractImageMetadata,
+  extractModelMetadataFromFile,
+  type ImageMetadataResult,
+  type SafetensorsMetadataResult,
+} from '../lib/metadata';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -22,6 +28,23 @@ const upload = multer({
 type MulterFile = Express.Multer.File;
 
 const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
+
+type StoredUploadFile = {
+  index: number;
+  file: MulterFile;
+  isImage: boolean;
+  storage: {
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+    bucket: string;
+    objectName: string;
+    url: string;
+  };
+  imageMetadata?: ImageMetadataResult;
+  modelMetadata?: SafetensorsMetadataResult | null;
+};
 
 const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category?: string | null) => {
   const normalized = Array.from(
@@ -238,34 +261,66 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
 
     const uploadReference = crypto.randomUUID();
 
-    const storageFiles = await Promise.all(
-      files.map(async (file) => {
+    const storedEntries: StoredUploadFile[] = await Promise.all(
+      files.map(async (file, index) => {
         const isImage = file.mimetype.startsWith('image/');
         const bucket = isImage ? storageBuckets.images : storageBuckets.models;
         const storageId = crypto.randomUUID();
         const objectName = storageId;
 
+        const [imageMetadata, modelMetadata] = await Promise.all([
+          isImage ? extractImageMetadata(file).catch(() => undefined) : Promise.resolve(undefined),
+          !isImage ? Promise.resolve(extractModelMetadataFromFile(file)) : Promise.resolve(null),
+        ]);
+
         await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
           'Content-Type': file.mimetype || undefined,
         });
 
-        return {
-          id: storageId,
-          name: file.originalname,
-          size: file.size,
-          type: file.mimetype,
-          bucket,
-          objectName,
-          url: getObjectUrl(bucket, objectName),
+        const entry: StoredUploadFile = {
+          index,
+          file,
+          isImage,
+          storage: {
+            id: storageId,
+            name: file.originalname,
+            size: file.size,
+            type: file.mimetype,
+            bucket,
+            objectName,
+            url: getObjectUrl(bucket, objectName),
+          },
         };
+
+        if (imageMetadata) {
+          entry.imageMetadata = imageMetadata;
+        }
+
+        if (modelMetadata) {
+          entry.modelMetadata = modelMetadata;
+        }
+
+        return entry;
       }),
     );
 
-    const primaryFile = files[0];
-    const primaryStored = storageFiles[0];
+    if (storedEntries.length === 0) {
+      res.status(400).json({ message: 'Es wurden keine verarbeitbaren Dateien gefunden.' });
+      return;
+    }
+
+    const modelEntry =
+      payload.assetType === 'lora'
+        ? storedEntries.find((entry) => !entry.isImage && entry.modelMetadata)
+            ?? storedEntries.find((entry) => !entry.isImage)
+            ?? storedEntries[0]
+        : storedEntries[0];
+
+    const primaryFile = modelEntry?.file;
+    const primaryStored = modelEntry?.storage;
 
     if (!primaryFile || !primaryStored) {
-      res.status(400).json({ message: 'Die erste Datei konnte nicht verarbeitet werden.' });
+      res.status(400).json({ message: 'Die Modelldatei konnte nicht verarbeitet werden.' });
       return;
     }
 
@@ -284,7 +339,9 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
       return;
     }
 
-    const previewStored = storageFiles.find((stored, index) => files[index]?.mimetype.startsWith('image/'));
+    const previewEntry = storedEntries.find((entry) => entry.isImage);
+    const previewStored = previewEntry?.storage ?? null;
+    const imageFiles = storedEntries.filter((entry) => entry.isImage);
 
     const result = await prisma.$transaction(async (tx) => {
       const gallery = await resolveGallery(
@@ -309,6 +366,47 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
         }
       }
 
+      const draftFiles: Prisma.JsonArray = storedEntries.map((entry) => {
+        const file = entry.storage;
+        const json: Prisma.JsonObject = {
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          bucket: file.bucket,
+          objectName: file.objectName,
+          url: file.url,
+        };
+
+        if (entry.imageMetadata) {
+          const metadata: Prisma.JsonObject = {
+            width: entry.imageMetadata.width ?? null,
+            height: entry.imageMetadata.height ?? null,
+            prompt: entry.imageMetadata.prompt ?? null,
+            negativePrompt: entry.imageMetadata.negativePrompt ?? null,
+            seed: entry.imageMetadata.seed ?? null,
+            model: entry.imageMetadata.model ?? null,
+            sampler: entry.imageMetadata.sampler ?? null,
+            cfgScale: entry.imageMetadata.cfgScale ?? null,
+            steps: entry.imageMetadata.steps ?? null,
+          };
+          json.metadata = metadata;
+        } else if (entry.modelMetadata) {
+          const metadata: Prisma.JsonObject = {
+            baseModel: entry.modelMetadata.baseModel ?? null,
+            modelName: entry.modelMetadata.modelName ?? entry.modelMetadata.baseModel ?? null,
+          };
+
+          if (entry.modelMetadata.modelAliases && entry.modelMetadata.modelAliases.length > 0) {
+            metadata.modelAliases = entry.modelMetadata.modelAliases;
+          }
+
+          json.metadata = metadata;
+        }
+
+        return json;
+      });
+
       const draft = await tx.uploadDraft.create({
         data: {
           id: uploadReference,
@@ -320,19 +418,11 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
           galleryMode: payload.galleryMode,
           targetGallery: payload.galleryMode === 'existing' ? payload.targetGallery ?? null : null,
           tags: normalizedTags,
-          files: storageFiles.map((file) => ({
-            id: file.id,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            bucket: file.bucket,
-            objectName: file.objectName,
-            url: file.url,
-          })),
+          files: draftFiles,
           fileCount: files.length,
           totalSize: BigInt(totalSize),
           status: 'processed',
-          ownerId: actor.id,
+          owner: { connect: { id: actor.id } },
         },
       });
 
@@ -343,15 +433,15 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
       const nextPosition = (lastEntry?.position ?? 0) + 1;
 
       await Promise.all(
-        storageFiles.map((file) =>
+        storedEntries.map((entry) =>
           tx.storageObject.create({
             data: {
-              id: file.id,
-              bucket: file.bucket,
-              objectName: file.objectName,
-              originalName: file.name ?? null,
-              contentType: file.type ?? null,
-              size: BigInt(file.size),
+              id: entry.storage.id,
+              bucket: entry.storage.bucket,
+              objectName: entry.storage.objectName,
+              originalName: entry.storage.name ?? null,
+              contentType: entry.storage.type ?? null,
+              size: BigInt(entry.storage.size),
             },
           }),
         ),
@@ -364,6 +454,24 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
           'model',
         );
 
+        const modelMetadataPayload: Prisma.JsonObject = {
+          originalFileName: primaryFile.originalname,
+          visibility: payload.visibility,
+          draftId: draft.id,
+        };
+
+        if (modelEntry?.modelMetadata) {
+          const extracted = modelEntry.modelMetadata;
+          modelMetadataPayload.baseModel = extracted.baseModel ?? null;
+          modelMetadataPayload.modelName = extracted.modelName ?? extracted.baseModel ?? null;
+          if (extracted.modelAliases && extracted.modelAliases.length > 0) {
+            modelMetadataPayload.modelAliases = extracted.modelAliases;
+          }
+          if (extracted.metadata && typeof extracted.metadata === 'object') {
+            modelMetadataPayload.extracted = extracted.metadata as Prisma.JsonObject;
+          }
+        }
+
         const modelAsset = await tx.modelAsset.create({
           data: {
             slug,
@@ -374,12 +482,8 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
             checksum: checksum ?? null,
             storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
             previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
-            metadata: {
-              originalFileName: primaryFile.originalname,
-              visibility: payload.visibility,
-              draftId: draft.id,
-            },
-            ownerId: actor.id,
+            metadata: modelMetadataPayload,
+            owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
             },
@@ -414,19 +518,16 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
       let positionCursor = nextPosition;
       const imageEntries: { imageId: string; entryId: string }[] = [];
 
-      for (let index = 0; index < storageFiles.length; index += 1) {
-        const stored = storageFiles[index];
-        const source = files[index];
-
-        if (!stored || !source) {
-          continue;
-        }
+      for (const [index, entry] of imageFiles.entries()) {
+        const stored = entry.storage;
+        const source = entry.file;
+        const metadata = entry.imageMetadata;
 
         const baseTitle = payload.title.trim().length > 0 ? payload.title.trim() : stored.name ?? '';
         const fallbackTitle = source.originalname?.replace(/\.[^/.]+$/, '')?.trim();
         const candidate = (baseTitle || fallbackTitle || `Bild ${index + 1}`).slice(0, 160);
         const title =
-          storageFiles.length > 1
+          imageFiles.length > 1
             ? `${candidate}${candidate.endsWith('#') ? '' : ' '}#${index + 1}`.trim()
             : candidate;
 
@@ -434,25 +535,25 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
           data: {
             title,
             description: payload.description ?? null,
-            width: null,
-            height: null,
+            width: metadata?.width ?? null,
+            height: metadata?.height ?? null,
             fileSize: source.size,
             storagePath: toS3Uri(stored.bucket, stored.objectName),
-            prompt: null,
-            negativePrompt: null,
-            seed: null,
-            model: null,
-            sampler: null,
-            cfgScale: null,
-            steps: null,
-            ownerId: actor.id,
+            prompt: metadata?.prompt ?? null,
+            negativePrompt: metadata?.negativePrompt ?? null,
+            seed: metadata?.seed ?? null,
+            model: metadata?.model ?? null,
+            sampler: metadata?.sampler ?? null,
+            cfgScale: metadata?.cfgScale ?? null,
+            steps: metadata?.steps ?? null,
+            owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
             },
           },
         });
 
-        const entry = await tx.galleryEntry.create({
+        const entryRecord = await tx.galleryEntry.create({
           data: {
             galleryId: gallery.id,
             imageId: imageAsset.id,
@@ -461,15 +562,18 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
           },
         });
 
-        imageEntries.push({ imageId: imageAsset.id, entryId: entry.id });
+        imageEntries.push({ imageId: imageAsset.id, entryId: entryRecord.id });
         positionCursor += 1;
       }
 
       if (!gallery.coverImage && imageEntries.length > 0) {
-        await tx.gallery.update({
-          where: { id: gallery.id },
-          data: { coverImage: toS3Uri(primaryStored.bucket, primaryStored.objectName) },
-        });
+        const coverSource = imageFiles[0]?.storage ?? primaryStored;
+        if (coverSource) {
+          await tx.gallery.update({
+            where: { id: gallery.id },
+            data: { coverImage: toS3Uri(coverSource.bucket, coverSource.objectName) },
+          });
+        }
       }
 
       return {

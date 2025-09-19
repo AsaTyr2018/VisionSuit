@@ -38,8 +38,47 @@ const categorizeFileSize = (value?: number | null): FileSizeFilter => {
 
 const normalize = (value?: string | null) => value?.toLowerCase().normalize('NFKD') ?? '';
 
+const collectMetadataStrings = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata) {
+    return [] as string[];
+  }
+
+  const record = metadata as Record<string, unknown>;
+  const values = new Set<string>();
+
+  const addValue = (value: unknown) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        values.add(trimmed);
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach(addValue);
+    }
+  };
+
+  addValue(record['baseModel']);
+  addValue(record['modelName']);
+  addValue(record['model']);
+  addValue(record['models']);
+  addValue(record['modelAliases']);
+
+  const extracted = record['extracted'];
+  if (extracted && typeof extracted === 'object') {
+    const nested = extracted as Record<string, unknown>;
+    addValue(nested['ss_base_model']);
+    addValue(nested['sshs_model_name']);
+    addValue(nested['base_model']);
+    addValue(nested['model']);
+    addValue(nested['model_name']);
+  }
+
+  return Array.from(values);
+};
+
 const matchesSearch = (asset: ModelAsset, query: string) => {
   if (!query) return true;
+  const metadataValues = collectMetadataStrings(asset.metadata);
   const haystack = [
     asset.title,
     asset.slug,
@@ -48,6 +87,7 @@ const matchesSearch = (asset: ModelAsset, query: string) => {
     asset.version,
     asset.storageObject ?? asset.storagePath,
     ...asset.tags.map((tag) => tag.label),
+    ...metadataValues,
   ]
     .map((entry) => normalize(entry))
     .join(' ');

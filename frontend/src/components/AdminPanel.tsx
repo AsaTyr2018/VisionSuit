@@ -37,6 +37,56 @@ const matchText = (value: string | null | undefined, query: string) => {
 
 const getTagLabels = (tags: { label: string }[]) => tags.map((tag) => tag.label.toLowerCase());
 
+const collectModelMetadataStrings = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata) {
+    return [] as string[];
+  }
+
+  const record = metadata as Record<string, unknown>;
+  const values = new Set<string>();
+
+  const addValue = (value: unknown) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        values.add(trimmed);
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach(addValue);
+    }
+  };
+
+  addValue(record['baseModel']);
+  addValue(record['modelName']);
+  addValue(record['model']);
+  addValue(record['models']);
+  addValue(record['modelAliases']);
+
+  const extracted = record['extracted'];
+  if (extracted && typeof extracted === 'object') {
+    const nested = extracted as Record<string, unknown>;
+    addValue(nested['ss_base_model']);
+    addValue(nested['sshs_model_name']);
+    addValue(nested['base_model']);
+    addValue(nested['model']);
+    addValue(nested['model_name']);
+  }
+
+  return Array.from(values);
+};
+
+const collectImageMetadataStrings = (metadata?: ImageAsset['metadata']) => {
+  if (!metadata) {
+    return [] as string[];
+  }
+
+  const values = new Set<string>();
+  if (metadata.model) values.add(metadata.model);
+  if (metadata.sampler) values.add(metadata.sampler);
+  if (metadata.seed) values.add(metadata.seed);
+  return Array.from(values);
+};
+
 export const AdminPanel = ({ users, models, images, galleries, token, onRefresh }: AdminPanelProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -112,11 +162,16 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
     const tagQuery = modelFilter.tag.trim().toLowerCase();
 
     return models.filter((model) => {
+      const metadataMatches =
+        modelFilter.query.trim().length > 0 &&
+        collectModelMetadataStrings(model.metadata).some((value) => matchText(value, modelFilter.query));
+
       const matchesQuery =
         matchText(model.title, modelFilter.query) ||
         matchText(model.description ?? '', modelFilter.query) ||
         matchText(model.version, modelFilter.query) ||
-        matchText(model.owner.displayName, modelFilter.query);
+        matchText(model.owner.displayName, modelFilter.query) ||
+        metadataMatches;
 
       if (!matchesQuery) {
         return false;
@@ -136,11 +191,15 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
   const filteredImages = useMemo(() => {
     return images.filter((image) => {
+      const metadataMatches =
+        imageFilter.query.trim().length > 0 &&
+        collectImageMetadataStrings(image.metadata).some((value) => matchText(value, imageFilter.query));
       const matchesQuery =
         matchText(image.title, imageFilter.query) ||
         matchText(image.description ?? '', imageFilter.query) ||
         matchText(image.prompt ?? '', imageFilter.query) ||
         matchText(image.negativePrompt ?? '', imageFilter.query) ||
+        metadataMatches ||
         getTagLabels(image.tags).some((tag) => tag.includes(imageFilter.query.toLowerCase()));
 
       if (!matchesQuery) {
@@ -157,10 +216,25 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
   const filteredGalleries = useMemo(() => {
     return galleries.filter((gallery) => {
+      const metadataMatches =
+        galleryFilter.query.trim().length > 0 &&
+        gallery.entries.some((entry) => {
+          const modelMatches = collectModelMetadataStrings(entry.modelAsset?.metadata as Record<string, unknown> | null).some(
+            (value) => matchText(value, galleryFilter.query),
+          );
+
+          const imageMatches = collectImageMetadataStrings(entry.imageAsset?.metadata).some((value) =>
+            matchText(value, galleryFilter.query),
+          );
+
+          return modelMatches || imageMatches;
+        });
+
       const matchesQuery =
         matchText(gallery.title, galleryFilter.query) ||
         matchText(gallery.slug, galleryFilter.query) ||
-        matchText(gallery.description ?? '', galleryFilter.query);
+        matchText(gallery.description ?? '', galleryFilter.query) ||
+        metadataMatches;
 
       if (!matchesQuery) {
         return false;

@@ -26,6 +26,56 @@ const GALLERY_BATCH_SIZE = 15;
 
 const normalize = (value?: string | null) => value?.toLowerCase().normalize('NFKD') ?? '';
 
+const collectModelMetadataStrings = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata) {
+    return [] as string[];
+  }
+
+  const record = metadata as Record<string, unknown>;
+  const values = new Set<string>();
+
+  const addValue = (value: unknown) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        values.add(trimmed);
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach(addValue);
+    }
+  };
+
+  addValue(record['baseModel']);
+  addValue(record['modelName']);
+  addValue(record['model']);
+  addValue(record['models']);
+  addValue(record['modelAliases']);
+
+  const extracted = record['extracted'];
+  if (extracted && typeof extracted === 'object') {
+    const nested = extracted as Record<string, unknown>;
+    addValue(nested['ss_base_model']);
+    addValue(nested['sshs_model_name']);
+    addValue(nested['base_model']);
+    addValue(nested['model']);
+    addValue(nested['model_name']);
+  }
+
+  return Array.from(values);
+};
+
+const collectImageMetadataStrings = (metadata?: ImageAsset['metadata']) => {
+  if (!metadata) {
+    return [] as string[];
+  }
+
+  const values = new Set<string>();
+  if (metadata.model) values.add(metadata.model);
+  if (metadata.sampler) values.add(metadata.sampler);
+  if (metadata.seed) values.add(metadata.seed);
+  return Array.from(values);
+};
+
 const matchesSearch = (gallery: Gallery, query: string) => {
   if (!query) return true;
   const haystack = [
@@ -33,9 +83,21 @@ const matchesSearch = (gallery: Gallery, query: string) => {
     gallery.slug,
     gallery.description ?? '',
     gallery.owner.displayName,
-    ...gallery.entries
-      .map((entry) => entry.modelAsset?.title ?? entry.imageAsset?.title ?? entry.note ?? '')
-      .filter(Boolean),
+    ...gallery.entries.flatMap((entry) => {
+      const texts: string[] = [];
+      if (entry.modelAsset?.title) texts.push(entry.modelAsset.title);
+      if (entry.imageAsset?.title) texts.push(entry.imageAsset.title);
+      if (entry.note) texts.push(entry.note);
+      if (entry.imageAsset?.prompt) texts.push(entry.imageAsset.prompt);
+      if (entry.imageAsset?.negativePrompt) texts.push(entry.imageAsset.negativePrompt);
+      collectImageMetadataStrings(entry.imageAsset?.metadata).forEach((value) => texts.push(value));
+      if (entry.modelAsset?.metadata) {
+        collectModelMetadataStrings(entry.modelAsset.metadata as Record<string, unknown> | null).forEach((value) =>
+          texts.push(value),
+        );
+      }
+      return texts;
+    }),
   ]
     .map((entry) => normalize(entry))
     .join(' ');

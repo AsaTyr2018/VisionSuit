@@ -18,6 +18,7 @@ den Upload- und Kuration-Workflow.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
 - **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten, Detailpanel pro Sammlung und EXIF-Lightbox für jedes Bild.
 - **Robuste Metadatenanzeige** – Galerie- und Bildansichten bleiben stabil, selbst wenn Einträge ohne ausgefüllte Bild-Metadaten vom Backend geliefert werden.
+- **Automatische Metadatenerfassung** – Uploads lesen EXIF-/Stable-Diffusion-Prompts sowie Safetensors-Header aus, speichern Basismodelle direkt in der Datenbank und machen sie in Galerie- und Modell-Explorer durchsuchbar.
 
 ## Architekturüberblick
 
