@@ -7,6 +7,33 @@ const imagesBucket = process.env.MINIO_BUCKET_IMAGES ?? 'visionsuit-images';
 
 const toS3 = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
 
+const ensureStorageObject = async (
+  id: string,
+  bucket: string,
+  originalName: string,
+  contentType: string,
+  size: number,
+) => {
+  await prisma.storageObject.upsert({
+    where: { id },
+    update: {
+      bucket,
+      objectName: id,
+      originalName,
+      contentType,
+      size: BigInt(size),
+    },
+    create: {
+      id,
+      bucket,
+      objectName: id,
+      originalName,
+      contentType,
+      size: BigInt(size),
+    },
+  });
+};
+
 const main = async () => {
   const curator = await prisma.user.upsert({
     where: { email: 'curator@visionsuit.local' },
@@ -36,6 +63,34 @@ const main = async () => {
     ),
   );
 
+  const demoModelObjectId = 'seed-model-asset-object';
+  const demoModelPreviewId = 'seed-model-preview-image';
+  const demoImageObjectId = 'seed-image-asset-object';
+
+  await ensureStorageObject(
+    demoModelObjectId,
+    modelsBucket,
+    'neosynth-cinematic-v0.1.0.safetensors',
+    'application/octet-stream',
+    128_000_000,
+  );
+
+  await ensureStorageObject(
+    demoModelPreviewId,
+    imagesBucket,
+    'neosynth-cinematic.jpg',
+    'image/jpeg',
+    2_048_000,
+  );
+
+  await ensureStorageObject(
+    demoImageObjectId,
+    imagesBucket,
+    'neosynth-showcase.png',
+    'image/png',
+    4_520_112,
+  );
+
   const cinematicModel = await prisma.modelAsset.upsert({
     where: { slug: 'neosynth-cinematic-lora' },
     update: {},
@@ -46,8 +101,8 @@ const main = async () => {
       version: '0.1.0',
       fileSize: 128_000_000,
       checksum: 'sha256-demo-checksum',
-      storagePath: toS3(modelsBucket, 'demo/neosynth-cinematic-v0.1.0.safetensors'),
-      previewImage: toS3(imagesBucket, 'demo/neosynth-cinematic.jpg'),
+      storagePath: toS3(modelsBucket, demoModelObjectId),
+      previewImage: toS3(imagesBucket, demoModelPreviewId),
       metadata: {
         baseModel: 'SDXL 1.0',
         trainingImages: 120,
@@ -62,7 +117,7 @@ const main = async () => {
     },
   });
 
-  const demoImagePath = toS3(imagesBucket, 'demo/neosynth-showcase.png');
+  const demoImagePath = toS3(imagesBucket, demoImageObjectId);
 
   const demoImage = await prisma.imageAsset.upsert({
     where: { storagePath: demoImagePath },

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
-import { buildUniqueSlug, sanitizeFilename, slugify } from '../lib/slug';
+import { buildUniqueSlug, slugify } from '../lib/slug';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -230,19 +230,18 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
     const uploadReference = crypto.randomUUID();
 
     const storageFiles = await Promise.all(
-      files.map(async (file, index) => {
+      files.map(async (file) => {
         const isImage = file.mimetype.startsWith('image/');
         const bucket = isImage ? storageBuckets.images : storageBuckets.models;
-        const objectName = `uploads/${uploadReference}/${index + 1}-${sanitizeFilename(
-          file.originalname || `asset-file-${index + 1}`,
-          'asset-file',
-        )}`;
+        const storageId = crypto.randomUUID();
+        const objectName = storageId;
 
         await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
           'Content-Type': file.mimetype || undefined,
         });
 
         return {
+          id: storageId,
           name: file.originalname,
           size: file.size,
           type: file.mimetype,
@@ -302,6 +301,7 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
           targetGallery: payload.galleryMode === 'existing' ? payload.targetGallery ?? null : null,
           tags: normalizedTags,
           files: storageFiles.map((file) => ({
+            id: file.id,
             name: file.name,
             size: file.size,
             type: file.type,
@@ -320,6 +320,21 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
         orderBy: { position: 'desc' },
       });
       const nextPosition = (lastEntry?.position ?? 0) + 1;
+
+      await Promise.all(
+        storageFiles.map((file) =>
+          tx.storageObject.create({
+            data: {
+              id: file.id,
+              bucket: file.bucket,
+              objectName: file.objectName,
+              originalName: file.name ?? null,
+              contentType: file.type ?? null,
+              size: BigInt(file.size),
+            },
+          }),
+        ),
+      );
 
       if (payload.assetType === 'lora') {
         const slug = await buildUniqueSlug(
