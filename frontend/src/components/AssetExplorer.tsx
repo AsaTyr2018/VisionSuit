@@ -37,7 +37,7 @@ const fileSizeLabels: Record<Exclude<FileSizeFilter, 'all'>, string> = {
   small: '≤ 50 MB',
   medium: '50 – 200 MB',
   large: '≥ 200 MB',
-  unknown: 'Unbekannt',
+  unknown: 'Unknown',
 };
 
 const categorizeFileSize = (value?: number | null): FileSizeFilter => {
@@ -72,9 +72,9 @@ const tryParseStructuredValue = (value: string): unknown => {
     try {
       return JSON.parse(trimmed);
     } catch (error) {
-      if (import.meta.env.DEV) {
-        console.warn('Konnte Metadatenwert nicht parsen:', error);
-      }
+        if (import.meta.env.DEV) {
+          console.warn('Failed to parse metadata value:', error);
+        }
     }
   }
 
@@ -207,7 +207,7 @@ const buildMetadataRows = (metadata?: Record<string, unknown> | null) => {
     return rows;
   }
 
-  rows.push({ key: 'Wert', value: formatPrimitiveMetadataValue(normalized) });
+  rows.push({ key: 'Value', value: formatPrimitiveMetadataValue(normalized) });
   return rows;
 };
 
@@ -352,13 +352,13 @@ const toTagFrequencyGroups = (value: unknown): TagFrequencyGroup[] => {
         if (b.count !== a.count) {
           return b.count - a.count;
         }
-        return a.label.localeCompare(b.label, 'de');
+        return a.label.localeCompare(b.label, 'en');
       });
       groups.push({ scope, tags });
     }
   });
 
-  return groups.sort((a, b) => a.scope.localeCompare(b.scope, 'de'));
+  return groups.sort((a, b) => a.scope.localeCompare(b.scope, 'en'));
 };
 
 const extractTagFrequency = (metadata?: Record<string, unknown> | null): TagFrequencyGroup[] => {
@@ -422,7 +422,7 @@ const formatFileSize = (bytes?: number | null) => {
 };
 
 const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString('de-DE', {
+  new Date(value).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -493,7 +493,7 @@ export const AssetExplorer = ({
     const sortByCount = (first: TagOption, second: TagOption) => second.count - first.count;
 
     return {
-      ownerOptions: Array.from(ownersMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'de')),
+      ownerOptions: Array.from(ownersMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'en')),
       tagOptions: Array.from(tagsMap.values()).sort(sortByCount).slice(0, 18),
       typeOptions: Array.from(typesMap.values()).sort(sortByCount),
     };
@@ -528,7 +528,7 @@ export const AssetExplorer = ({
 
     const sorters: Record<SortOption, (a: ModelAsset, b: ModelAsset) => number> = {
       recent: (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      alpha: (a, b) => a.title.localeCompare(b.title, 'de'),
+      alpha: (a, b) => a.title.localeCompare(b.title, 'en'),
       'size-desc': (a, b) => (b.fileSize ?? 0) - (a.fileSize ?? 0),
       'size-asc': (a, b) => (a.fileSize ?? Infinity) - (b.fileSize ?? Infinity),
     };
@@ -745,27 +745,27 @@ export const AssetExplorer = ({
     const filters: { id: string; label: string; onClear: () => void }[] = [];
 
     if (normalizedQuery) {
-      filters.push({ id: 'search', label: `Suche: “${deferredSearch.trim()}”`, onClear: () => setSearchTerm('') });
+      filters.push({ id: 'search', label: `Search: “${deferredSearch.trim()}”`, onClear: () => setSearchTerm('') });
     }
 
     if (selectedOwner !== 'all') {
       const owner = ownerOptions.find((option) => option.id === selectedOwner);
       if (owner) {
-        filters.push({ id: `owner-${owner.id}`, label: `Kurator:in · ${owner.label}`, onClear: () => setSelectedOwner('all') });
+        filters.push({ id: `owner-${owner.id}`, label: `Curator · ${owner.label}`, onClear: () => setSelectedOwner('all') });
       }
     }
 
     if (selectedType !== 'all') {
       const type = typeOptions.find((option) => option.id === selectedType);
       if (type) {
-        filters.push({ id: `type-${type.id}`, label: `Typ · ${type.label}`, onClear: () => setSelectedType('all') });
+        filters.push({ id: `type-${type.id}`, label: `Type · ${type.label}`, onClear: () => setSelectedType('all') });
       }
     }
 
     if (fileSizeFilter !== 'all') {
       filters.push({
         id: `size-${fileSizeFilter}`,
-        label: `Größe · ${fileSizeLabels[fileSizeFilter]}`,
+        label: `Size · ${fileSizeLabels[fileSizeFilter]}`,
         onClear: () => setFileSizeFilter('all'),
       });
     }
@@ -797,52 +797,51 @@ export const AssetExplorer = ({
     <section className="panel">
       <header className="panel__header">
         <div>
-          <h2 className="panel__title">LoRA-Datenbank</h2>
+          <h2 className="panel__title">LoRA library</h2>
           <p className="panel__subtitle">
-            Produktionsreife LoRA-Bibliothek mit Volltext, Tagging und Kurator:innen-Filtern. Alle Einträge spiegeln den
-            aktuellen Analyse-Status und lassen sich ohne Performanceeinbruch über große Bestände hinweg sortieren.
+            Production-grade LoRA library with full-text search, tagging, and curator filters. Every entry mirrors the current analysis status and can be sorted across large collections without performance loss.
           </p>
         </div>
         <button type="button" className="panel__action panel__action--primary" onClick={() => onStartUpload?.()}>
-          LoRA-Upload öffnen
+          Open LoRA upload
         </button>
       </header>
 
-      <div className="filter-toolbar" aria-label="Filter für LoRA-Datenbank">
+      <div className="filter-toolbar" aria-label="Filters for the LoRA library">
         <div className="filter-toolbar__row">
           <label className="filter-toolbar__search">
-            <span className="sr-only">Suche in LoRA-Assets</span>
+            <span className="sr-only">Search in LoRA assets</span>
             <input
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Titel, Tags oder Personen durchsuchen"
+              placeholder="Search titles, tags, or people"
               disabled={isLoading && assets.length === 0}
             />
           </label>
 
           <label className="filter-toolbar__control">
-            <span>Sortierung</span>
+            <span>Sort order</span>
             <select
               value={sortOption}
               onChange={(event) => setSortOption(event.target.value as SortOption)}
               className="filter-select"
             >
-              <option value="recent">Aktualisiert · Neueste zuerst</option>
-              <option value="alpha">Titel · A → Z</option>
-              <option value="size-desc">Dateigröße · Groß → Klein</option>
-              <option value="size-asc">Dateigröße · Klein → Groß</option>
+              <option value="recent">Updated · Newest first</option>
+              <option value="alpha">Title · A → Z</option>
+              <option value="size-desc">File size · Large → Small</option>
+              <option value="size-asc">File size · Small → Large</option>
             </select>
           </label>
 
           <label className="filter-toolbar__control">
-            <span>Kurator:in</span>
+            <span>Curator</span>
             <select
               value={selectedOwner}
               onChange={(event) => setSelectedOwner(event.target.value)}
               className="filter-select"
             >
-              <option value="all">Alle Personen</option>
+              <option value="all">All people</option>
               {ownerOptions.map((owner) => (
                 <option key={owner.id} value={owner.id}>
                   {owner.label}
@@ -852,13 +851,13 @@ export const AssetExplorer = ({
           </label>
 
           <label className="filter-toolbar__control">
-            <span>Model-Typ</span>
+            <span>Model type</span>
             <select
               value={selectedType}
               onChange={(event) => setSelectedType(event.target.value)}
               className="filter-select"
             >
-              <option value="all">Alle Typen</option>
+              <option value="all">All types</option>
               {typeOptions.map((type) => (
                 <option key={type.id} value={type.id}>
                   {type.label}
@@ -867,9 +866,9 @@ export const AssetExplorer = ({
             </select>
           </label>
 
-          <div className="filter-toolbar__chips" role="group" aria-label="Dateigröße filtern">
+          <div className="filter-toolbar__chips" role="group" aria-label="Filter by file size">
             <FilterChip
-              label="Alle Größen"
+              label="All sizes"
               isActive={fileSizeFilter === 'all'}
               onClick={() => setFileSizeFilter('all')}
             />
@@ -885,8 +884,8 @@ export const AssetExplorer = ({
         </div>
 
         {tagOptions.length > 0 ? (
-          <div className="filter-toolbar__tag-row" role="group" aria-label="Tags filtern">
-            <span className="filter-toolbar__tag-label">Beliebte Tags</span>
+          <div className="filter-toolbar__tag-row" role="group" aria-label="Filter by tags">
+            <span className="filter-toolbar__tag-label">Popular tags</span>
             <div className="filter-toolbar__tag-chips">
               {tagOptions.map((tag) => (
                 <FilterChip
@@ -909,7 +908,7 @@ export const AssetExplorer = ({
 
         {activeFilters.length > 0 ? (
           <div className="filter-toolbar__active">
-            <span className="filter-toolbar__active-label">Aktive Filter:</span>
+            <span className="filter-toolbar__active-label">Active filters:</span>
             <div className="filter-toolbar__active-chips">
               {activeFilters.map((filter) => (
                 <button key={filter.id} type="button" className="active-filter" onClick={filter.onClear}>
@@ -919,17 +918,17 @@ export const AssetExplorer = ({
               ))}
             </div>
             <button type="button" className="filter-toolbar__reset" onClick={resetFilters}>
-              Alle Filter zurücksetzen
+              Reset all filters
             </button>
           </div>
         ) : null}
       </div>
 
       <div className="result-info" role="status">
-        {isLoading && assets.length === 0 ? 'Lade LoRA-Assets …' : `Zeigt ${visibleAssets.length} von ${filteredAssets.length} Assets`}
+        {isLoading && assets.length === 0 ? 'Loading LoRA assets…' : `Showing ${visibleAssets.length} of ${filteredAssets.length} assets`}
       </div>
 
-      <div className="asset-explorer__grid" role="list" aria-label="LoRA-Assets">
+      <div className="asset-explorer__grid" role="list" aria-label="LoRA assets">
         {isLoading && assets.length === 0
           ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
           : visibleAssets.map((asset) => {
@@ -951,9 +950,9 @@ export const AssetExplorer = ({
                 >
                   <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
                     {previewUrl ? (
-                      <img src={previewUrl} alt={`Preview von ${asset.title}`} loading="lazy" />
+                      <img src={previewUrl} alt={`Preview of ${asset.title}`} loading="lazy" />
                     ) : (
-                      <span>Kein Preview</span>
+                      <span>No preview</span>
                     )}
                   </div>
                   <div className="asset-tile__body">
@@ -982,10 +981,10 @@ export const AssetExplorer = ({
                     <p className="asset-detail__subtitle">{activeAsset.description}</p>
                   ) : (
                     <p className="asset-detail__subtitle asset-detail__subtitle--muted">
-                      Noch keine Beschreibung hinterlegt.
+                      No description provided yet.
                     </p>
                   )}
-                  <div className="asset-detail__version-switcher" role="group" aria-label="Modelversionen">
+                  <div className="asset-detail__version-switcher" role="group" aria-label="Model versions">
                     {activeAsset.versions.map((version) => {
                       const isCurrent = activeVersion?.id === version.id;
                       return (
@@ -1006,10 +1005,10 @@ export const AssetExplorer = ({
                       onClick={openVersionDialog}
                       disabled={!authToken}
                       title={
-                        !authToken ? 'Nur angemeldete Kurator:innen können neue Versionen hochladen.' : undefined
+                        !authToken ? 'Only signed-in curators can upload new versions.' : undefined
                       }
                     >
-                      Neue Version hinzufügen
+                      Add new version
                     </button>
                   </div>
                   {versionFeedback ? (
@@ -1017,7 +1016,7 @@ export const AssetExplorer = ({
                   ) : null}
                 </div>
                 <button type="button" className="asset-detail__close" onClick={closeDetail}>
-                  Zurück zur Modellliste
+                  Back to model list
                 </button>
               </header>
 
@@ -1034,19 +1033,19 @@ export const AssetExplorer = ({
                         <td>{activeVersion?.version ?? '–'}</td>
                       </tr>
                       <tr>
-                        <th scope="row">Kurator</th>
+                        <th scope="row">Curator</th>
                         <td>{activeAsset.owner.displayName}</td>
                       </tr>
                       <tr>
-                        <th scope="row">Upload am</th>
+                        <th scope="row">Uploaded on</th>
                         <td>{activeVersion ? formatDate(activeVersion.createdAt) : '–'}</td>
                       </tr>
                       <tr>
-                        <th scope="row">Dateigröße</th>
+                        <th scope="row">File size</th>
                         <td>{formatFileSize(activeVersion?.fileSize)}</td>
                       </tr>
                       <tr>
-                        <th scope="row">Checksumme</th>
+                        <th scope="row">Checksum</th>
                         <td>{activeVersion?.checksum ?? '–'}</td>
                       </tr>
                     </tbody>
@@ -1068,7 +1067,7 @@ export const AssetExplorer = ({
                     </div>
                   ) : (
                     <div className="asset-detail__preview asset-detail__preview--empty">
-                      <span>Kein Vorschaubild vorhanden.</span>
+                      <span>No preview available.</span>
                     </div>
                   )}
                   {modelDownloadUrl ? (
@@ -1079,11 +1078,11 @@ export const AssetExplorer = ({
                       rel="noopener noreferrer"
                       download
                     >
-                      Modell herunterladen
+                      Download model
                     </a>
                   ) : (
                     <span className="asset-detail__download asset-detail__download--disabled">
-                      Download nicht verfügbar
+                      Download not available
                     </span>
                   )}
                 </div>
@@ -1098,16 +1097,16 @@ export const AssetExplorer = ({
                     ))}
                   </div>
                 ) : (
-                  <p className="asset-detail__description asset-detail__description--muted">Keine Tags hinterlegt.</p>
+                  <p className="asset-detail__description asset-detail__description--muted">No tags available.</p>
                 )}
               </section>
 
               <section className="asset-detail__section">
                 <div className="asset-detail__section-heading">
-                  <h4>Metadaten</h4>
+                  <h4>Metadata</h4>
                   {tagFrequencyGroups.length > 0 ? (
                     <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
-                      Datensatz-Tags anzeigen
+                      Show dataset tags
                     </button>
                   ) : null}
                 </div>
@@ -1117,8 +1116,8 @@ export const AssetExplorer = ({
                       <table className="asset-detail__metadata-table">
                         <thead>
                           <tr>
-                            <th scope="col">Schlüssel</th>
-                            <th scope="col">Wert</th>
+                            <th scope="col">Key</th>
+                            <th scope="col">Value</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1135,12 +1134,12 @@ export const AssetExplorer = ({
                     </div>
                   </div>
                 ) : (
-                  <p className="asset-detail__description asset-detail__description--muted">Keine Metadaten verfügbar.</p>
+                  <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
                 )}
               </section>
 
               <section className="asset-detail__section">
-                <h4>Verknüpfte Bild-Sammlungen</h4>
+                <h4>Linked image collections</h4>
                 {relatedGalleries.length > 0 ? (
                   <ul className="asset-detail__gallery-links">
                     {relatedGalleries.map((gallery) => (
@@ -1161,7 +1160,7 @@ export const AssetExplorer = ({
                   </ul>
                 ) : (
                   <p className="asset-detail__description asset-detail__description--muted">
-                    Dieses LoRA ist noch keiner Bildsammlung zugeordnet.
+                    This LoRA is not linked to any image collection yet.
                   </p>
                 )}
               </section>
@@ -1173,17 +1172,17 @@ export const AssetExplorer = ({
                   <div className="tag-frequency">
                     <header className="tag-frequency__header">
                       <div>
-                        <h4 id="tag-frequency-title">Datensatz-Tags</h4>
-                        <p>Häufigkeiten der Trainings-Tags, die das Modell beim Fine-Tuning gesehen hat.</p>
+                        <h4 id="tag-frequency-title">Dataset tags</h4>
+                        <p>Frequency of training tags the model saw during fine-tuning.</p>
                       </div>
                       <button type="button" className="tag-frequency__close" onClick={closeTagDialog}>
-                        Schließen
+                        Close
                       </button>
                     </header>
                     <div className="tag-frequency__body">
                       {tagFrequencyGroups.map((group) => {
                         const groupId = `tag-frequency-${
-                          group.scope.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'gruppe'
+                          group.scope.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase() || 'group'
                         }`;
                         return (
                           <section key={group.scope} className="tag-frequency__group" aria-labelledby={groupId}>
@@ -1195,7 +1194,7 @@ export const AssetExplorer = ({
                                 <thead>
                                   <tr>
                                     <th scope="col">Tag</th>
-                                    <th scope="col">Vorkommen</th>
+                                    <th scope="col">Occurrences</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1233,15 +1232,15 @@ export const AssetExplorer = ({
             );
             setVersionFeedback(
               createdVersion
-                ? `Version ${createdVersion.version} wurde hinzugefügt.`
-                : 'Modell wurde aktualisiert.',
+                ? `Version ${createdVersion.version} was added.`
+                : 'Model updated.',
             );
           }}
         />
       ) : null}
 
       {!isLoading && filteredAssets.length === 0 ? (
-        <p className="panel__empty">Keine Assets entsprechen den aktuellen Filtern.</p>
+        <p className="panel__empty">No assets match the current filters.</p>
       ) : null}
 
       <div ref={sentinelRef} className="asset-explorer__sentinel" aria-hidden="true" />

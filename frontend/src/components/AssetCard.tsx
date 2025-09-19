@@ -13,7 +13,7 @@ const formatFileSize = (bytes?: number | null) => {
 };
 
 const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString('de-DE', {
+  new Date(value).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -29,7 +29,7 @@ export const AssetCard = ({ asset }: AssetCardProps) => {
     <article className="asset-card">
       {previewUrl ? (
         <div className="asset-card__media">
-          <img src={previewUrl} alt={`Preview von ${asset.title}`} loading="lazy" />
+          <img src={previewUrl} alt={`Preview of ${asset.title}`} loading="lazy" />
         </div>
       ) : null}
       <header className="asset-card__header">
@@ -39,7 +39,7 @@ export const AssetCard = ({ asset }: AssetCardProps) => {
         </div>
         <span className="asset-card__badge">{modelType}</span>
       </header>
-      <p className="asset-card__description">{asset.description ?? 'Noch keine Beschreibung hinterlegt.'}</p>
+      <p className="asset-card__description">{asset.description ?? 'No description provided yet.'}</p>
       <dl className="asset-card__meta">
         <div>
           <dt>Storage</dt>
@@ -56,19 +56,19 @@ export const AssetCard = ({ asset }: AssetCardProps) => {
           </div>
         ) : null}
         <div>
-          <dt>Dateigröße</dt>
+          <dt>File size</dt>
           <dd>{formatFileSize(asset.fileSize)}</dd>
         </div>
         <div>
-          <dt>Checksumme</dt>
+          <dt>Checksum</dt>
           <dd className="asset-card__mono">{asset.checksum ?? '–'}</dd>
         </div>
         <div>
-          <dt>Kurator</dt>
+          <dt>Curator</dt>
           <dd>{asset.owner.displayName}</dd>
         </div>
         <div>
-          <dt>Aktualisiert</dt>
+          <dt>Updated</dt>
           <dd>{formatDate(asset.updatedAt)}</dd>
         </div>
       </dl>

@@ -123,7 +123,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       setStatus({ type: 'success', message: successMessage });
       await onRefresh();
     } catch (error) {
-      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Aktion fehlgeschlagen.' });
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Action failed.' });
     } finally {
       setIsBusy(false);
     }
@@ -286,7 +286,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
     const bio = (formData.get('bio') as string | null)?.trim();
 
     if (!email || !displayName || !password) {
-      setStatus({ type: 'error', message: 'Alle Pflichtfelder müssen ausgefüllt sein.' });
+      setStatus({ type: 'error', message: 'All required fields must be filled in.' });
       return;
     }
 
@@ -303,7 +303,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
           .then(() => {
             event.currentTarget.reset();
           }),
-      'Benutzer:in wurde angelegt.',
+      'User account created.',
     );
   };
 
@@ -335,16 +335,16 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
             passwordField.value = '';
           }
         }),
-      'Benutzerdaten wurden aktualisiert.',
+      'User details updated.',
     );
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm('Soll dieser Account wirklich gelöscht werden?')) {
+    if (!window.confirm('Are you sure you want to delete this account?')) {
       return;
     }
 
-    await withStatus(() => api.deleteUser(token, userId), 'Benutzer:in wurde gelöscht.');
+    await withStatus(() => api.deleteUser(token, userId), 'User account deleted.');
     setSelectedUsers((previous) => {
       const next = new Set(previous);
       next.delete(userId);
@@ -357,7 +357,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
     if (ids.length === 0) {
       return;
     }
-    if (!window.confirm(`${ids.length} Accounts wirklich löschen?`)) {
+    if (!window.confirm(`Delete ${ids.length} accounts?`)) {
       return;
     }
 
@@ -366,7 +366,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         api.bulkDeleteUsers(token, ids).then(() => {
           setSelectedUsers(new Set());
         }),
-      `${ids.length} Accounts entfernt.`,
+      `${ids.length} accounts removed.`,
     );
   };
 
@@ -387,15 +387,15 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       ownerId,
     };
 
-    await withStatus(() => api.updateModelAsset(token, model.id, payload), 'Modell wurde aktualisiert.');
+    await withStatus(() => api.updateModelAsset(token, model.id, payload), 'Model updated.');
   };
 
   const handleDeleteModel = async (model: ModelAsset) => {
-    if (!window.confirm(`Modell "${model.title}" wirklich löschen?`)) {
+    if (!window.confirm(`Delete model "${model.title}"?`)) {
       return;
     }
 
-    await withStatus(() => api.deleteModelAsset(token, model.id), 'Modell wurde gelöscht.');
+    await withStatus(() => api.deleteModelAsset(token, model.id), 'Model deleted.');
     setSelectedModels((previous) => {
       const next = new Set(previous);
       next.delete(model.id);
@@ -409,7 +409,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       return;
     }
 
-    if (!window.confirm(`${ids.length} Modelle wirklich löschen?`)) {
+    if (!window.confirm(`Delete ${ids.length} models?`)) {
       return;
     }
 
@@ -418,7 +418,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         api.bulkDeleteModelAssets(token, ids).then(() => {
           setSelectedModels(new Set());
         }),
-      `${ids.length} Modelle entfernt.`,
+      `${ids.length} models removed.`,
     );
   };
 
@@ -455,15 +455,15 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       },
     };
 
-    await withStatus(() => api.updateImageAsset(token, image.id, payload), 'Bild wurde aktualisiert.');
+    await withStatus(() => api.updateImageAsset(token, image.id, payload), 'Image updated.');
   };
 
   const handleDeleteImage = async (image: ImageAsset) => {
-    if (!window.confirm(`Bild "${image.title}" wirklich löschen?`)) {
+    if (!window.confirm(`Delete image "${image.title}"?`)) {
       return;
     }
 
-    await withStatus(() => api.deleteImageAsset(token, image.id), 'Bild wurde gelöscht.');
+    await withStatus(() => api.deleteImageAsset(token, image.id), 'Image deleted.');
     setSelectedImages((previous) => {
       const next = new Set(previous);
       next.delete(image.id);
@@ -477,7 +477,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       return;
     }
 
-    if (!window.confirm(`${ids.length} Bilder wirklich löschen?`)) {
+    if (!window.confirm(`Delete ${ids.length} images?`)) {
       return;
     }
 
@@ -486,7 +486,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         api.bulkDeleteImageAssets(token, ids).then(() => {
           setSelectedImages(new Set());
         }),
-      `${ids.length} Bilder entfernt.`,
+      `${ids.length} images removed.`,
     );
   };
 
@@ -530,15 +530,15 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       removeEntryIds: removeEntryIds.length > 0 ? removeEntryIds : undefined,
     };
 
-    await withStatus(() => api.updateGallery(token, gallery.id, payload), 'Galerie wurde aktualisiert.');
+    await withStatus(() => api.updateGallery(token, gallery.id, payload), 'Gallery updated.');
   };
 
   const handleDeleteGallery = async (gallery: Gallery) => {
-    if (!window.confirm(`Galerie "${gallery.title}" wirklich löschen?`)) {
+    if (!window.confirm(`Delete gallery "${gallery.title}"?`)) {
       return;
     }
 
-    await withStatus(() => api.deleteGallery(token, gallery.id), 'Galerie wurde gelöscht.');
+    await withStatus(() => api.deleteGallery(token, gallery.id), 'Gallery deleted.');
   };
 
   const renderSelectionToolbar = (
@@ -550,18 +550,18 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
   ) => (
     <div className="admin__toolbar">
       <div className="admin__selection">
-        <label className="admin__checkbox" aria-label="Alles auswählen">
+        <label className="admin__checkbox" aria-label="Select all">
           <input
             type="checkbox"
             checked={selected > 0 && selected === total && total > 0}
             onChange={(event) => onSelectAll(event.currentTarget.checked)}
             disabled={total === 0 || isBusy}
           />
-          <span>Alles</span>
+          <span>All</span>
         </label>
-        <span className="admin__selection-count">{selected} ausgewählt</span>
+        <span className="admin__selection-count">{selected} selected</span>
         <button type="button" className="button" onClick={onClear} disabled={selected === 0 || isBusy}>
-          Auswahl leeren
+          Clear selection
         </button>
         <button
           type="button"
@@ -569,7 +569,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
           onClick={onBulkDelete}
           disabled={selected === 0 || isBusy}
         >
-          Ausgewählte löschen
+          Delete selected
         </button>
       </div>
     </div>
@@ -582,9 +582,9 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
           {(
             [
               { id: 'users', label: 'User' },
-              { id: 'models', label: 'Modelle' },
-              { id: 'images', label: 'Bilder' },
-              { id: 'galleries', label: 'Galerien' },
+              { id: 'models', label: 'Models' },
+              { id: 'images', label: 'Images' },
+              { id: 'galleries', label: 'Galleries' },
             ] as { id: AdminTab; label: string }[]
           ).map((tab) => (
             <button
@@ -606,25 +606,25 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       {activeTab === 'users' ? (
         <div className="admin__panel">
           <section className="admin__section">
-            <h3>Neuen Account anlegen</h3>
+            <h3>Create new account</h3>
             <form className="admin__form" onSubmit={handleCreateUser}>
               <div className="admin__form-grid">
                 <label>
-                  <span>E-Mail</span>
+                  <span>Email</span>
                   <input name="email" type="email" required disabled={isBusy} />
                 </label>
                 <label>
-                  <span>Anzeigename</span>
+                  <span>Display name</span>
                   <input name="displayName" required disabled={isBusy} />
                 </label>
                 <label>
-                  <span>Passwort</span>
+                  <span>Password</span>
                   <input name="password" type="password" required disabled={isBusy} />
                 </label>
                 <label>
-                  <span>Rolle</span>
+                  <span>Role</span>
                   <select name="role" defaultValue="CURATOR" disabled={isBusy}>
-                    <option value="CURATOR">Kurator:in</option>
+                    <option value="CURATOR">Curator</option>
                     <option value="ADMIN">Admin</option>
                   </select>
                 </label>
@@ -634,27 +634,27 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                 <textarea name="bio" rows={2} disabled={isBusy} />
               </label>
               <button type="submit" className="button button--primary" disabled={isBusy}>
-                Account erstellen
+                Create account
               </button>
             </form>
           </section>
 
           <section className="admin__section">
             <div className="admin__section-header">
-              <h3>Benutzer:innen verwalten</h3>
+              <h3>Manage users</h3>
               <div className="admin__filters">
                 <label>
-                  <span>Suche</span>
+                  <span>Search</span>
                   <input
                     type="search"
                     value={userFilter.query}
                     onChange={(event) => setUserFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
-                    placeholder="Name, Mail oder Bio"
+                    placeholder="Name, email, or bio"
                     disabled={isBusy}
                   />
                 </label>
                 <label>
-                  <span>Rolle</span>
+                  <span>Role</span>
                   <select
                     value={userFilter.role}
                     onChange={(event) =>
@@ -662,8 +662,8 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                     }
                     disabled={isBusy}
                   >
-                    <option value="all">Alle</option>
-                    <option value="CURATOR">Kurator:innen</option>
+                    <option value="all">All</option>
+                    <option value="CURATOR">Curators</option>
                     <option value="ADMIN">Admin</option>
                   </select>
                 </label>
@@ -679,9 +679,9 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                     }
                     disabled={isBusy}
                   >
-                    <option value="all">Alle</option>
-                    <option value="active">Aktive</option>
-                    <option value="inactive">Inaktive</option>
+                    <option value="all">All</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
                   </select>
                 </label>
               </div>
@@ -697,27 +697,27 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
             <div className="admin__table" role="grid">
               <div className="admin__table-header admin__table-header--wide" role="row">
-                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Auswahl" />
+                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Selection" />
                 <span className="admin__table-cell" role="columnheader">
                   Account
                 </span>
                 <span className="admin__table-cell" role="columnheader">
-                  Profil &amp; Berechtigungen
+                  Profile &amp; permissions
                 </span>
                 <span className="admin__table-cell admin__table-cell--actions" role="columnheader">
-                  Aktionen
+                  Actions
                 </span>
               </div>
               <div className="admin__table-body">
                 {filteredUsers.length === 0 ? (
-                  <p className="admin__empty">Keine Benutzer:innen vorhanden.</p>
+                  <p className="admin__empty">No users available.</p>
                 ) : (
                   filteredUsers.map((user) => (
                     <form
                       key={user.id}
                       className="admin-row"
                       onSubmit={(event) => handleUpdateUser(event, user.id)}
-                      aria-label={`Einstellungen für ${user.displayName}`}
+                      aria-label={`Settings for ${user.displayName}`}
                     >
                       <div className="admin-row__cell admin-row__cell--checkbox">
                         <input
@@ -725,7 +725,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           checked={selectedUsers.has(user.id)}
                           onChange={(event) => toggleSelection(setSelectedUsers, user.id, event.currentTarget.checked)}
                           disabled={isBusy}
-                          aria-label={`${user.displayName} auswählen`}
+                          aria-label={`Select ${user.displayName}`}
                         />
                       </div>
                       <div className="admin-row__cell admin-row__cell--meta">
@@ -736,19 +736,19 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           <span
                             className={`admin-badge ${user.isActive === false ? 'admin-badge--muted' : 'admin-badge--success'}`}
                           >
-                            {user.isActive === false ? 'inaktiv' : 'aktiv'}
+                            {user.isActive === false ? 'inactive' : 'active'}
                           </span>
                         </div>
                       </div>
                       <div className="admin-row__cell admin-row__cell--form">
                         <label>
-                          <span>Anzeigename</span>
+                          <span>Display name</span>
                           <input name="displayName" defaultValue={user.displayName} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Rolle</span>
+                          <span>Role</span>
                           <select name="role" defaultValue={user.role} disabled={isBusy}>
-                            <option value="CURATOR">Kurator:in</option>
+                            <option value="CURATOR">Curator</option>
                             <option value="ADMIN">Admin</option>
                           </select>
                         </label>
@@ -757,17 +757,17 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           <textarea name="bio" rows={2} defaultValue={user.bio ?? ''} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Neues Passwort</span>
+                          <span>New password</span>
                           <input name="password" type="password" placeholder="Optional" disabled={isBusy} />
                         </label>
                         <label className="admin__checkbox">
                           <input type="checkbox" name="isActive" defaultChecked={user.isActive !== false} disabled={isBusy} />
-                          <span>Konto aktiv</span>
+                          <span>Account active</span>
                         </label>
                       </div>
                       <div className="admin-row__cell admin-row__cell--actions">
                         <button type="submit" className="button" disabled={isBusy}>
-                          Speichern
+                          Save
                         </button>
                         <button
                           type="button"
@@ -775,7 +775,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           onClick={() => handleDeleteUser(user.id)}
                           disabled={isBusy}
                         >
-                          Löschen
+                          Delete
                         </button>
                       </div>
                     </form>
@@ -791,20 +791,20 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         <div className="admin__panel">
           <section className="admin__section">
             <div className="admin__section-header">
-              <h3>Modelle verwalten</h3>
+              <h3>Manage models</h3>
               <div className="admin__filters">
                 <label>
-                  <span>Suche</span>
+                  <span>Search</span>
                   <input
                     type="search"
                     value={modelFilter.query}
                     onChange={(event) => setModelFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
-                    placeholder="Titel, Beschreibung oder Besitzer"
+                    placeholder="Title, description, or owner"
                     disabled={isBusy}
                   />
                 </label>
                 <label>
-                  <span>Besitzer:in</span>
+                  <span>Owner</span>
                   <select
                     value={modelFilter.owner}
                     onChange={(event) =>
@@ -812,7 +812,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                     }
                     disabled={isBusy}
                   >
-                    <option value="all">Alle</option>
+                    <option value="all">All</option>
                     {userOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.label}
@@ -821,12 +821,12 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   </select>
                 </label>
                 <label>
-                  <span>Tag-Suche</span>
+                  <span>Tag search</span>
                   <input
                     type="search"
                     value={modelFilter.tag}
                     onChange={(event) => setModelFilter((previous) => ({ ...previous, tag: event.currentTarget.value }))}
-                    placeholder="Tag-Filter"
+                    placeholder="Tag filter"
                     disabled={isBusy}
                   />
                 </label>
@@ -843,27 +843,27 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
             <div className="admin__table" role="grid">
               <div className="admin__table-header" role="row">
-                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Auswahl" />
+                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Selection" />
                 <span className="admin__table-cell" role="columnheader">
-                  Modell
+                  Model
                 </span>
                 <span className="admin__table-cell" role="columnheader">
                   Details
                 </span>
                 <span className="admin__table-cell admin__table-cell--actions" role="columnheader">
-                  Aktionen
+                  Actions
                 </span>
               </div>
               <div className="admin__table-body">
                 {filteredModels.length === 0 ? (
-                  <p className="admin__empty">Keine Modelle vorhanden.</p>
+                  <p className="admin__empty">No models available.</p>
                 ) : (
                   filteredModels.map((model) => (
                     <form
                       key={model.id}
                       className="admin-row"
                       onSubmit={(event) => handleUpdateModel(event, model)}
-                      aria-label={`Einstellungen für ${model.title}`}
+                      aria-label={`Settings for ${model.title}`}
                     >
                       <div className="admin-row__cell admin-row__cell--checkbox">
                         <input
@@ -871,22 +871,22 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           checked={selectedModels.has(model.id)}
                           onChange={(event) => toggleSelection(setSelectedModels, model.id, event.currentTarget.checked)}
                           disabled={isBusy}
-                          aria-label={`${model.title} auswählen`}
+                          aria-label={`Select ${model.title}`}
                         />
                       </div>
                       <div className="admin-row__cell admin-row__cell--meta">
                         <h4>{model.title}</h4>
-                        <span className="admin-row__subtitle">von {model.owner.displayName}</span>
+                        <span className="admin-row__subtitle">by {model.owner.displayName}</span>
                         <div className="admin-row__badges">
                           <span className="admin-badge">{model.version}</span>
                           <span className="admin-badge admin-badge--muted">
-                            {new Date(model.updatedAt).toLocaleDateString('de-DE')}
+                            {new Date(model.updatedAt).toLocaleDateString('en-US')}
                           </span>
                         </div>
                       </div>
                       <div className="admin-row__cell admin-row__cell--form">
                         <label>
-                          <span>Titel</span>
+                          <span>Title</span>
                           <input name="title" defaultValue={model.title} disabled={isBusy} />
                         </label>
                         <label>
@@ -894,7 +894,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           <input name="version" defaultValue={model.version} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Beschreibung</span>
+                          <span>Description</span>
                           <textarea name="description" rows={3} defaultValue={model.description ?? ''} disabled={isBusy} />
                         </label>
                         <label>
@@ -902,12 +902,12 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           <input
                             name="tags"
                             defaultValue={model.tags.map((tag) => tag.label).join(', ')}
-                            placeholder="Kommagetrennt"
+                            placeholder="Comma separated"
                             disabled={isBusy}
                           />
                         </label>
                         <label>
-                          <span>Besitzer:in</span>
+                          <span>Owner</span>
                           <select name="ownerId" defaultValue={model.owner.id} disabled={isBusy}>
                             {userOptions.map((option) => (
                               <option key={option.id} value={option.id}>
@@ -919,7 +919,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                       </div>
                       <div className="admin-row__cell admin-row__cell--actions">
                         <button type="submit" className="button" disabled={isBusy}>
-                          Speichern
+                          Save
                         </button>
                         <button
                           type="button"
@@ -927,7 +927,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           onClick={() => handleDeleteModel(model)}
                           disabled={isBusy}
                         >
-                          Löschen
+                          Delete
                         </button>
                       </div>
                     </form>
@@ -943,20 +943,20 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         <div className="admin__panel">
           <section className="admin__section">
             <div className="admin__section-header">
-              <h3>Bilder verwalten</h3>
+              <h3>Manage images</h3>
               <div className="admin__filters">
                 <label>
-                  <span>Suche</span>
+                  <span>Search</span>
                   <input
                     type="search"
                     value={imageFilter.query}
                     onChange={(event) => setImageFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
-                    placeholder="Titel, Prompt oder Tags"
+                    placeholder="Title, prompt, or tags"
                     disabled={isBusy}
                   />
                 </label>
                 <label>
-                  <span>Besitzer:in</span>
+                  <span>Owner</span>
                   <select
                     value={imageFilter.owner}
                     onChange={(event) =>
@@ -964,7 +964,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                     }
                     disabled={isBusy}
                   >
-                    <option value="all">Alle</option>
+                    <option value="all">All</option>
                     {userOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.label}
@@ -985,27 +985,27 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
             <div className="admin__table" role="grid">
               <div className="admin__table-header" role="row">
-                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Auswahl" />
+                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Selection" />
                 <span className="admin__table-cell" role="columnheader">
-                  Bild
+                  Image
                 </span>
                 <span className="admin__table-cell" role="columnheader">
-                  Metadaten
+                  Metadata
                 </span>
                 <span className="admin__table-cell admin__table-cell--actions" role="columnheader">
-                  Aktionen
+                  Actions
                 </span>
               </div>
               <div className="admin__table-body">
                 {filteredImages.length === 0 ? (
-                  <p className="admin__empty">Keine Bilder vorhanden.</p>
+                  <p className="admin__empty">No images available.</p>
                 ) : (
                   filteredImages.map((image) => (
                     <form
                       key={image.id}
                       className="admin-row"
                       onSubmit={(event) => handleUpdateImage(event, image)}
-                      aria-label={`Einstellungen für ${image.title}`}
+                      aria-label={`Settings for ${image.title}`}
                     >
                       <div className="admin-row__cell admin-row__cell--checkbox">
                         <input
@@ -1013,26 +1013,26 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           checked={selectedImages.has(image.id)}
                           onChange={(event) => toggleSelection(setSelectedImages, image.id, event.currentTarget.checked)}
                           disabled={isBusy}
-                          aria-label={`${image.title} auswählen`}
+                          aria-label={`Select ${image.title}`}
                         />
                       </div>
                       <div className="admin-row__cell admin-row__cell--meta">
                         <h4>{image.title}</h4>
-                        <span className="admin-row__subtitle">von {image.owner.displayName}</span>
+                        <span className="admin-row__subtitle">by {image.owner.displayName}</span>
                         <div className="admin-row__badges">
                           <span className="admin-badge admin-badge--muted">
-                            {new Date(image.updatedAt).toLocaleDateString('de-DE')}
+                            {new Date(image.updatedAt).toLocaleDateString('en-US')}
                           </span>
                           <span className="admin-badge">{image.tags.map((tag) => tag.label).slice(0, 3).join(', ')}</span>
                         </div>
                       </div>
                       <div className="admin-row__cell admin-row__cell--form">
                         <label>
-                          <span>Titel</span>
+                          <span>Title</span>
                           <input name="title" defaultValue={image.title} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Beschreibung</span>
+                          <span>Description</span>
                           <textarea name="description" rows={2} defaultValue={image.description ?? ''} disabled={isBusy} />
                         </label>
                         <label>
@@ -1040,7 +1040,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           <textarea name="prompt" rows={2} defaultValue={image.prompt ?? ''} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Negativer Prompt</span>
+                          <span>Negative prompt</span>
                           <textarea name="negativePrompt" rows={2} defaultValue={image.negativePrompt ?? ''} disabled={isBusy} />
                         </label>
                         <label>
@@ -1048,12 +1048,12 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           <input
                             name="tags"
                             defaultValue={image.tags.map((tag) => tag.label).join(', ')}
-                            placeholder="Kommagetrennt"
+                            placeholder="Comma separated"
                             disabled={isBusy}
                           />
                         </label>
                         <label>
-                          <span>Besitzer:in</span>
+                          <span>Owner</span>
                           <select name="ownerId" defaultValue={image.owner.id} disabled={isBusy}>
                             {userOptions.map((option) => (
                               <option key={option.id} value={option.id}>
@@ -1087,7 +1087,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                       </div>
                       <div className="admin-row__cell admin-row__cell--actions">
                         <button type="submit" className="button" disabled={isBusy}>
-                          Speichern
+                          Save
                         </button>
                         <button
                           type="button"
@@ -1095,7 +1095,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           onClick={() => handleDeleteImage(image)}
                           disabled={isBusy}
                         >
-                          Löschen
+                          Delete
                         </button>
                       </div>
                     </form>
@@ -1111,20 +1111,20 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         <div className="admin__panel">
           <section className="admin__section">
             <div className="admin__section-header">
-              <h3>Galerien &amp; Alben</h3>
+              <h3>Galleries &amp; albums</h3>
               <div className="admin__filters">
                 <label>
-                  <span>Suche</span>
+                  <span>Search</span>
                   <input
                     type="search"
                     value={galleryFilter.query}
                     onChange={(event) => setGalleryFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
-                    placeholder="Titel oder Slug"
+                    placeholder="Title or slug"
                     disabled={isBusy}
                   />
                 </label>
                 <label>
-                  <span>Besitzer:in</span>
+                  <span>Owner</span>
                   <select
                     value={galleryFilter.owner}
                     onChange={(event) =>
@@ -1132,7 +1132,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                     }
                     disabled={isBusy}
                   >
-                    <option value="all">Alle</option>
+                    <option value="all">All</option>
                     {userOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.label}
@@ -1141,7 +1141,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   </select>
                 </label>
                 <label>
-                  <span>Sichtbarkeit</span>
+                  <span>Visibility</span>
                   <select
                     value={galleryFilter.visibility}
                     onChange={(event) =>
@@ -1152,9 +1152,9 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                     }
                     disabled={isBusy}
                   >
-                    <option value="all">Alle</option>
-                    <option value="public">Öffentlich</option>
-                    <option value="private">Privat</option>
+                    <option value="all">All</option>
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
                   </select>
                 </label>
               </div>
@@ -1163,55 +1163,55 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
             <div className="admin__table" role="grid">
               <div className="admin__table-header" role="row">
                 <span className="admin__table-cell" role="columnheader">
-                  Galerie
+                  Gallery
                 </span>
                 <span className="admin__table-cell" role="columnheader">
-                  Metadaten &amp; Einträge
+                  Metadata &amp; entries
                 </span>
                 <span className="admin__table-cell admin__table-cell--actions" role="columnheader">
-                  Aktionen
+                  Actions
                 </span>
               </div>
               <div className="admin__table-body">
                 {filteredGalleries.length === 0 ? (
-                  <p className="admin__empty">Keine Galerien vorhanden.</p>
+                  <p className="admin__empty">No galleries available.</p>
                 ) : (
                   filteredGalleries.map((gallery) => (
                     <form
                       key={gallery.id}
                       className="admin-row admin-row--wide"
                       onSubmit={(event) => handleUpdateGallery(event, gallery)}
-                      aria-label={`Einstellungen für ${gallery.title}`}
+                      aria-label={`Settings for ${gallery.title}`}
                     >
                       <div className="admin-row__cell admin-row__cell--meta">
                         <h4>{gallery.title}</h4>
                         <span className="admin-row__subtitle">Slug: {gallery.slug}</span>
                         <div className="admin-row__badges">
-                          <span className="admin-badge">{gallery.isPublic ? 'öffentlich' : 'privat'}</span>
+                          <span className="admin-badge">{gallery.isPublic ? 'public' : 'private'}</span>
                           <span className="admin-badge admin-badge--muted">
-                            {new Date(gallery.updatedAt).toLocaleDateString('de-DE')}
+                            {new Date(gallery.updatedAt).toLocaleDateString('en-US')}
                           </span>
-                          <span className="admin-badge">{gallery.entries.length} Einträge</span>
+                          <span className="admin-badge">{gallery.entries.length} entries</span>
                         </div>
                       </div>
                       <div className="admin-row__cell admin-row__cell--form">
                         <label>
-                          <span>Titel</span>
+                          <span>Title</span>
                           <input name="title" defaultValue={gallery.title} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Beschreibung</span>
+                          <span>Description</span>
                           <textarea name="description" rows={2} defaultValue={gallery.description ?? ''} disabled={isBusy} />
                         </label>
                         <label>
-                          <span>Sichtbarkeit</span>
+                          <span>Visibility</span>
                           <select name="visibility" defaultValue={gallery.isPublic ? 'public' : 'private'} disabled={isBusy}>
-                            <option value="public">Öffentlich</option>
-                            <option value="private">Privat</option>
+                            <option value="public">Public</option>
+                            <option value="private">Private</option>
                           </select>
                         </label>
                         <label>
-                          <span>Besitzer:in</span>
+                          <span>Owner</span>
                           <select name="ownerId" defaultValue={gallery.owner.id} disabled={isBusy}>
                             {userOptions.map((option) => (
                               <option key={option.id} value={option.id}>
@@ -1221,24 +1221,24 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           </select>
                         </label>
                         <label>
-                          <span>Cover-Storage-Pfad</span>
+                          <span>Cover storage path</span>
                           <input
                             name="coverImage"
                             defaultValue={gallery.coverImage ?? ''}
-                            placeholder="leer lassen, um zu entfernen"
+                            placeholder="leave empty to remove"
                             disabled={isBusy}
                           />
                         </label>
                         <div className="admin-gallery-entries">
-                          <h5>Einträge</h5>
+                          <h5>Entries</h5>
                           {gallery.entries.length === 0 ? (
-                            <p className="admin__empty admin__empty--sub">Noch keine Inhalte verknüpft.</p>
+                            <p className="admin__empty admin__empty--sub">No items linked yet.</p>
                           ) : (
                             gallery.entries.map((entry) => (
                               <fieldset key={entry.id} className="admin-gallery-entry">
                                 <legend>
                                   {entry.position + 1}.{' '}
-                                  {entry.modelAsset ? `Model: ${entry.modelAsset.title}` : entry.imageAsset ? `Bild: ${entry.imageAsset.title}` : 'Unverknüpft'}
+                                  {entry.modelAsset ? `Model: ${entry.modelAsset.title}` : entry.imageAsset ? `Image: ${entry.imageAsset.title}` : 'Unlinked'}
                                 </legend>
                                 <div className="admin-gallery-entry__grid">
                                   <label>
@@ -1253,11 +1253,11 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                                   </label>
                                   <label className="admin__checkbox admin-gallery-entry__remove">
                                     <input name={`entry-${entry.id}-remove`} type="checkbox" disabled={isBusy} />
-                                    <span>Entfernen</span>
+                                    <span>Remove</span>
                                   </label>
                                 </div>
                                 <label>
-                                  <span>Notiz</span>
+                                  <span>Note</span>
                                   <textarea
                                     name={`entry-${entry.id}-note`}
                                     rows={2}
@@ -1272,7 +1272,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                       </div>
                       <div className="admin-row__cell admin-row__cell--actions admin-row__cell--stacked">
                         <button type="submit" className="button" disabled={isBusy}>
-                          Speichern
+                          Save
                         </button>
                         <button
                           type="button"
@@ -1280,7 +1280,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                           onClick={() => handleDeleteGallery(gallery)}
                           disabled={isBusy}
                         >
-                          Löschen
+                          Delete
                         </button>
                       </div>
                     </form>

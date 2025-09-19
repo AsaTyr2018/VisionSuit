@@ -24,34 +24,34 @@ interface ServiceIndicator {
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   home: {
     title: 'Home',
-    description: 'Überblick über neue Modelle und Bild-Uploads – direkt aus Backend und Storage gespeist.',
+    description: 'Overview of recent models and image uploads—synchronized with the backend and storage.',
   },
   models: {
     title: 'Models',
-    description: 'LoRA-Explorer mit Volltextsuche, Typfiltern und Kurator:innen-Ansicht.',
+    description: 'LoRA explorer with full-text search, type filters, and curator tooling.',
   },
   images: {
     title: 'Images',
-    description: 'Bildgalerie mit Prompt-Details und kuratierten Sets für Präsentationen.',
+    description: 'Image gallery with prompt details and curated sets for presentations.',
   },
   admin: {
     title: 'Administration',
     description:
-      'Geführte Steuerzentrale mit Filter- und Bulk-Werkzeugen für Accounts, Modelle, Bilder und Galerien.',
+      'Guided control center with filters and bulk tools for accounts, models, images, and galleries.',
   },
 };
 
 const statusLabels: Record<ServiceState, string> = {
   online: 'Online',
   offline: 'Offline',
-  degraded: 'Eingeschränkt',
-  unknown: 'Unbekannt',
+  degraded: 'Degraded',
+  unknown: 'Unknown',
 };
 
 const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
-  frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
-  backend: { label: 'Backend', status: 'unknown', message: 'Status wird geprüft …' },
-  minio: { label: 'MinIO', status: 'unknown', message: 'Status wird geprüft …' },
+  frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
+  backend: { label: 'Backend', status: 'unknown', message: 'Status check in progress…' },
+  minio: { label: 'MinIO', status: 'unknown', message: 'Status check in progress…' },
 });
 
 export const App = () => {
@@ -86,24 +86,24 @@ export const App = () => {
     try {
       const status = await api.getServiceStatus();
       setServiceStatus({
-        frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
+        frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
         backend: {
           label: 'Backend',
           status: status.services.backend.status ?? 'online',
-          message: status.services.backend.message ?? 'API erreichbar.',
+          message: status.services.backend.message ?? 'API available.',
         },
         minio: {
           label: 'MinIO',
           status: status.services.minio.status ?? 'online',
-          message: status.services.minio.message ?? 'Storage verfügbar.',
+          message: status.services.minio.message ?? 'Storage available.',
         },
       });
     } catch (error) {
       console.error('Service status fetch failed', error);
       setServiceStatus({
-        frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
-        backend: { label: 'Backend', status: 'offline', message: 'Backend nicht erreichbar.' },
-        minio: { label: 'MinIO', status: 'offline', message: 'Storage nicht erreichbar.' },
+        frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
+        backend: { label: 'Backend', status: 'offline', message: 'Backend unavailable.' },
+        minio: { label: 'MinIO', status: 'offline', message: 'Storage unavailable.' },
       });
     }
   }, []);
@@ -134,7 +134,7 @@ export const App = () => {
       setErrorMessage(null);
     } catch (error) {
       console.error(error);
-      setErrorMessage('Backend noch nicht erreichbar. Bitte Server prüfen oder später erneut versuchen.');
+      setErrorMessage('Backend not reachable yet. Please check the server or try again later.');
       setUsers([]);
     } finally {
       setIsLoading(false);
@@ -178,7 +178,7 @@ export const App = () => {
         type: 'success',
         message:
           result.message ??
-          'Upload-Session wurde erstellt. Die Inhalte erscheinen nach Abschluss der Hintergrundanalyse.',
+          'Upload session created. Content will appear after the background analysis finishes.',
       });
       refreshData().catch((error) => console.error('Failed to refresh after upload', error));
     } else {
@@ -247,7 +247,7 @@ export const App = () => {
       setLoginError(null);
       await refreshData();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.';
+      const message = error instanceof Error ? error.message : 'Sign in failed.';
       setLoginError(message);
       throw error;
     } finally {
@@ -279,7 +279,7 @@ export const App = () => {
           {previewUrl ? (
             <img src={previewUrl} alt={asset.title} loading="lazy" />
           ) : (
-            <span className="home-card__placeholder">Kein Vorschaubild verfügbar</span>
+            <span className="home-card__placeholder">No preview available</span>
           )}
         </div>
         <div className="home-card__body">
@@ -290,7 +290,7 @@ export const App = () => {
               <dd>{modelType?.label ?? 'LoRA-Asset'}</dd>
             </div>
             <div>
-              <dt>Kurator:in</dt>
+              <dt>Curator</dt>
               <dd>{asset.owner.displayName}</dd>
             </div>
           </dl>
@@ -310,7 +310,7 @@ export const App = () => {
               {remainingTagCount > 0 ? <li className="home-card__tags-more">+{remainingTagCount}</li> : null}
             </ul>
           ) : (
-            <p className="home-card__tags-empty">Noch keine Tags vergeben.</p>
+            <p className="home-card__tags-empty">No tags assigned yet.</p>
           )}
         </div>
       </article>
@@ -329,7 +329,7 @@ export const App = () => {
           {imageUrl ? (
             <img src={imageUrl} alt={image.title} loading="lazy" />
           ) : (
-            <span className="home-card__placeholder">Kein Bild verfügbar</span>
+            <span className="home-card__placeholder">No image available</span>
           )}
         </div>
         <div className="home-card__body">
@@ -337,10 +337,10 @@ export const App = () => {
           <dl className="home-card__meta">
             <div>
               <dt>Model</dt>
-              <dd>{image.metadata?.model ?? 'Unbekannt'}</dd>
+              <dd>{image.metadata?.model ?? 'Unknown'}</dd>
             </div>
             <div>
-              <dt>Kurator:in</dt>
+              <dt>Curator</dt>
               <dd>{image.owner.displayName}</dd>
             </div>
           </dl>
@@ -360,7 +360,7 @@ export const App = () => {
               {remainingTagCount > 0 ? <li className="home-card__tags-more">+{remainingTagCount}</li> : null}
             </ul>
           ) : (
-            <p className="home-card__tags-empty">Noch keine Tags vergeben.</p>
+            <p className="home-card__tags-empty">No tags assigned yet.</p>
           )}
         </div>
       </article>
@@ -371,8 +371,8 @@ export const App = () => {
     <div className="home-grid">
       <section className="home-section">
         <header className="home-section__header">
-          <h2>Neueste Modelle</h2>
-          <p>Die jüngsten Uploads aus dem Model-Explorer als kompakte Kacheln.</p>
+          <h2>Latest models</h2>
+          <p>The most recent uploads from the model explorer presented as compact tiles.</p>
         </header>
         <div className="home-section__grid">
           {isLoading && assets.length === 0
@@ -380,14 +380,14 @@ export const App = () => {
             : modelTiles}
         </div>
         {!isLoading && modelTiles.length === 0 ? (
-          <p className="empty-state">Noch keine Modelle verfügbar.</p>
+          <p className="empty-state">No models available yet.</p>
         ) : null}
       </section>
 
       <section className="home-section">
         <header className="home-section__header">
-          <h2>Neueste Bilder</h2>
-          <p>Frisch gerenderte Referenzen inklusive Prompt-Auszügen.</p>
+          <h2>Latest images</h2>
+          <p>Freshly rendered references including prompt excerpts.</p>
         </header>
         <div className="home-section__grid">
           {isLoading && images.length === 0
@@ -395,7 +395,7 @@ export const App = () => {
             : imageTiles}
         </div>
         {!isLoading && imageTiles.length === 0 ? (
-          <p className="empty-state">Noch keine Bilder vorhanden.</p>
+          <p className="empty-state">No images available yet.</p>
         ) : null}
       </section>
     </div>
@@ -404,7 +404,7 @@ export const App = () => {
   const renderContent = () => {
     if (activeView === 'admin') {
       if (!authUser || authUser.role !== 'ADMIN' || !token) {
-        return <div className="content__alert">Administrationsbereich erfordert ein angemeldetes Admin-Konto.</div>;
+        return <div className="content__alert">The admin area requires a signed-in admin account.</div>;
       }
 
       return (
@@ -463,7 +463,7 @@ export const App = () => {
             <span className="sidebar__logo">VisionSuit</span>
             <span className="sidebar__tagline">AI Asset Control</span>
           </div>
-          <nav className="sidebar__nav" aria-label="Hauptnavigation">
+          <nav className="sidebar__nav" aria-label="Main navigation">
             {availableViews.map((view) => (
               <button
                 key={view}
@@ -480,9 +480,9 @@ export const App = () => {
             {isAuthenticated ? (
               <>
                 <p className="sidebar__auth-name">{authUser?.displayName}</p>
-                <p className="sidebar__auth-role">{authUser?.role === 'ADMIN' ? 'Administrator:in' : 'Kurator:in'}</p>
+                <p className="sidebar__auth-role">{authUser?.role === 'ADMIN' ? 'Administrator' : 'Curator'}</p>
                 <button type="button" className="sidebar__auth-button" onClick={handleLogout} disabled={isLoggingIn}>
-                  Abmelden
+                  Sign out
                 </button>
               </>
             ) : (
@@ -492,7 +492,7 @@ export const App = () => {
                 onClick={() => setIsLoginOpen(true)}
                 disabled={isLoggingIn}
               >
-                Anmelden
+                Sign in
               </button>
             )}
           </div>

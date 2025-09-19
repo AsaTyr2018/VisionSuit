@@ -68,31 +68,31 @@ export const ModelVersionDialog = ({ isOpen, onClose, model, token, onSuccess }:
 
     const trimmedVersion = version.trim();
     if (!token) {
-      setError('Bitte melde dich an, um eine neue Modellversion hochzuladen.');
+      setError('Please sign in to upload a new model version.');
       setDetails([]);
       return;
     }
 
     if (trimmedVersion.length === 0) {
-      setError('Bitte gib eine Versionsnummer an.');
+      setError('Please enter a version number.');
       setDetails([]);
       return;
     }
 
     if (!modelFile) {
-      setError('Bitte wähle die Safetensors-Datei aus.');
+      setError('Please select the safetensors file.');
       setDetails([]);
       return;
     }
 
     if (!modelFile.name.toLowerCase().endsWith('.safetensors')) {
-      setError('Die Modelldatei muss im Safetensors-Format vorliegen.');
+      setError('The model file must use the safetensors format.');
       setDetails([]);
       return;
     }
 
     if (!previewFile) {
-      setError('Bitte wähle ein Vorschaubild aus.');
+      setError('Please select a preview image.');
       setDetails([]);
       return;
     }
@@ -123,7 +123,7 @@ export const ModelVersionDialog = ({ isOpen, onClose, model, token, onSuccess }:
         setError(uploadError.message);
         setDetails([]);
       } else {
-        setError('Unbekannter Fehler beim Hochladen der Modellversion.');
+        setError('Unknown error while uploading the model version.');
         setDetails([]);
       }
     } finally {
@@ -139,30 +139,30 @@ export const ModelVersionDialog = ({ isOpen, onClose, model, token, onSuccess }:
     <div className="model-version-dialog" role="dialog" aria-modal="true" aria-labelledby="model-version-title" onClick={handleBackdropClick}>
       <div className="model-version-dialog__content">
         <header className="model-version-dialog__header">
-          <h3 id="model-version-title">Neue Version für {model.title}</h3>
+          <h3 id="model-version-title">New version for {model.title}</h3>
           <button
             type="button"
             className="model-version-dialog__close"
             onClick={onClose}
             disabled={isSubmitting}
           >
-            Schließen
+            Close
           </button>
         </header>
         <form className="model-version-dialog__form" onSubmit={handleSubmit}>
           <label className="model-version-dialog__field">
-            <span>Versionsnummer</span>
+            <span>Version number</span>
             <input
               type="text"
               value={version}
               onChange={(event) => setVersion(event.target.value)}
-              placeholder="z. B. 1.2.0"
+              placeholder="e.g. 1.2.0"
               disabled={isSubmitting}
               required
             />
           </label>
           <label className="model-version-dialog__field">
-            <span>Safetensors-Datei</span>
+            <span>Safetensors file</span>
             <input
               type="file"
               accept=".safetensors"
@@ -173,7 +173,7 @@ export const ModelVersionDialog = ({ isOpen, onClose, model, token, onSuccess }:
             {modelFile ? <small className="model-version-dialog__hint">{modelFile.name}</small> : null}
           </label>
           <label className="model-version-dialog__field">
-            <span>Vorschaubild</span>
+            <span>Preview image</span>
             <input
               type="file"
               accept="image/*"
@@ -199,10 +199,10 @@ export const ModelVersionDialog = ({ isOpen, onClose, model, token, onSuccess }:
 
           <footer className="model-version-dialog__actions">
             <button type="button" onClick={onClose} className="model-version-dialog__secondary" disabled={isSubmitting}>
-              Abbrechen
+              Cancel
             </button>
             <button type="submit" className="model-version-dialog__primary" disabled={isSubmitting || !token}>
-              {isSubmitting ? 'Lädt …' : 'Version hochladen'}
+              {isSubmitting ? 'Uploading…' : 'Upload version'}
             </button>
           </footer>
         </form>
