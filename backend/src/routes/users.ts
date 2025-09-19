@@ -24,6 +24,10 @@ const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+const bulkDeleteSchema = z.object({
+  ids: z.array(z.string().trim().min(1)).min(1),
+});
+
 export const usersRouter = Router();
 
 usersRouter.use(requireAuth, requireAdmin);
@@ -157,6 +161,50 @@ usersRouter.delete('/:id', async (req, res, next) => {
       return;
     }
 
+    next(error);
+  }
+});
+
+usersRouter.post('/bulk-delete', async (req, res, next) => {
+  try {
+    const parsed = bulkDeleteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Ungültige Anfrage.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const uniqueIds = Array.from(new Set(parsed.data.ids.filter((id) => id !== req.user?.id)));
+
+    if (uniqueIds.length === 0) {
+      res.status(400).json({ message: 'Keine gültigen Ziel-IDs übermittelt.' });
+      return;
+    }
+
+    const usersToDelete = await prisma.user.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true },
+    });
+
+    if (usersToDelete.length === 0) {
+      res.status(404).json({ message: 'Keine passenden Benutzer:innen gefunden.' });
+      return;
+    }
+
+    await prisma.user.deleteMany({
+      where: {
+        id: {
+          in: usersToDelete.map((user) => user.id),
+        },
+      },
+    });
+
+    res.json({ deleted: usersToDelete.map((user) => user.id) });
+  } catch (error) {
     next(error);
   }
 });

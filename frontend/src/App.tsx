@@ -37,7 +37,8 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   },
   admin: {
     title: 'Administration',
-    description: 'Benutzer-, Modell- und Bildverwaltung für Administrator:innen.',
+    description:
+      'Geführte Steuerzentrale mit Filter- und Bulk-Werkzeugen für Accounts, Modelle, Bilder und Galerien.',
   },
 };
 
@@ -369,6 +370,7 @@ export const App = () => {
           users={users}
           models={assets}
           images={images}
+          galleries={galleries}
           token={token}
           onRefresh={refreshData}
         />
