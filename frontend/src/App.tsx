@@ -69,7 +69,8 @@ export const App = () => {
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isUploadWizardOpen, setIsUploadWizardOpen] = useState(false);
+  const [isAssetUploadOpen, setIsAssetUploadOpen] = useState(false);
+  const [isGalleryUploadOpen, setIsGalleryUploadOpen] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [serviceStatus, setServiceStatus] = useState<Record<ServiceStatusKey, ServiceIndicator>>(createInitialStatus);
 
@@ -273,7 +274,7 @@ export const App = () => {
         <AssetExplorer
           assets={assets}
           isLoading={isLoading}
-          onStartUpload={() => setIsUploadWizardOpen(true)}
+          onStartUpload={() => setIsAssetUploadOpen(true)}
         />
       );
     }
@@ -282,7 +283,11 @@ export const App = () => {
       return (
         <div className="content__stack">
           <ImageGallery images={images} isLoading={isLoading} />
-          <GalleryExplorer galleries={galleries} isLoading={isLoading} />
+          <GalleryExplorer
+            galleries={galleries}
+            isLoading={isLoading}
+            onStartGalleryDraft={() => setIsGalleryUploadOpen(true)}
+          />
         </div>
       );
     }
@@ -350,7 +355,7 @@ export const App = () => {
                 <button
                   type="button"
                   className="content__action content__action--primary"
-                  onClick={() => setIsUploadWizardOpen(true)}
+                  onClick={() => setIsAssetUploadOpen(true)}
                 >
                   Upload starten
                 </button>
@@ -365,8 +370,15 @@ export const App = () => {
       </div>
 
       <UploadWizard
-        isOpen={isUploadWizardOpen}
-        onClose={() => setIsUploadWizardOpen(false)}
+        mode="asset"
+        isOpen={isAssetUploadOpen}
+        onClose={() => setIsAssetUploadOpen(false)}
+        onComplete={handleWizardCompletion}
+      />
+      <UploadWizard
+        mode="gallery"
+        isOpen={isGalleryUploadOpen}
+        onClose={() => setIsGalleryUploadOpen(false)}
         onComplete={handleWizardCompletion}
       />
     </div>

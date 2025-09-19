@@ -8,6 +8,7 @@ import { GalleryAlbum } from './GalleryAlbum';
 interface GalleryExplorerProps {
   galleries: Gallery[];
   isLoading: boolean;
+  onStartGalleryDraft: () => void;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -37,7 +38,7 @@ const matchesSearch = (gallery: Gallery, query: string) => {
 const galleryHasImage = (gallery: Gallery) => gallery.entries.some((entry) => Boolean(entry.imageAsset));
 const galleryHasModel = (gallery: Gallery) => gallery.entries.some((entry) => Boolean(entry.modelAsset));
 
-export const GalleryExplorer = ({ galleries, isLoading }: GalleryExplorerProps) => {
+export const GalleryExplorer = ({ galleries, isLoading, onStartGalleryDraft }: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
   const [entryFilter, setEntryFilter] = useState<EntryFilter>('all');
@@ -150,7 +151,9 @@ export const GalleryExplorer = ({ galleries, isLoading }: GalleryExplorerProps) 
             Sammlungen.
           </p>
         </div>
-        <button type="button" className="panel__action">Galerie-Entwurf starten</button>
+        <button type="button" className="panel__action" onClick={onStartGalleryDraft}>
+          Galerie-Entwurf starten
+        </button>
       </header>
 
       <div className="filter-toolbar" aria-label="Filter für Galerien">

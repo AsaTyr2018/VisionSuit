@@ -14,6 +14,7 @@ export class ApiError extends Error {
 
 interface CreateUploadDraftPayload {
   assetType: 'lora' | 'image';
+  context?: 'asset' | 'gallery';
   title: string;
   description?: string;
   visibility: 'private' | 'public';
@@ -30,7 +31,9 @@ interface CreateUploadDraftResponse {
   assetId?: string;
   assetSlug?: string;
   imageId?: string;
+  imageIds?: string[];
   gallerySlug?: string;
+  entryIds?: string[];
 }
 
 const request = async <T>(path: string): Promise<T> => {
@@ -67,6 +70,7 @@ const parseError = async (response: Response): Promise<never> => {
 const postUploadDraft = async (payload: CreateUploadDraftPayload) => {
   const formData = new FormData();
   formData.append('assetType', payload.assetType);
+  formData.append('context', payload.context ?? 'asset');
   formData.append('title', payload.title);
   formData.append('visibility', payload.visibility);
 
