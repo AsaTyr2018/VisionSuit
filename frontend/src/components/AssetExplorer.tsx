@@ -13,6 +13,8 @@ interface AssetExplorerProps {
   onNavigateToGallery?: (galleryId: string) => void;
   initialAssetId?: string | null;
   onCloseDetail?: () => void;
+  externalSearchQuery?: string | null;
+  onExternalSearchApplied?: () => void;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -257,6 +259,8 @@ export const AssetExplorer = ({
   onNavigateToGallery,
   initialAssetId,
   onCloseDetail,
+  externalSearchQuery,
+  onExternalSearchApplied,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -271,6 +275,16 @@ export const AssetExplorer = ({
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
+
+  useEffect(() => {
+    if (!externalSearchQuery) {
+      return;
+    }
+
+    setSearchTerm(externalSearchQuery);
+    setSelectedTags([]);
+    onExternalSearchApplied?.();
+  }, [externalSearchQuery, onExternalSearchApplied]);
 
   const { ownerOptions, tagOptions, typeOptions } = useMemo(() => {
     const ownersMap = new Map<string, OwnerOption>();

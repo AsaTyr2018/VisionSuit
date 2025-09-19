@@ -141,7 +141,7 @@ Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-
 - **Neue Shell** – Ein dauerhaft sichtbares Sidebar-Layout bündelt die Hauptnavigation (Home, Models, Images) und zeigt den Status von Frontend, Backend und MinIO auf einen Blick.
 - **Admin-Panel** – Skaliert für vierstellige Bestände mit Filterchips, Mehrfachauswahl, Bulk-Löschungen sowie direkter Galerie-
   und Albumbearbeitung inklusive Reihung und Metadatenpflege.
-- **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
+- **Home-Dashboard** – Zweigeteilte 5er-Grids für neue Modelle und Bilder mit klaren Meta-Blöcken (Name, Model, Kurator:in) und klickbaren Tag-Badges, die direkt in die gefilterten Explorer springen.
 - **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Dialog samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien.
 - **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination sowie eine dialogbasierte Detailansicht pro Sammlung mit EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
 - **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback – inklusive eigenem Galerie-Modus für Bildserien.

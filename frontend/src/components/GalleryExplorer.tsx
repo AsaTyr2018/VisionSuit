@@ -13,6 +13,8 @@ interface GalleryExplorerProps {
   onNavigateToModel?: (modelId: string) => void;
   initialGalleryId?: string | null;
   onCloseDetail?: () => void;
+  externalSearchQuery?: string | null;
+  onExternalSearchApplied?: () => void;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -93,12 +95,14 @@ const matchesSearch = (gallery: Gallery, query: string) => {
       if (entry.note) texts.push(entry.note);
       if (entry.imageAsset?.prompt) texts.push(entry.imageAsset.prompt);
       if (entry.imageAsset?.negativePrompt) texts.push(entry.imageAsset.negativePrompt);
+      entry.imageAsset?.tags.forEach((tag) => texts.push(tag.label));
       collectImageMetadataStrings(entry.imageAsset?.metadata).forEach((value) => texts.push(value));
       if (entry.modelAsset?.metadata) {
         collectModelMetadataStrings(entry.modelAsset.metadata as Record<string, unknown> | null).forEach((value) =>
           texts.push(value),
         );
       }
+      entry.modelAsset?.tags.forEach((tag) => texts.push(tag.label));
       return texts;
     }),
   ]
@@ -175,6 +179,8 @@ export const GalleryExplorer = ({
   onNavigateToModel,
   initialGalleryId,
   onCloseDetail,
+  externalSearchQuery,
+  onExternalSearchApplied,
 }: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
@@ -187,6 +193,15 @@ export const GalleryExplorer = ({
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
+
+  useEffect(() => {
+    if (!externalSearchQuery) {
+      return;
+    }
+
+    setSearchTerm(externalSearchQuery);
+    onExternalSearchApplied?.();
+  }, [externalSearchQuery, onExternalSearchApplied]);
 
   const ownerOptions = useMemo(() => {
     const ownersMap = new Map<string, { id: string; label: string }>();
