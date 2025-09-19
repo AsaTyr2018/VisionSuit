@@ -11,7 +11,7 @@ den Upload- und Kuration-Workflow.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
-- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectKey` durch das Backend geproxied, damit Modell- und Bildassets trotz internem MinIO-Endpunkt erreichbar bleiben.
+- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectPath` durch das Backend geproxied, damit Modell- und Bildassets trotz internem MinIO-Endpunkt erreichbar bleiben.
 
 ## Architekturüberblick
 
@@ -140,7 +140,7 @@ Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit
 - `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
 - `GET /api/assets/images` – Bild-Assets (Prompt, Modelldaten, Tags).
 - `GET /api/galleries` – Kuratierte Galerien mit zugehörigen Assets & Bildern.
-- `GET /api/storage/:bucket/:objectKey` – Proxied-Dateizugriff für MinIO-Objekte.
+- `GET /api/storage/:bucket/:objectPath` – Proxied-Dateizugriff für MinIO-Objekte.
 - `POST /api/uploads` – Legt eine UploadDraft-Session an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
 
 ## Datenmodell-Highlights
@@ -170,7 +170,7 @@ Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/S
   - Existiert bereits ein Container, kannst du ihn direkt weiterverwenden oder komfortabel neu provisionieren lassen.
 - Portainer CE lässt sich im selben Schritt (optional) bereitstellen und bietet dir ein Dashboard für MinIO und weitere Container.
 
-Da MinIO in vielen Setups nur intern erreichbar ist, übernimmt das Backend das Ausliefern der Dateien. Über den neuen Proxy-Endpunkt `/api/storage/:bucket/:objectKey` werden Content-Type, Dateigröße sowie Dateiname korrekt gesetzt, damit Downloads und Inline-Previews im Frontend zuverlässig funktionieren.
+Da MinIO in vielen Setups nur intern erreichbar ist, übernimmt das Backend das Ausliefern der Dateien. Über den neuen Proxy-Endpunkt `/api/storage/:bucket/:objectPath` werden Content-Type, Dateigröße sowie Dateiname korrekt gesetzt, damit Downloads und Inline-Previews im Frontend zuverlässig funktionieren.
 
 ## Rollback & Bereinigung
 
