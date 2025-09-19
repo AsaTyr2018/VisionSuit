@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { Router } from 'express';
 import { pipeline } from 'node:stream/promises';
 
+import { prisma } from '../lib/prisma';
 import { storageBuckets, storageClient } from '../lib/storage';
 
 const allowedBuckets = new Set(Object.values(storageBuckets));
@@ -11,19 +12,6 @@ const encodeFilename = (value: string) =>
 
 const encodeFilenameStar = (value: string) =>
   `UTF-8''${encodeURIComponent(value)}`;
-
-const toProxyObjectName = (raw?: string) => {
-  if (!raw) {
-    return null;
-  }
-
-  const normalized = raw.replace(/^\/+/, '');
-  if (!normalized) {
-    return null;
-  }
-
-  return normalized;
-};
 
 const sendNotFound = (res: Response) => {
   res.status(404).json({ message: 'Die angeforderte Datei wurde nicht gefunden.' });
@@ -44,8 +32,20 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const objectKeyParam = req.params.objectPath ?? req.params[0];
-    const objectName = toProxyObjectName(objectKeyParam);
+    const objectId = req.params.objectId;
+    if (!objectId) {
+      sendNotFound(res);
+      return;
+    }
+
+    const storageObject = await prisma.storageObject.findUnique({ where: { id: objectId } });
+
+    if (!storageObject || storageObject.bucket !== bucket) {
+      sendNotFound(res);
+      return;
+    }
+
+    const objectName = storageObject.objectName;
 
     if (!objectName) {
       sendNotFound(res);
@@ -69,13 +69,16 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
     const objectStream = isHeadRequest ? null : await storageClient.getObject(bucket, objectName);
 
     const contentType =
+      storageObject.contentType ??
       stat.metaData?.['content-type'] ??
       stat.metaData?.['Content-Type'] ??
       stat.metaData?.['Content-type'] ??
       'application/octet-stream';
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Length', stat.size.toString());
+    const contentLength =
+      storageObject.size != null ? storageObject.size.toString() : stat.size.toString();
+    res.setHeader('Content-Length', contentLength);
     res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
 
     if (stat.lastModified) {
@@ -86,7 +89,7 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
       res.setHeader('ETag', stat.etag.startsWith('"') ? stat.etag : `"${stat.etag}"`);
     }
 
-    const fileName = objectName.split('/').pop();
+    const fileName = storageObject.originalName ?? objectName.split('/').pop();
     if (fileName) {
       res.setHeader(
         'Content-Disposition',
@@ -107,5 +110,5 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
-storageRouter.get('/:bucket/:objectPath(*)', handleObjectRequest);
-storageRouter.head('/:bucket/:objectPath(*)', handleObjectRequest);
+storageRouter.get('/:bucket/:objectId', handleObjectRequest);
+storageRouter.head('/:bucket/:objectId', handleObjectRequest);

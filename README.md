@@ -11,7 +11,7 @@ den Upload- und Kuration-Workflow.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
-- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectPath` durch das Backend geproxied, damit Modell- und Bildassets trotz internem MinIO-Endpunkt erreichbar bleiben.
+- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
 
 ## Architekturüberblick
 
@@ -128,7 +128,7 @@ reagieren.
 ### Upload-Pipeline & Backend
 
 1. **Session anlegen** – Der Wizard legt per `POST /api/uploads` einen `UploadDraft` inklusive Owner, Sichtbarkeit, Tags und erwarteter Dateien an.
-2. **Direkter Storage-Ingest** – Dateien werden gestreamt nach MinIO übertragen (`s3://bucket/object`), inklusive SHA-256-Prüfsumme für LoRA-Safetensors und optionaler Preview-Grafiken.
+2. **Direkter Storage-Ingest** – Dateien werden gestreamt nach MinIO übertragen (`s3://bucket/<uuid>`). Das Backend vergibt dafür zufällige Objekt-IDs, speichert sie inklusive Dateiname, Content-Type und Größe in `StorageObject` und reicht nur die anonymisierte ID weiter.
 3. **Asset-Erzeugung & Linking** – Das Backend erzeugt sofort `ModelAsset`- bzw. `ImageAsset`-Datensätze, verknüpft Tags, erstellt auf Wunsch neue Galerien und setzt Cover-Bilder automatisch.
 4. **Explorer-Refresh & Audit** – UploadDrafts erhalten einen `processed`-Status, Explorer-Kacheln sind direkt sichtbar und alle Storage-Informationen (Bucket, Object-Key, Public-URL) werden im API-Response ausgespielt.
 
@@ -140,12 +140,13 @@ Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit
 - `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
 - `GET /api/assets/images` – Bild-Assets (Prompt, Modelldaten, Tags).
 - `GET /api/galleries` – Kuratierte Galerien mit zugehörigen Assets & Bildern.
-- `GET /api/storage/:bucket/:objectPath` – Proxied-Dateizugriff für MinIO-Objekte.
+- `GET /api/storage/:bucket/:objectId` – Proxied-Dateizugriff über ID-Auflösung in der Datenbank.
 - `POST /api/uploads` – Legt eine UploadDraft-Session an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
 
 ## Datenmodell-Highlights
 - **User** verwaltet Kurator:innen inklusive Rollen & Profilinfos.
 - **ModelAsset** & **ImageAsset** besitzen eindeutige `storagePath`-Constraints für Dateiverweise.
+- **StorageObject** verwaltet Bucket, Objekt-ID, Originalnamen und Metadaten, damit Downloads trotz anonymisierter Pfade den richtigen Dateinamen behalten.
 - **Gallery** bündelt Assets/Bilder über `GalleryEntry` (Positionierung + Notizen).
 - **Tag** wird über Pivot-Tabellen (`AssetTag`, `ImageTag`) zugewiesen.
 - **UploadDraft** protokolliert Upload-Sessions mit Dateiliste, Gesamtgröße, Status und Audit-Timestamps.
@@ -170,7 +171,7 @@ Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/S
   - Existiert bereits ein Container, kannst du ihn direkt weiterverwenden oder komfortabel neu provisionieren lassen.
 - Portainer CE lässt sich im selben Schritt (optional) bereitstellen und bietet dir ein Dashboard für MinIO und weitere Container.
 
-Da MinIO in vielen Setups nur intern erreichbar ist, übernimmt das Backend das Ausliefern der Dateien. Über den neuen Proxy-Endpunkt `/api/storage/:bucket/:objectPath` werden Content-Type, Dateigröße sowie Dateiname korrekt gesetzt, damit Downloads und Inline-Previews im Frontend zuverlässig funktionieren.
+Da MinIO in vielen Setups nur intern erreichbar ist, übernimmt das Backend das Ausliefern der Dateien. Über den Proxy-Endpunkt `/api/storage/:bucket/:objectId` wird die Objekt-ID zunächst in `StorageObject` aufgelöst, anschließend Content-Type, Dateigröße sowie ursprünglicher Dateiname gesetzt – Downloads und Inline-Previews im Frontend funktionieren damit trotz anonymisierter MinIO-Pfade zuverlässig.
 
 ## Rollback & Bereinigung
 

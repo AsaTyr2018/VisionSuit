@@ -120,6 +120,19 @@ model AssetTag {
   @@id([assetId, tagId])
 }
 
+model StorageObject {
+  id           String   @id
+  bucket       String
+  objectName   String
+  originalName String?
+  contentType  String?
+  size         BigInt?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([bucket, objectName])
+}
+
 model UploadDraft {
   id            String   @id @default(cuid())
   assetType     String
