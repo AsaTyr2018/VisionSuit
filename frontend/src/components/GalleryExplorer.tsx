@@ -152,7 +152,7 @@ export const GalleryExplorer = ({ galleries, isLoading, onStartGalleryDraft }: G
           </p>
         </div>
         <button type="button" className="panel__action" onClick={onStartGalleryDraft}>
-          Galerie-Entwurf starten
+          Galerie-Upload öffnen
         </button>
       </header>
 

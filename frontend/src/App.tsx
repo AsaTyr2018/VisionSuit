@@ -475,18 +475,6 @@ export const App = () => {
                 <h1 className="content__title">{viewMeta[activeView].title}</h1>
                 <p className="content__subtitle">{viewMeta[activeView].description}</p>
               </div>
-              <div className="content__actions">
-                <button type="button" className="content__action" onClick={() => refreshData()}>
-                  Aktualisieren
-                </button>
-                <button
-                  type="button"
-                  className="content__action content__action--primary"
-                  onClick={handleOpenAssetUpload}
-                >
-                  Upload starten
-                </button>
-              </div>
             </header>
 
             {errorMessage ? <div className="content__alert">{errorMessage}</div> : null}
