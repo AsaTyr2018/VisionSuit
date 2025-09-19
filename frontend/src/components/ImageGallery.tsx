@@ -22,9 +22,9 @@ const matchesSearch = (image: ImageAsset, query: string) => {
     image.title,
     image.prompt ?? '',
     image.negativePrompt ?? '',
-    image.metadata.model ?? '',
-    image.metadata.sampler ?? '',
-    image.metadata.seed ?? '',
+    image.metadata?.model ?? '',
+    image.metadata?.sampler ?? '',
+    image.metadata?.seed ?? '',
     ...image.tags.map((tag) => tag.label ?? ''),
   ]
     .map((entry) => normalize(entry))
@@ -147,11 +147,11 @@ export const ImageGallery = ({ images, isLoading }: ImageGalleryProps) => {
                       </div>
                       <div>
                         <dt>Model</dt>
-                        <dd>{image.metadata.model ?? 'Unbekannt'}</dd>
+                        <dd>{image.metadata?.model ?? 'Unbekannt'}</dd>
                       </div>
                       <div>
                         <dt>Sampler</dt>
-                        <dd>{image.metadata.sampler ?? '–'}</dd>
+                        <dd>{image.metadata?.sampler ?? '–'}</dd>
                       </div>
                     </dl>
                     {image.tags.length > 0 ? (

@@ -48,7 +48,7 @@ export interface ImageAsset {
   storageObject?: string | null;
   prompt?: string | null;
   negativePrompt?: string | null;
-  metadata: ImageAssetMetadata;
+  metadata?: ImageAssetMetadata | null;
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
