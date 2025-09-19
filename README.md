@@ -137,7 +137,8 @@ Standard-Ports:
 Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-Transparenz und datengetriebenen Explorern:
 
 - **Neue Shell** – Ein dauerhaft sichtbares Sidebar-Layout bündelt die Hauptnavigation (Home, Models, Images) und zeigt den Status von Frontend, Backend und MinIO auf einen Blick.
-- **Admin-Panel** – Eigener Bereich für Administrator:innen mit Benutzerverwaltung (CRUD), Asset-Neuzuordnung, Tag-Editing und Lösch-Workflows für Modelle und Bilder.
+- **Admin-Panel** – Skaliert für vierstellige Bestände mit Filterchips, Mehrfachauswahl, Bulk-Löschungen sowie direkter Galerie-
+  und Albumbearbeitung inklusive Reihung und Metadatenpflege.
 - **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
 - **Models** – Der ausgebaute Model Explorer bleibt Dreh- und Angelpunkt für LoRA-Recherchen mit Volltext, Typ- und Größenfiltern sowie Lazy-Loading.
 - **Images** – Die Bildgalerie kombiniert Volltextsuche, Sortierung und Tag-Anrisse mit kuratierten Alben samt Collage-Layout und Zoom-Lightbox.
@@ -177,6 +178,11 @@ Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit
 - `POST /api/users` – Neue Benutzer:innen anlegen (Admin-only).
 - `PUT /api/users/:id` – Bestehende Accounts pflegen, deaktivieren oder Passwort neu setzen (Admin-only).
 - `DELETE /api/users/:id` – Benutzer:innen löschen (Admin-only, kein Self-Delete).
+- `POST /api/users/bulk-delete` – Mehrere Accounts in einem Schritt entfernen (Admin-only).
+- `POST /api/assets/models/bulk-delete` – Bulk-Löschung von Modellen inkl. Storage-Bereinigung.
+- `POST /api/assets/images/bulk-delete` – Bulk-Löschung von Bildern und Cover-Bereinigung.
+- `PUT /api/galleries/:id` – Galerie-Metadaten, Sichtbarkeit und Reihenfolge bearbeiten.
+- `DELETE /api/galleries/:id` – Galerie inklusive Einträge löschen (Admin oder Owner).
 
 ## Datenmodell-Highlights
 - **User** verwaltet Kurator:innen inklusive Rollen & Profilinfos.

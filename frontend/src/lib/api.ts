@@ -44,6 +44,16 @@ interface CreateUploadDraftResponse {
   entryIds?: string[];
 }
 
+interface UpdateGalleryPayload {
+  title?: string;
+  description?: string | null;
+  ownerId?: string;
+  isPublic?: boolean;
+  coverImage?: string | null;
+  entries?: { id: string; position: number; note?: string | null }[];
+  removeEntryIds?: string[];
+}
+
 const request = async <T>(path: string, options: RequestInit = {}, token?: string): Promise<T> => {
   const headers = new Headers(options.headers ?? {});
 
@@ -174,6 +184,15 @@ export const api = {
       token,
     ),
   deleteUser: (token: string, id: string) => request(`/api/users/${id}`, { method: 'DELETE' }, token),
+  bulkDeleteUsers: (token: string, ids: string[]) =>
+    request<{ deleted: string[] }>(
+      '/api/users/bulk-delete',
+      {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      },
+      token,
+    ),
   updateModelAsset: (
     token: string,
     id: string,
@@ -188,6 +207,15 @@ export const api = {
       token,
     ),
   deleteModelAsset: (token: string, id: string) => request(`/api/assets/models/${id}`, { method: 'DELETE' }, token),
+  bulkDeleteModelAssets: (token: string, ids: string[]) =>
+    request<{ deleted: string[] }>(
+      '/api/assets/models/bulk-delete',
+      {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      },
+      token,
+    ),
   updateImageAsset: (
     token: string,
     id: string,
@@ -216,4 +244,23 @@ export const api = {
       token,
     ),
   deleteImageAsset: (token: string, id: string) => request(`/api/assets/images/${id}`, { method: 'DELETE' }, token),
+  bulkDeleteImageAssets: (token: string, ids: string[]) =>
+    request<{ deleted: string[] }>(
+      '/api/assets/images/bulk-delete',
+      {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      },
+      token,
+    ),
+  updateGallery: (token: string, id: string, payload: UpdateGalleryPayload) =>
+    request<Gallery>(
+      `/api/galleries/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  deleteGallery: (token: string, id: string) => request(`/api/galleries/${id}`, { method: 'DELETE' }, token),
 };

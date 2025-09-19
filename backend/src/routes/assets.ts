@@ -185,6 +185,10 @@ const updateImageSchema = z.object({
   ownerId: z.string().trim().min(1).optional(),
 });
 
+const bulkDeleteSchema = z.object({
+  ids: z.array(z.string().trim().min(1)).min(1),
+});
+
 export const assetsRouter = Router();
 
 assetsRouter.get('/models', async (_req, res, next) => {
@@ -214,6 +218,137 @@ assetsRouter.get('/images', async (_req, res, next) => {
     });
 
     res.json(images.map(mapImageAsset));
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/bulk-delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const parsed = bulkDeleteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Ungültige Anfrage.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const ids = Array.from(new Set(parsed.data.ids));
+    const assets = await prisma.modelAsset.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, ownerId: true, storagePath: true, previewImage: true },
+    });
+
+    if (assets.length === 0) {
+      res.status(404).json({ message: 'Keine passenden Modelle gefunden.' });
+      return;
+    }
+
+    const isAdmin = req.user.role === 'ADMIN';
+    const unauthorized = assets.filter((asset) => !isAdmin && asset.ownerId !== req.user?.id);
+
+    if (unauthorized.length > 0) {
+      res.status(403).json({ message: 'Mindestens ein Modell gehört nicht zum eigenen Bestand.' });
+      return;
+    }
+
+    const deletionPlan = assets.map((asset) => ({
+      id: asset.id,
+      storage: resolveStorageLocation(asset.storagePath),
+      preview: resolveStorageLocation(asset.previewImage),
+      previewImage: asset.previewImage,
+    }));
+
+    await prisma.$transaction(async (tx) => {
+      for (const entry of deletionPlan) {
+        await tx.galleryEntry.deleteMany({ where: { assetId: entry.id } });
+        await tx.assetTag.deleteMany({ where: { assetId: entry.id } });
+        if (entry.storage.objectName) {
+          await tx.storageObject.deleteMany({ where: { id: entry.storage.objectName } });
+        }
+        if (entry.preview.objectName) {
+          await tx.storageObject.deleteMany({ where: { id: entry.preview.objectName } });
+        }
+        if (entry.previewImage) {
+          await tx.gallery.updateMany({ where: { coverImage: entry.previewImage }, data: { coverImage: null } });
+        }
+        await tx.modelAsset.delete({ where: { id: entry.id } });
+      }
+    });
+
+    await Promise.all(
+      deletionPlan.map(async (entry) => {
+        await removeStorageObject(entry.storage.bucket, entry.storage.objectName);
+        await removeStorageObject(entry.preview.bucket, entry.preview.objectName);
+      }),
+    );
+
+    res.json({ deleted: deletionPlan.map((entry) => entry.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/images/bulk-delete', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const parsed = bulkDeleteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Ungültige Anfrage.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const ids = Array.from(new Set(parsed.data.ids));
+    const images = await prisma.imageAsset.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, ownerId: true, storagePath: true },
+    });
+
+    if (images.length === 0) {
+      res.status(404).json({ message: 'Keine passenden Bilder gefunden.' });
+      return;
+    }
+
+    const isAdmin = req.user.role === 'ADMIN';
+    const unauthorized = images.filter((image) => !isAdmin && image.ownerId !== req.user?.id);
+
+    if (unauthorized.length > 0) {
+      res.status(403).json({ message: 'Mindestens ein Bild gehört nicht zum eigenen Bestand.' });
+      return;
+    }
+
+    const deletionPlan = images.map((image) => ({
+      id: image.id,
+      storage: resolveStorageLocation(image.storagePath),
+      storagePath: image.storagePath,
+    }));
+
+    await prisma.$transaction(async (tx) => {
+      for (const entry of deletionPlan) {
+        await tx.galleryEntry.deleteMany({ where: { imageId: entry.id } });
+        await tx.imageTag.deleteMany({ where: { imageId: entry.id } });
+        if (entry.storage.objectName) {
+          await tx.storageObject.deleteMany({ where: { id: entry.storage.objectName } });
+        }
+        await tx.gallery.updateMany({ where: { coverImage: entry.storagePath }, data: { coverImage: null } });
+        await tx.imageAsset.delete({ where: { id: entry.id } });
+      }
+    });
+
+    await Promise.all(
+      deletionPlan.map(async (entry) => {
+        await removeStorageObject(entry.storage.bucket, entry.storage.objectName);
+      }),
+    );
+
+    res.json({ deleted: deletionPlan.map((entry) => entry.id) });
   } catch (error) {
     next(error);
   }
