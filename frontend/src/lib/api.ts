@@ -1,4 +1,4 @@
-import type { Gallery, MetaStats, ModelAsset } from '../types/api';
+import type { Gallery, ImageAsset, MetaStats, ModelAsset, ServiceStatusResponse } from '../types/api';
 
 import { buildApiUrl } from '../config';
 
@@ -115,5 +115,7 @@ export const api = {
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: () => request<ModelAsset[]>('/api/assets/models'),
   getGalleries: () => request<Gallery[]>('/api/galleries'),
+  getImageAssets: () => request<ImageAsset[]>('/api/assets/images'),
+  getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
   createUploadDraft: postUploadDraft,
 };

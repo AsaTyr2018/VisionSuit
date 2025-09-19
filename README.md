@@ -6,6 +6,7 @@ den Upload- und Kuration-Workflow.
 
 ## Highlights
 
+- **Dashboard-Navigation** – Linke Seitenleiste mit direkter Umschaltung zwischen Home, Models und Images sowie Live-Service-Status für Frontend, Backend und MinIO.
 - **Upload-Wizard** – dreistufiger Assistent für Basisdaten, Dateiupload & Review inklusive Validierungen, Drag & Drop sowie Rückmeldung aus dem produktiven Upload-Endpunkt (`POST /api/uploads`).
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
@@ -114,16 +115,15 @@ Standard-Ports:
 
 ## Frontend-Erlebnis
 
-Der aktuelle Prototyp setzt auf ein produktionsnahes Panel mit Echtzeitdaten und hochwertiger UI:
+Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-Transparenz und datengetriebenen Explorern:
 
-- **Produktionsstartseite** – Sticky-Topbar mit Statusindikator, Hero-Layout samt Pipeline-Karte, Trust-Metriken und CTA-Panels für sofortige Aktionen.
-- **Upload-Wizard** – Start aus Hero, Topbar oder LoRA-Explorer, validiert Pflichtangaben, verwaltet Tag-Chips, Drag-and-Drop-Dateien und übergibt an den realen Upload-Endpunkt inklusive Server-Feedback.
-- **LoRA-Datenbank** – Volltextsuche, Tag- und Typ-Filter, Dateigrößen-Buckets sowie Kurator:innen-Auswahl. Ein Lazy-Loading reduziert das Rendering bei mehr als 100.000 Assets auf handliche Batches.
-- **Galerie-Explorer** – Sichtbarkeitsumschalter, Inhaltstyp-Filter (Bilder, LoRAs, leere Galerien) und Sortierungen nach Aktualität oder Umfang. Ein Vorschauraster zeigt die ersten Einträge jeder Galerie.
-- **Filter-Feedback** – Aktive Filter werden als Badges visualisiert und lassen sich einzeln oder gesammelt zurücksetzen, um den Workflow transparent zu halten.
+- **Neue Shell** – Ein dauerhaft sichtbares Sidebar-Layout bündelt die Hauptnavigation (Home, Models, Images) und zeigt den Status von Frontend, Backend und MinIO auf einen Blick.
+- **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
+- **Models** – Der ausgebaute Model Explorer bleibt Dreh- und Angelpunkt für LoRA-Recherchen mit Volltext, Typ- und Größenfiltern sowie Lazy-Loading.
+- **Images** – Die Bildgalerie kombiniert Volltextsuche, Sortierung und Tag-Anrisse mit dem bestehenden Galerie-Explorer für kuratierte Sets.
+- **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback.
 
-Die Filterleisten nutzen ausschließlich clientseitige Daten und können ohne zusätzliche Servercalls auf große Resultsets
-reagieren.
+Die Explorer-Filter arbeiten vollständig clientseitig und reagieren selbst auf große Datenmengen ohne zusätzliche Server-Requests.
 
 ### Upload-Pipeline & Backend
 
