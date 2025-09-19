@@ -45,6 +45,24 @@ const requireString = (value: string | undefined, key: string, fallback?: string
   throw new Error(`Missing required configuration value for ${key}`);
 };
 
+const toExpiresIn = (value: string | undefined, fallback: string | number): string | number => {
+  if (!value) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return fallback;
+  }
+
+  const numeric = Number.parseInt(trimmed, 10);
+  if (!Number.isNaN(numeric) && numeric >= 0) {
+    return numeric;
+  }
+
+  return trimmed;
+};
+
 const storageDriver = process.env.STORAGE_DRIVER ?? 'minio';
 
 if (storageDriver !== 'minio') {
@@ -70,6 +88,14 @@ export const appConfig = {
   host: process.env.HOST ?? '0.0.0.0',
   port: toNumber(process.env.PORT, 4000),
   databaseUrl: process.env.DATABASE_URL ?? 'file:./dev.db',
+  auth: {
+    jwtSecret: requireString(
+      process.env.AUTH_JWT_SECRET,
+      'AUTH_JWT_SECRET',
+      'visionsuit-dev-secret-change-me',
+    ),
+    tokenExpiresIn: toExpiresIn(process.env.AUTH_TOKEN_EXPIRES_IN, '12h'),
+  },
   storage: {
     driver: storageDriver,
     endpoint: minioHost,

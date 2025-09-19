@@ -7,6 +7,7 @@ den Upload- und Kuration-Workflow.
 ## Highlights
 
 - **Dashboard-Navigation** – Linke Seitenleiste mit direkter Umschaltung zwischen Home, Models und Images sowie Live-Service-Status für Frontend, Backend und MinIO.
+- **Rollenbasierte Authentifizierung** – Login-Dialog mit JWT-Token, persistiertem Zustand und Admin-Dashboard für Benutzer-, Modell- und Bildverwaltung.
 - **Upload-Wizard** – dreistufiger Assistent für Basisdaten, Dateiupload & Review inklusive Validierungen, Drag & Drop sowie Rückmeldung aus dem produktiven Upload-Endpunkt (`POST /api/uploads`).
 - **Galerie-Entwürfe** – separater Bild-Upload aus dem Galerie-Explorer, Multi-Upload (bis 12 Dateien/2 GB) mit automatischer Galerie-Auswahl oder -Neuanlage.
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
@@ -53,6 +54,21 @@ Funktionen im Überblick:
 - Optionaler Direktaufruf von `npm run prisma:migrate` und `npm run seed` (Bestätigung per Prompt).
 
 Nach Abschluss ist das Projekt sofort bereit für den Entwicklungsstart mit `./dev-start.sh`.
+
+### Initialer Admin-Account via CLI
+
+Der Upload- und Administrationsbereich setzt ein angemeldetes Konto voraus. Ein initiales Admin-Profil lässt sich direkt per SSH auf der Zielmaschine einrichten:
+
+```bash
+cd backend
+npm run create-admin -- \
+  --email=admin@example.com \
+  --password="super-sicheres-passwort" \
+  --name="VisionSuit Admin" \
+  --bio="Optionaler Profiltext"
+```
+
+Das Skript erstellt den Account (oder aktualisiert ihn bei erneutem Aufruf) mit der Rolle `ADMIN`, aktiviert ihn und hinterlegt das gehashte Passwort in der Datenbank.
 
 ## Entwicklung starten
 
@@ -121,6 +137,7 @@ Standard-Ports:
 Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-Transparenz und datengetriebenen Explorern:
 
 - **Neue Shell** – Ein dauerhaft sichtbares Sidebar-Layout bündelt die Hauptnavigation (Home, Models, Images) und zeigt den Status von Frontend, Backend und MinIO auf einen Blick.
+- **Admin-Panel** – Eigener Bereich für Administrator:innen mit Benutzerverwaltung (CRUD), Asset-Neuzuordnung, Tag-Editing und Lösch-Workflows für Modelle und Bilder.
 - **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
 - **Models** – Der ausgebaute Model Explorer bleibt Dreh- und Angelpunkt für LoRA-Recherchen mit Volltext, Typ- und Größenfiltern sowie Lazy-Loading.
 - **Images** – Die Bildgalerie kombiniert Volltextsuche, Sortierung und Tag-Anrisse mit kuratierten Alben samt Collage-Layout und Zoom-Lightbox.
@@ -130,21 +147,28 @@ Die Explorer-Filter arbeiten vollständig clientseitig und reagieren selbst auf 
 
 ### Upload-Pipeline & Backend
 
-1. **Session anlegen** – Der Wizard legt per `POST /api/uploads` einen `UploadDraft` inklusive Owner, Sichtbarkeit, Tags und erwarteter Dateien an.
-2. **Direkter Storage-Ingest** – Dateien werden gestreamt nach MinIO übertragen (`s3://bucket/<uuid>`). Das Backend vergibt dafür zufällige Objekt-IDs, speichert sie inklusive Dateiname, Content-Type und Größe in `StorageObject` und reicht nur die anonymisierte ID weiter.
-3. **Asset-Erzeugung & Linking** – Das Backend erzeugt sofort `ModelAsset`- bzw. `ImageAsset`-Datensätze, verknüpft Tags, erstellt auf Wunsch neue Galerien und setzt Cover-Bilder automatisch.
-4. **Explorer-Refresh & Audit** – UploadDrafts erhalten einen `processed`-Status, Explorer-Kacheln sind direkt sichtbar und alle Storage-Informationen (Bucket, Object-Key, Public-URL) werden im API-Response ausgespielt.
+1. **Auth-Check** – Jeder Upload erfordert ein gültiges JWT; das Backend schlägt bei fehlender/abgelaufener Authentifizierung sofort mit `401` oder `403` fehl.
+2. **Session anlegen** – Der Wizard legt per `POST /api/uploads` einen `UploadDraft` inklusive Owner, Sichtbarkeit, Tags und erwarteter Dateien an.
+3. **Direkter Storage-Ingest** – Dateien werden gestreamt nach MinIO übertragen (`s3://bucket/<uuid>`). Das Backend vergibt dafür zufällige Objekt-IDs, speichert sie inklusive Dateiname, Content-Type und Größe in `StorageObject` und reicht nur die anonymisierte ID weiter.
+4. **Asset-Erzeugung & Linking** – Das Backend erzeugt sofort `ModelAsset`- bzw. `ImageAsset`-Datensätze, verknüpft Tags, erstellt auf Wunsch neue Galerien und setzt Cover-Bilder automatisch.
+5. **Explorer-Refresh & Audit** – UploadDrafts erhalten einen `processed`-Status, Explorer-Kacheln sind direkt sichtbar und alle Storage-Informationen (Bucket, Object-Key, Public-URL) werden im API-Response ausgespielt.
 
 Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit klaren Fehlermeldungen, sobald Größen- oder Anzahllimits überschritten werden.
 
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.
+- `POST /api/auth/login` – Authentifizierung via E-Mail/Passwort; liefert JWT und User-Details.
+- `GET /api/auth/me` – Prüft ein JWT und liefert das aktuelle Profil zurück.
 - `GET /api/meta/stats` – Aggregierte Kennzahlen (Assets, Galerien, Tags).
 - `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
 - `GET /api/assets/images` – Bild-Assets (Prompt, Modelldaten, Tags).
 - `GET /api/galleries` – Kuratierte Galerien mit zugehörigen Assets & Bildern.
 - `GET /api/storage/:bucket/:objectId` – Proxied-Dateizugriff über ID-Auflösung in der Datenbank.
-- `POST /api/uploads` – Legt eine UploadDraft-Session an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
+- `POST /api/uploads` – Legt eine UploadDraft-Session (nur mit gültigem Token) an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
+- `GET /api/users` – Administrations-Endpunkt für Benutzerlisten (JWT + Rolle `ADMIN` erforderlich).
+- `POST /api/users` – Neue Benutzer:innen anlegen (Admin-only).
+- `PUT /api/users/:id` – Bestehende Accounts pflegen, deaktivieren oder Passwort neu setzen (Admin-only).
+- `DELETE /api/users/:id` – Benutzer:innen löschen (Admin-only, kein Self-Delete).
 
 ## Datenmodell-Highlights
 - **User** verwaltet Kurator:innen inklusive Rollen & Profilinfos.

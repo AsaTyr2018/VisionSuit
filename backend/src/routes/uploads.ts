@@ -9,6 +9,7 @@ import { prisma } from '../lib/prisma';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, slugify } from '../lib/slug';
+import { requireAuth } from '../lib/middleware/auth';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -21,20 +22,6 @@ const upload = multer({
 type MulterFile = Express.Multer.File;
 
 const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
-
-const ensureDefaultOwner = async (tx: Prisma.TransactionClient) => {
-  const existing = await tx.user.findFirst({ orderBy: { createdAt: 'asc' } });
-  if (existing) {
-    return existing;
-  }
-
-  return tx.user.create({
-    data: {
-      email: `autogen-${Date.now()}@visionsuit.local`,
-      displayName: 'Auto Curator',
-    },
-  });
-};
 
 const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category?: string | null) => {
   const normalized = Array.from(
@@ -73,6 +60,7 @@ const resolveGallery = async (
   tx: Prisma.TransactionClient,
   payload: z.infer<typeof createUploadSchema>,
   ownerId: string,
+  actor: { id: string; role: string },
   fallbackCover?: string | null,
 ) => {
   if (payload.galleryMode === 'existing') {
@@ -83,7 +71,7 @@ const resolveGallery = async (
     const input = payload.targetGallery.trim();
     const slugCandidate = slugify(input);
 
-    return tx.gallery.findFirst({
+    const gallery = await tx.gallery.findFirst({
       where: {
         OR: [
           { slug: input.toLowerCase() },
@@ -92,6 +80,16 @@ const resolveGallery = async (
         ],
       },
     });
+
+    if (!gallery) {
+      return null;
+    }
+
+    if (actor.role !== 'ADMIN' && gallery.ownerId !== actor.id) {
+      throw Object.assign(new Error('FORBIDDEN_GALLERY'), { statusCode: 403 });
+    }
+
+    return gallery;
   }
 
   const galleryTitle = payload.targetGallery?.trim() || `${payload.title.trim()} Collection`;
@@ -175,7 +173,7 @@ const createUploadSchema = z
 
 export const uploadsRouter = Router();
 
-uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
+uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, next) => {
   try {
     const files = ((req as unknown as { files?: MulterFile[] }).files ?? []) as MulterFile[];
 
@@ -280,11 +278,22 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
         ? crypto.createHash('sha256').update(primaryFile.buffer).digest('hex')
         : undefined;
 
+    const actor = req.user;
+    if (!actor) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
     const previewStored = storageFiles.find((stored, index) => files[index]?.mimetype.startsWith('image/'));
 
     const result = await prisma.$transaction(async (tx) => {
-      const owner = await ensureDefaultOwner(tx);
-      const gallery = await resolveGallery(tx, payload, owner.id, previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null);
+      const gallery = await resolveGallery(
+        tx,
+        payload,
+        actor.id,
+        actor,
+        previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
+      );
 
       if (!gallery) {
         throw new Error('Gallery not found');
@@ -323,6 +332,7 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
           fileCount: files.length,
           totalSize: BigInt(totalSize),
           status: 'processed',
+          ownerId: actor.id,
         },
       });
 
@@ -369,7 +379,7 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
               visibility: payload.visibility,
               draftId: draft.id,
             },
-            ownerId: owner.id,
+            ownerId: actor.id,
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
             },
@@ -435,6 +445,7 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
             sampler: null,
             cfgScale: null,
             steps: null,
+            ownerId: actor.id,
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
             },
@@ -484,6 +495,19 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
           : 'Upload abgeschlossen. Dateien wurden nach MinIO übertragen und stehen im Explorer zur Verfügung.',
     });
   } catch (error) {
+    if (error instanceof Error) {
+      const statusCode = (error as { statusCode?: number }).statusCode;
+      if (statusCode === 403) {
+        res.status(403).json({ message: 'Zugriff auf die ausgewählte Galerie ist nicht gestattet.' });
+        return;
+      }
+
+      if (error.message === 'Gallery not found') {
+        res.status(404).json({ message: 'Die ausgewählte Galerie konnte nicht gefunden werden.' });
+        return;
+      }
+    }
+
     next(error);
   }
 });

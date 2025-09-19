@@ -2,6 +2,7 @@ import { appConfig } from './config';
 import { createApp } from './app';
 import { prisma } from './lib/prisma';
 import { initializeStorage } from './lib/storage';
+import './types/express';
 
 const start = async () => {
   try {

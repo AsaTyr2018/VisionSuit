@@ -4,6 +4,21 @@ export interface Tag {
   category?: string | null;
 }
 
+export type UserRole = 'CURATOR' | 'ADMIN';
+
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  isActive?: boolean;
+  lastLoginAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ModelAsset {
   id: string;
   slug: string;
@@ -49,6 +64,11 @@ export interface ImageAsset {
   prompt?: string | null;
   negativePrompt?: string | null;
   metadata?: ImageAssetMetadata | null;
+  owner: {
+    id: string;
+    displayName: string;
+    email: string;
+  };
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
@@ -101,4 +121,9 @@ export interface ServiceStatusResponse {
     backend: ServiceStatusDetails;
     minio: ServiceStatusDetails;
   };
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
 }
