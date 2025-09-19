@@ -1,4 +1,5 @@
 import { PrismaClient, UserRole } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -35,14 +36,18 @@ const ensureStorageObject = async (
 };
 
 const main = async () => {
+  const curatorPassword = await bcrypt.hash('curator123', 12);
+
   const curator = await prisma.user.upsert({
     where: { email: 'curator@visionsuit.local' },
-    update: {},
+    update: { passwordHash: curatorPassword, isActive: true },
     create: {
       email: 'curator@visionsuit.local',
       displayName: 'VisionSuit Curator',
       role: UserRole.CURATOR,
       bio: 'Kuratiert hochwertige KI-Galerien und Modell-Assets.',
+      passwordHash: curatorPassword,
+      isActive: true,
     },
   });
 
@@ -136,6 +141,7 @@ const main = async () => {
       sampler: 'DPM++ 2M',
       cfgScale: 7.5,
       steps: 30,
+      ownerId: curator.id,
       tags: {
         create: tags
           .filter((tag) => ['sci-fi', 'portrait', 'cinematic'].includes(tag.label))

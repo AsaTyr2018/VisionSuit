@@ -5,11 +5,14 @@ import { GalleryExplorer } from './components/GalleryExplorer';
 import { ImageGallery } from './components/ImageGallery';
 import { UploadWizard } from './components/UploadWizard';
 import type { UploadWizardResult } from './components/UploadWizard';
+import { LoginDialog } from './components/LoginDialog';
+import { AdminPanel } from './components/AdminPanel';
 import { api } from './lib/api';
+import { useAuth } from './lib/auth';
 import { resolveStorageUrl } from './lib/storage';
-import type { Gallery, ImageAsset, ModelAsset } from './types/api';
+import type { Gallery, ImageAsset, ModelAsset, User } from './types/api';
 
-type ViewKey = 'home' | 'models' | 'images';
+type ViewKey = 'home' | 'models' | 'images' | 'admin';
 type ServiceStatusKey = 'frontend' | 'backend' | 'minio';
 type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
 
@@ -31,6 +34,10 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   images: {
     title: 'Images',
     description: 'Bildgalerie mit Prompt-Details und kuratierten Sets für Präsentationen.',
+  },
+  admin: {
+    title: 'Administration',
+    description: 'Benutzer-, Modell- und Bildverwaltung für Administrator:innen.',
   },
 };
 
@@ -63,16 +70,28 @@ const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
 });
 
 export const App = () => {
+  const { user: authUser, token, isAuthenticated, login, logout } = useAuth();
   const [activeView, setActiveView] = useState<ViewKey>('home');
   const [assets, setAssets] = useState<ModelAsset[]>([]);
   const [images, setImages] = useState<ImageAsset[]>([]);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isAssetUploadOpen, setIsAssetUploadOpen] = useState(false);
   const [isGalleryUploadOpen, setIsGalleryUploadOpen] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [serviceStatus, setServiceStatus] = useState<Record<ServiceStatusKey, ServiceIndicator>>(createInitialStatus);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const availableViews = useMemo<ViewKey[]>(() => {
+    const views: ViewKey[] = ['home', 'models', 'images'];
+    if (authUser?.role === 'ADMIN') {
+      views.push('admin');
+    }
+    return views;
+  }, [authUser?.role]);
 
   const fetchServiceStatus = useCallback(async () => {
     try {
@@ -112,26 +131,57 @@ export const App = () => {
       setAssets(fetchedAssets);
       setGalleries(fetchedGalleries);
       setImages(fetchedImages);
+      if (token && authUser?.role === 'ADMIN') {
+        try {
+          const { users: fetchedUsers } = await api.getUsers(token);
+          setUsers(fetchedUsers);
+        } catch (userError) {
+          console.error('Failed to load users', userError);
+          setUsers([]);
+        }
+      } else {
+        setUsers([]);
+      }
       setErrorMessage(null);
     } catch (error) {
       console.error(error);
       setErrorMessage('Backend noch nicht erreichbar. Bitte Server prüfen oder später erneut versuchen.');
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }
 
     fetchServiceStatus().catch((statusError) => console.error('Failed to refresh service status', statusError));
-  }, [fetchServiceStatus]);
+  }, [fetchServiceStatus, token, authUser?.role]);
 
   useEffect(() => {
     refreshData().catch((error) => console.error('Unexpected fetch error', error));
   }, [refreshData]);
 
   useEffect(() => {
+    if (activeView === 'admin' && authUser?.role !== 'ADMIN') {
+      setActiveView('home');
+    }
+  }, [activeView, authUser?.role]);
+
+  useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 5000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    if (!isLoginOpen) {
+      setLoginError(null);
+    }
+  }, [isLoginOpen]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setIsAssetUploadOpen(false);
+      setIsGalleryUploadOpen(false);
+    }
+  }, [isAuthenticated]);
 
   const handleWizardCompletion = (result: UploadWizardResult) => {
     if (result.status === 'success') {
@@ -145,6 +195,46 @@ export const App = () => {
     } else {
       setToast({ type: 'error', message: result.message });
     }
+  };
+
+  const handleOpenAssetUpload = () => {
+    if (!isAuthenticated) {
+      setIsLoginOpen(true);
+      return;
+    }
+    setIsAssetUploadOpen(true);
+  };
+
+  const handleOpenGalleryUpload = () => {
+    if (!isAuthenticated) {
+      setIsLoginOpen(true);
+      return;
+    }
+    setIsGalleryUploadOpen(true);
+  };
+
+  const handleLoginSubmit = async (email: string, password: string) => {
+    setIsLoggingIn(true);
+    setLoginError(null);
+    try {
+      await login(email, password);
+      setIsLoginOpen(false);
+      setLoginError(null);
+      await refreshData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.';
+      setLoginError(message);
+      throw error;
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+    setUsers([]);
+    setActiveView('home');
+    refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   };
 
   const latestModels = useMemo(() => assets.slice(0, 6), [assets]);
@@ -269,12 +359,28 @@ export const App = () => {
   );
 
   const renderContent = () => {
+    if (activeView === 'admin') {
+      if (!authUser || authUser.role !== 'ADMIN' || !token) {
+        return <div className="content__alert">Administrationsbereich erfordert ein angemeldetes Admin-Konto.</div>;
+      }
+
+      return (
+        <AdminPanel
+          users={users}
+          models={assets}
+          images={images}
+          token={token}
+          onRefresh={refreshData}
+        />
+      );
+    }
+
     if (activeView === 'models') {
       return (
         <AssetExplorer
           assets={assets}
           isLoading={isLoading}
-          onStartUpload={() => setIsAssetUploadOpen(true)}
+          onStartUpload={handleOpenAssetUpload}
         />
       );
     }
@@ -286,7 +392,7 @@ export const App = () => {
           <GalleryExplorer
             galleries={galleries}
             isLoading={isLoading}
-            onStartGalleryDraft={() => setIsGalleryUploadOpen(true)}
+            onStartGalleryDraft={handleOpenGalleryUpload}
           />
         </div>
       );
@@ -304,7 +410,7 @@ export const App = () => {
             <span className="sidebar__tagline">AI Asset Control</span>
           </div>
           <nav className="sidebar__nav" aria-label="Hauptnavigation">
-            {(Object.keys(viewMeta) as ViewKey[]).map((view) => (
+            {availableViews.map((view) => (
               <button
                 key={view}
                 type="button"
@@ -315,6 +421,27 @@ export const App = () => {
               </button>
             ))}
           </nav>
+
+          <div className="sidebar__auth">
+            {isAuthenticated ? (
+              <>
+                <p className="sidebar__auth-name">{authUser?.displayName}</p>
+                <p className="sidebar__auth-role">{authUser?.role === 'ADMIN' ? 'Administrator:in' : 'Kurator:in'}</p>
+                <button type="button" className="sidebar__auth-button" onClick={handleLogout} disabled={isLoggingIn}>
+                  Abmelden
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="sidebar__auth-button sidebar__auth-button--primary"
+                onClick={() => setIsLoginOpen(true)}
+                disabled={isLoggingIn}
+              >
+                Anmelden
+              </button>
+            )}
+          </div>
 
           <div className="sidebar__status" aria-label="Service Status">
             <h2>Service Status</h2>
@@ -355,7 +482,7 @@ export const App = () => {
                 <button
                   type="button"
                   className="content__action content__action--primary"
-                  onClick={() => setIsAssetUploadOpen(true)}
+                  onClick={handleOpenAssetUpload}
                 >
                   Upload starten
                 </button>
@@ -380,6 +507,13 @@ export const App = () => {
         isOpen={isGalleryUploadOpen}
         onClose={() => setIsGalleryUploadOpen(false)}
         onComplete={handleWizardCompletion}
+      />
+      <LoginDialog
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSubmit={handleLoginSubmit}
+        isSubmitting={isLoggingIn}
+        errorMessage={loginError}
       />
     </div>
   );

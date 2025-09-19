@@ -1,4 +1,12 @@
-import type { Gallery, ImageAsset, MetaStats, ModelAsset, ServiceStatusResponse } from '../types/api';
+import type {
+  AuthResponse,
+  Gallery,
+  ImageAsset,
+  MetaStats,
+  ModelAsset,
+  ServiceStatusResponse,
+  User,
+} from '../types/api';
 
 import { buildApiUrl } from '../config';
 
@@ -36,11 +44,28 @@ interface CreateUploadDraftResponse {
   entryIds?: string[];
 }
 
-const request = async <T>(path: string): Promise<T> => {
-  const response = await fetch(buildApiUrl(path));
+const request = async <T>(path: string, options: RequestInit = {}, token?: string): Promise<T> => {
+  const headers = new Headers(options.headers ?? {});
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const body = options.body;
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (!isFormData && body && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(buildApiUrl(path), { ...options, headers });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    const message = await response.text().catch(() => null);
+    throw new Error(message || `API request failed: ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return (await response.json()) as T;
@@ -67,7 +92,7 @@ const parseError = async (response: Response): Promise<never> => {
   throw new ApiError(errorText || `Upload request failed: ${response.status}`);
 };
 
-const postUploadDraft = async (payload: CreateUploadDraftPayload) => {
+const postUploadDraft = async (payload: CreateUploadDraftPayload, token: string) => {
   const formData = new FormData();
   formData.append('assetType', payload.assetType);
   formData.append('context', payload.context ?? 'asset');
@@ -95,6 +120,7 @@ const postUploadDraft = async (payload: CreateUploadDraftPayload) => {
     const response = await fetch(buildApiUrl('/api/uploads'), {
       method: 'POST',
       body: formData,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
 
     if (!response.ok) {
@@ -122,4 +148,72 @@ export const api = {
   getImageAssets: () => request<ImageAsset[]>('/api/assets/images'),
   getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
   createUploadDraft: postUploadDraft,
+  login: (email: string, password: string) =>
+    request<AuthResponse>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  getCurrentUser: (token: string) => request<{ user: User }>('/api/auth/me', {}, token),
+  getUsers: (token: string) => request<{ users: User[] }>('/api/users', {}, token),
+  createUser: (token: string, payload: { email: string; displayName: string; password: string; role: string; bio?: string }) =>
+    request<{ user: User }>(
+      '/api/users',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  updateUser: (token: string, id: string, payload: Partial<{ email: string; displayName: string; password: string; role: string; bio: string | null; isActive: boolean }>) =>
+    request<{ user: User }>(
+      `/api/users/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  deleteUser: (token: string, id: string) => request(`/api/users/${id}`, { method: 'DELETE' }, token),
+  updateModelAsset: (
+    token: string,
+    id: string,
+    payload: Partial<{ title: string; description: string | null; version: string; tags: string[]; ownerId: string }>,
+  ) =>
+    request<ModelAsset>(
+      `/api/assets/models/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  deleteModelAsset: (token: string, id: string) => request(`/api/assets/models/${id}`, { method: 'DELETE' }, token),
+  updateImageAsset: (
+    token: string,
+    id: string,
+    payload: Partial<{
+      title: string;
+      description: string | null;
+      prompt: string | null;
+      negativePrompt: string | null;
+      tags: string[];
+      ownerId: string;
+      metadata: {
+        seed?: string | null;
+        model?: string | null;
+        sampler?: string | null;
+        cfgScale?: number | null;
+        steps?: number | null;
+      };
+    }>,
+  ) =>
+    request<ImageAsset>(
+      `/api/assets/images/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  deleteImageAsset: (token: string, id: string) => request(`/api/assets/images/${id}`, { method: 'DELETE' }, token),
 };

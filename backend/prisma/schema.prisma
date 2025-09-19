@@ -19,10 +19,15 @@ model User {
   role        UserRole     @default(CURATOR)
   bio         String?
   avatarUrl   String?
+  passwordHash String      @default("")
+  isActive    Boolean      @default(true)
+  lastLoginAt DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   galleries   Gallery[]    @relation("GalleryOwner")
   assets      ModelAsset[] @relation("AssetOwner")
+  images      ImageAsset[] @relation("ImageOwner")
+  uploadDrafts UploadDraft[]
 }
 
 model Gallery {
@@ -75,6 +80,8 @@ model ImageAsset {
   steps          Int?
   tags           ImageTag[]
   galleries      GalleryEntry[] @relation("GalleryImage")
+  ownerId        String
+  owner          User           @relation("ImageOwner", fields: [ownerId], references: [id])
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
@@ -147,6 +154,8 @@ model UploadDraft {
   fileCount     Int
   totalSize     BigInt
   status        String   @default("queued")
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

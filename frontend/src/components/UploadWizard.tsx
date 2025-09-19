@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { DragEvent } from 'react';
 
 import { api, ApiError } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 
 export type UploadWizardResult =
@@ -112,6 +113,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<UploadWizardResult | null>(null);
   const [progressValue, setProgressValue] = useState(0);
+  const { token } = useAuth();
 
   const isGalleryMode = mode === 'gallery';
   const steps = useMemo(
@@ -362,6 +364,11 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       return;
     }
 
+    if (!token) {
+      setSubmitResult({ status: 'error', message: 'Anmeldung erforderlich, um Uploads zu starten.' });
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitResult(null);
     setProgressValue(0);
@@ -374,18 +381,21 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       const description = formState.description.trim();
       const targetGallery = formState.targetGallery.trim();
 
-      const response = await api.createUploadDraft({
-        assetType,
-        context: isGalleryMode ? 'gallery' : 'asset',
-        title,
-        description: description.length > 0 ? description : undefined,
-        visibility: formState.visibility,
-        category: !isGalleryMode ? formState.category : undefined,
-        tags: formState.tags,
-        galleryMode: formState.galleryMode,
-        targetGallery,
-        files,
-      });
+      const response = await api.createUploadDraft(
+        {
+          assetType,
+          context: isGalleryMode ? 'gallery' : 'asset',
+          title,
+          description: description.length > 0 ? description : undefined,
+          visibility: formState.visibility,
+          category: !isGalleryMode ? formState.category : undefined,
+          tags: formState.tags,
+          galleryMode: formState.galleryMode,
+          targetGallery,
+          files,
+        },
+        token,
+      );
 
       setProgressValue(100);
       const details = [
