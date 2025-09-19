@@ -3,7 +3,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { Gallery } from '../types/api';
 
 import { FilterChip } from './FilterChip';
-import { GalleryCard } from './GalleryCard';
+import { GalleryAlbum } from './GalleryAlbum';
 
 interface GalleryExplorerProps {
   galleries: Gallery[];
@@ -223,18 +223,24 @@ export const GalleryExplorer = ({ galleries, isLoading }: GalleryExplorerProps) 
       <div className="result-info" role="status">
         {isLoading && galleries.length === 0
           ? 'Lade Galerien …'
-          : `Zeigt ${visibleGalleries.length} von ${filteredGalleries.length} Galerien`}
+          : `Zeigt ${visibleGalleries.length} von ${filteredGalleries.length} Sammlungen`}
       </div>
 
-      <div className="panel__grid panel__grid--columns">
-        {isLoading && galleries.length === 0
-          ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
-          : visibleGalleries.map((gallery) => <GalleryCard key={gallery.id} gallery={gallery} />)}
-      </div>
-
-      {!isLoading && filteredGalleries.length === 0 ? (
+      {isLoading && galleries.length === 0 ? (
+        <div className="panel__grid panel__grid--columns">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="skeleton skeleton--panel" />
+          ))}
+        </div>
+      ) : visibleGalleries.length > 0 ? (
+        <div className="gallery-explorer__grid">
+          {visibleGalleries.map((gallery) => (
+            <GalleryAlbum key={gallery.id} gallery={gallery} />
+          ))}
+        </div>
+      ) : (
         <p className="panel__empty">Keine Galerien entsprechen den aktiven Filtern.</p>
-      ) : null}
+      )}
 
       {!isLoading && visibleGalleries.length < filteredGalleries.length ? (
         <div className="panel__footer">

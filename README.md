@@ -13,6 +13,7 @@ den Upload- und Kuration-Workflow.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
+- **Galerie-Alben** – Collections zeigen mehrteilige Sets mit heroischen Vorschaubildern, Thumbnail-Leiste und Zoom-Lightbox für fokussierte Präsentationen.
 
 ## Architekturüberblick
 
@@ -120,7 +121,7 @@ Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-
 - **Neue Shell** – Ein dauerhaft sichtbares Sidebar-Layout bündelt die Hauptnavigation (Home, Models, Images) und zeigt den Status von Frontend, Backend und MinIO auf einen Blick.
 - **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
 - **Models** – Der ausgebaute Model Explorer bleibt Dreh- und Angelpunkt für LoRA-Recherchen mit Volltext, Typ- und Größenfiltern sowie Lazy-Loading.
-- **Images** – Die Bildgalerie kombiniert Volltextsuche, Sortierung und Tag-Anrisse mit dem bestehenden Galerie-Explorer für kuratierte Sets.
+- **Images** – Die Bildgalerie kombiniert Volltextsuche, Sortierung und Tag-Anrisse mit kuratierten Alben samt Collage-Layout und Zoom-Lightbox.
 - **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback.
 
 Die Explorer-Filter arbeiten vollständig clientseitig und reagieren selbst auf große Datenmengen ohne zusätzliche Server-Requests.
