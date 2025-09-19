@@ -9,7 +9,7 @@ import { AdminPanel } from './components/AdminPanel';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveStorageUrl } from './lib/storage';
-import type { Gallery, ImageAsset, ModelAsset, User } from './types/api';
+import type { Gallery, ImageAsset, ModelAsset, Tag, User } from './types/api';
 
 type ViewKey = 'home' | 'models' | 'images' | 'admin';
 type ServiceStatusKey = 'frontend' | 'backend' | 'minio';
@@ -48,21 +48,6 @@ const statusLabels: Record<ServiceState, string> = {
   unknown: 'Unbekannt',
 };
 
-const truncate = (value: string, length = 140) => {
-  if (value.length <= length) {
-    return value;
-  }
-
-  return `${value.slice(0, length - 1)}…`;
-};
-
-const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString('de-DE', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-
 const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
   frontend: { label: 'Frontend', status: 'online', message: 'UI aktiv.' },
   backend: { label: 'Backend', status: 'unknown', message: 'Status wird geprüft …' },
@@ -87,6 +72,8 @@ export const App = () => {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
   const [focusedGalleryId, setFocusedGalleryId] = useState<string | null>(null);
+  const [modelTagQuery, setModelTagQuery] = useState<string | null>(null);
+  const [imageTagQuery, setImageTagQuery] = useState<string | null>(null);
   const availableViews = useMemo<ViewKey[]>(() => {
     const views: ViewKey[] = ['home', 'models', 'images'];
     if (authUser?.role === 'ADMIN') {
@@ -227,6 +214,18 @@ export const App = () => {
     setActiveView('models');
   };
 
+  const handleModelTagClick = useCallback((tag: Tag) => {
+    setFocusedAssetId(null);
+    setModelTagQuery(tag.label);
+    setActiveView('models');
+  }, []);
+
+  const handleImageTagClick = useCallback((tag: Tag) => {
+    setFocusedGalleryId(null);
+    setImageTagQuery(tag.label);
+    setActiveView('images');
+  }, []);
+
   const handleLoginSubmit = async (email: string, password: string) => {
     setIsLoggingIn(true);
     setLoginError(null);
@@ -251,47 +250,56 @@ export const App = () => {
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   };
 
-  const latestModels = useMemo(() => assets.slice(0, 6), [assets]);
-  const latestImages = useMemo(() => images.slice(0, 6), [images]);
+  const latestModels = useMemo(() => assets.slice(0, 5), [assets]);
+  const latestImages = useMemo(() => images.slice(0, 5), [images]);
 
   const modelTiles = latestModels.map((asset) => {
     const previewUrl =
       resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ?? asset.previewImage;
+    const modelType = asset.tags.find((tag) => tag.category === 'model-type');
+    const regularTags = asset.tags.filter((tag) => tag.id !== modelType?.id);
+    const visibleTags = regularTags.slice(0, 5);
+    const remainingTagCount = regularTags.length - visibleTags.length;
+
     return (
-      <article key={asset.id} className="tile tile--model">
-        <div className="tile__media">
+      <article key={asset.id} className="home-card home-card--model">
+        <div className="home-card__media">
           {previewUrl ? (
             <img src={previewUrl} alt={asset.title} loading="lazy" />
           ) : (
-            <span className="tile__placeholder">Kein Vorschaubild verfügbar</span>
+            <span className="home-card__placeholder">Kein Vorschaubild verfügbar</span>
           )}
         </div>
-        <div className="tile__body">
-          <header className="tile__header">
-            <h3 className="tile__title">{asset.title}</h3>
-            <span className="tile__meta">v{asset.version}</span>
-          </header>
-          <p className="tile__description">
-            {asset.description ? truncate(asset.description, 150) : 'Noch keine Beschreibung hinterlegt.'}
-          </p>
-          <dl className="tile__details">
+        <div className="home-card__body">
+          <h3 className="home-card__title">{asset.title}</h3>
+          <dl className="home-card__meta">
+            <div>
+              <dt>Model</dt>
+              <dd>{modelType?.label ?? 'LoRA-Asset'}</dd>
+            </div>
             <div>
               <dt>Kurator:in</dt>
               <dd>{asset.owner.displayName}</dd>
             </div>
-            <div>
-              <dt>Aktualisiert</dt>
-              <dd>{formatDate(asset.updatedAt)}</dd>
-            </div>
           </dl>
-          {asset.tags.length > 0 ? (
-            <ul className="tile__tags">
-              {asset.tags.slice(0, 4).map((tag) => (
-                <li key={tag.id}>#{tag.label}</li>
+          {visibleTags.length > 0 ? (
+            <ul className="home-card__tags">
+              {visibleTags.map((tag) => (
+                <li key={tag.id}>
+                  <button
+                    type="button"
+                    className="home-card__tag"
+                    onClick={() => handleModelTagClick(tag)}
+                  >
+                    #{tag.label}
+                  </button>
+                </li>
               ))}
-              {asset.tags.length > 4 ? <li>+{asset.tags.length - 4}</li> : null}
+              {remainingTagCount > 0 ? <li className="home-card__tags-more">+{remainingTagCount}</li> : null}
             </ul>
-          ) : null}
+          ) : (
+            <p className="home-card__tags-empty">Noch keine Tags vergeben.</p>
+          )}
         </div>
       </article>
     );
@@ -300,39 +308,48 @@ export const App = () => {
   const imageTiles = latestImages.map((image) => {
     const imageUrl =
       resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+    const visibleTags = image.tags.slice(0, 5);
+    const remainingTagCount = image.tags.length - visibleTags.length;
+
     return (
-      <article key={image.id} className="tile tile--image">
-        <div className="tile__media">
+      <article key={image.id} className="home-card home-card--image">
+        <div className="home-card__media">
           {imageUrl ? (
             <img src={imageUrl} alt={image.title} loading="lazy" />
           ) : (
-            <span className="tile__placeholder">Kein Bild verfügbar</span>
+            <span className="home-card__placeholder">Kein Bild verfügbar</span>
           )}
         </div>
-        <div className="tile__body">
-          <header className="tile__header">
-            <h3 className="tile__title">{image.title}</h3>
-            <span className="tile__meta">{formatDate(image.updatedAt)}</span>
-          </header>
-          <p className="tile__description">{image.prompt ? truncate(image.prompt, 140) : 'Kein Prompt hinterlegt.'}</p>
-          <dl className="tile__details">
+        <div className="home-card__body">
+          <h3 className="home-card__title">{image.title}</h3>
+          <dl className="home-card__meta">
             <div>
               <dt>Model</dt>
               <dd>{image.metadata?.model ?? 'Unbekannt'}</dd>
             </div>
             <div>
-              <dt>Sampler</dt>
-              <dd>{image.metadata?.sampler ?? '–'}</dd>
+              <dt>Kurator:in</dt>
+              <dd>{image.owner.displayName}</dd>
             </div>
           </dl>
-          {image.tags.length > 0 ? (
-            <ul className="tile__tags">
-              {image.tags.slice(0, 4).map((tag) => (
-                <li key={tag.id}>#{tag.label}</li>
+          {visibleTags.length > 0 ? (
+            <ul className="home-card__tags">
+              {visibleTags.map((tag) => (
+                <li key={tag.id}>
+                  <button
+                    type="button"
+                    className="home-card__tag"
+                    onClick={() => handleImageTagClick(tag)}
+                  >
+                    #{tag.label}
+                  </button>
+                </li>
               ))}
-              {image.tags.length > 4 ? <li>+{image.tags.length - 4}</li> : null}
+              {remainingTagCount > 0 ? <li className="home-card__tags-more">+{remainingTagCount}</li> : null}
             </ul>
-          ) : null}
+          ) : (
+            <p className="home-card__tags-empty">Noch keine Tags vergeben.</p>
+          )}
         </div>
       </article>
     );
@@ -345,9 +362,9 @@ export const App = () => {
           <h2>Neueste Modelle</h2>
           <p>Die jüngsten Uploads aus dem Model-Explorer als kompakte Kacheln.</p>
         </header>
-        <div className="tile-grid">
+        <div className="home-section__grid">
           {isLoading && assets.length === 0
-            ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+            ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
             : modelTiles}
         </div>
         {!isLoading && modelTiles.length === 0 ? (
@@ -360,9 +377,9 @@ export const App = () => {
           <h2>Neueste Bilder</h2>
           <p>Frisch gerenderte Referenzen inklusive Prompt-Auszügen.</p>
         </header>
-        <div className="tile-grid">
+        <div className="home-section__grid">
           {isLoading && images.length === 0
-            ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+            ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
             : imageTiles}
         </div>
         {!isLoading && imageTiles.length === 0 ? (
@@ -400,6 +417,8 @@ export const App = () => {
           onNavigateToGallery={handleNavigateToGallery}
           initialAssetId={focusedAssetId}
           onCloseDetail={() => setFocusedAssetId(null)}
+          externalSearchQuery={modelTagQuery}
+          onExternalSearchApplied={() => setModelTagQuery(null)}
         />
       );
     }
@@ -413,6 +432,8 @@ export const App = () => {
           onNavigateToModel={handleNavigateToModel}
           initialGalleryId={focusedGalleryId}
           onCloseDetail={() => setFocusedGalleryId(null)}
+          externalSearchQuery={imageTagQuery}
+          onExternalSearchApplied={() => setImageTagQuery(null)}
         />
       );
     }
