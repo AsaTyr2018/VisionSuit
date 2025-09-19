@@ -19,6 +19,7 @@ den Upload- und Kuration-Workflow.
 - **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten sowie einem eigenständigen Detail-Dialog pro Sammlung inklusive EXIF-Lightbox für jedes Bild.
 - **Robuste Metadatenanzeige** – Galerie- und Bildansichten bleiben stabil, selbst wenn Einträge ohne ausgefüllte Bild-Metadaten vom Backend geliefert werden.
 - **Automatische Metadatenerfassung** – Uploads lesen EXIF-/Stable-Diffusion-Prompts sowie Safetensors-Header aus, speichern Basismodelle direkt in der Datenbank und machen sie in Galerie- und Modell-Explorer durchsuchbar.
+- **Intelligente LoRA-Metadaten** – Ermittelt Modelspezifikationen wie `modelspec.architecture` zuverlässig als Base-Model, bündelt Trainings-Tags (`ss_tag_frequency`) in einem separaten Frequenz-Dialog und macht Datensätze transparent nachvollziehbar.
 
 ## Architekturüberblick
 
