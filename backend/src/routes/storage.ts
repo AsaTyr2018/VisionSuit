@@ -44,7 +44,7 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const objectKeyParam = req.params[0];
+    const objectKeyParam = req.params.objectPath ?? req.params[0];
     const objectName = toProxyObjectName(objectKeyParam);
 
     if (!objectName) {
@@ -107,5 +107,5 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
   }
 };
 
-storageRouter.get('/:bucket/*', handleObjectRequest);
-storageRouter.head('/:bucket/*', handleObjectRequest);
+storageRouter.get('/:bucket/:objectPath(*)', handleObjectRequest);
+storageRouter.head('/:bucket/:objectPath(*)', handleObjectRequest);
