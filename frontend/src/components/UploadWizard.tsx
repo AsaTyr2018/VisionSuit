@@ -2,24 +2,49 @@ import { useEffect, useMemo, useState } from 'react';
 import type { DragEvent } from 'react';
 
 import { api, ApiError } from '../lib/api';
+import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 
 export type UploadWizardResult =
   | { status: 'success'; uploadId?: string; message?: string }
   | { status: 'error'; message: string; details?: string[] };
 
+type UploadWizardMode = 'asset' | 'gallery';
+
 interface UploadWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onComplete?: (result: UploadWizardResult) => void;
+  mode?: UploadWizardMode;
 }
 
-const steps = [
-  { id: 'details', label: 'Basisdaten', helper: 'Titel, Typ und Sichtbarkeit festlegen' },
-  { id: 'files', label: 'Dateien', helper: 'LoRA- oder Bilddateien hinzufügen' },
-  { id: 'review', label: 'Review', helper: 'Zusammenfassung prüfen & absenden' },
+const stepDefinitions = [
+  {
+    id: 'details' as const,
+    label: { asset: 'Basisdaten', gallery: 'Galerie-Einstellungen' },
+    helper: {
+      asset: 'Titel, Typ und Sichtbarkeit festlegen',
+      gallery: 'Ziel-Galerie, Sichtbarkeit und Tags wählen',
+    },
+  },
+  {
+    id: 'files' as const,
+    label: { asset: 'Dateien', gallery: 'Bilddateien' },
+    helper: {
+      asset: 'LoRA- oder Bilddateien hinzufügen',
+      gallery: 'Mehrere Bilder hinzufügen und Limits beachten',
+    },
+  },
+  {
+    id: 'review' as const,
+    label: { asset: 'Review', gallery: 'Review' },
+    helper: {
+      asset: 'Zusammenfassung prüfen & absenden',
+      gallery: 'Zusammenfassung prüfen & absenden',
+    },
+  },
 ] as const;
 
-type StepId = (typeof steps)[number]['id'];
+type StepId = (typeof stepDefinitions)[number]['id'];
 
 type AssetType = 'lora' | 'image';
 
@@ -38,8 +63,8 @@ interface UploadFormState {
   tags: string[];
 }
 
-const initialState: UploadFormState = {
-  assetType: 'lora',
+const buildInitialState = (mode: UploadWizardMode): UploadFormState => ({
+  assetType: mode === 'gallery' ? 'image' : 'lora',
   title: '',
   description: '',
   visibility: 'private',
@@ -47,7 +72,7 @@ const initialState: UploadFormState = {
   galleryMode: 'existing',
   targetGallery: '',
   tags: [],
-};
+});
 
 const formatFileSize = (size: number) => {
   if (size < 1024) return `${size} B`;
@@ -78,15 +103,26 @@ const simulateProgress = (update: (value: number) => void) =>
     }, 280);
   });
 
-export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps) => {
+export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: UploadWizardProps) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [formState, setFormState] = useState<UploadFormState>(initialState);
+  const [formState, setFormState] = useState<UploadFormState>(() => buildInitialState(mode));
   const [tagDraft, setTagDraft] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [stepError, setStepError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<UploadWizardResult | null>(null);
   const [progressValue, setProgressValue] = useState(0);
+
+  const isGalleryMode = mode === 'gallery';
+  const steps = useMemo(
+    () =>
+      stepDefinitions.map((step) => ({
+        id: step.id,
+        label: isGalleryMode ? step.label.gallery : step.label.asset,
+        helper: isGalleryMode ? step.helper.gallery : step.helper.asset,
+      })),
+    [isGalleryMode],
+  );
 
   const currentStep = steps[currentStepIndex];
 
@@ -112,7 +148,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
   useEffect(() => {
     if (!isOpen) {
       setCurrentStepIndex(0);
-      setFormState(initialState);
+      setFormState(buildInitialState(mode));
       setTagDraft('');
       setFiles([]);
       setStepError(null);
@@ -120,7 +156,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
       setProgressValue(0);
       setIsSubmitting(false);
     }
-  }, [isOpen]);
+  }, [isOpen, mode]);
 
   const handleAddTag = () => {
     const trimmed = tagDraft.trim();
@@ -139,16 +175,52 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
 
   const handleFiles = (selected: FileList | File[]) => {
     const normalized = Array.from(selected);
+    if (normalized.length === 0) {
+      return;
+    }
+
+    let nextError: string | null = null;
+
     setFiles((prev) => {
       const names = new Set(prev.map((file) => file.name));
       const merged = [...prev];
-      normalized.forEach((file) => {
-        if (!names.has(file.name)) {
-          merged.push(file);
+      const incoming = normalized.filter((file) => {
+        if (names.has(file.name)) {
+          return false;
         }
+        names.add(file.name);
+        return true;
       });
-      return merged;
+
+      let filtered = incoming;
+      if (isGalleryMode) {
+        filtered = incoming.filter((file) => file.type.startsWith('image/'));
+        if (filtered.length !== incoming.length) {
+          nextError = 'Nur Bilddateien (PNG, JPG, WebP, GIF) können in eine Galerie hochgeladen werden.';
+        }
+      }
+
+      const availableSlots = MAX_UPLOAD_FILES - merged.length;
+      if (availableSlots <= 0) {
+        nextError = `Es können maximal ${MAX_UPLOAD_FILES} Dateien pro Upload verarbeitet werden.`;
+        return merged;
+      }
+
+      const toAdd = filtered.slice(0, availableSlots);
+      if (filtered.length > toAdd.length) {
+        nextError = `Es können maximal ${MAX_UPLOAD_FILES} Dateien pro Upload verarbeitet werden.`;
+      }
+
+      const updated = [...merged, ...toAdd];
+      const total = updated.reduce((sum, file) => sum + file.size, 0);
+      if (total > MAX_TOTAL_SIZE_BYTES) {
+        nextError = `Die Gesamtgröße überschreitet das Limit von ${formatFileSize(MAX_TOTAL_SIZE_BYTES)}.`;
+      }
+
+      return updated;
     });
+
+    setStepError(nextError);
   };
 
   const handleDrop = (event: DragEvent<HTMLLabelElement>) => {
@@ -160,12 +232,21 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
 
   const removeFile = (name: string) => {
     setFiles((prev) => prev.filter((file) => file.name !== name));
+    setStepError(null);
   };
 
   const validateStep = (step: StepId) => {
     if (step === 'details') {
       if (!formState.title.trim()) {
-        setStepError('Bitte vergib einen Titel für das Asset.');
+        setStepError(
+          isGalleryMode
+            ? 'Bitte vergib einen Upload-Titel für die neuen Bilder.'
+            : 'Bitte vergib einen Titel für das Asset.',
+        );
+        return false;
+      }
+      if (formState.galleryMode === 'existing' && !formState.targetGallery.trim()) {
+        setStepError('Bitte gib eine bestehende Galerie an oder wähle "Neue Galerie".');
         return false;
       }
       setStepError(null);
@@ -175,6 +256,15 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
     if (step === 'files') {
       if (files.length === 0) {
         setStepError('Bitte füge mindestens eine Datei hinzu.');
+        return false;
+      }
+      if (files.length > MAX_UPLOAD_FILES) {
+        setStepError(`Es können maximal ${MAX_UPLOAD_FILES} Dateien pro Upload verarbeitet werden.`);
+        return false;
+      }
+      const total = files.reduce((sum, file) => sum + file.size, 0);
+      if (total > MAX_TOTAL_SIZE_BYTES) {
+        setStepError(`Die Gesamtgröße überschreitet das Limit von ${formatFileSize(MAX_TOTAL_SIZE_BYTES)}.`);
         return false;
       }
       setStepError(null);
@@ -204,11 +294,17 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
 
   const reviewMetadata = useMemo(() => {
     const base = [
-      { label: 'Titel', value: formState.title || '–' },
-      { label: 'Beschreibung', value: formState.description || '–' },
-      { label: 'Typ', value: formState.assetType === 'lora' ? 'LoRA / Safetensor' : 'Bild / Render' },
-      { label: 'Sichtbarkeit', value: formState.visibility === 'public' ? 'Öffentlich' : 'Privat' },
-      { label: 'Kategorie', value: formState.category || 'Allgemein' },
+      { label: isGalleryMode ? 'Upload-Titel' : 'Titel', value: formState.title || '–' },
+      { label: isGalleryMode ? 'Beschreibung / Notiz' : 'Beschreibung', value: formState.description || '–' },
+      {
+        label: 'Sichtbarkeit',
+        value:
+          formState.visibility === 'public'
+            ? 'Öffentlich'
+            : formState.galleryMode === 'existing'
+              ? 'Privat (übernimmt Sichtbarkeit der Galerie)'
+              : 'Privat',
+      },
       { label: 'Tags', value: summarizeTags(formState.tags) },
       {
         label: 'Ziel-Galerie',
@@ -220,16 +316,42 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
       { label: 'Dateien', value: `${files.length} · ${formatFileSize(totalSize)}` },
     ];
 
+    if (!isGalleryMode) {
+      base.splice(2, 0, {
+        label: 'Typ',
+        value: formState.assetType === 'lora' ? 'LoRA / Safetensor' : 'Bild / Render',
+      });
+      base.splice(4, 0, { label: 'Kategorie', value: formState.category || 'Allgemein' });
+    } else {
+      base.splice(2, 0, { label: 'Upload-Kontext', value: 'Galerie-Entwurf (Bilder)' });
+      base.push({
+        label: 'Upload-Limits',
+        value: `${MAX_UPLOAD_FILES} Dateien · bis ${formatFileSize(MAX_TOTAL_SIZE_BYTES)}`,
+      });
+    }
+
     if (files.length > 0 && formState.assetType === 'lora') {
       base.push({ label: 'Checksum-Vorschau', value: 'Wird nach Upload vom Backend berechnet' });
     }
 
-    if (files.length > 0 && formState.assetType === 'image') {
+    if (files.length > 0 && formState.assetType === 'image' && !isGalleryMode) {
       base.push({ label: 'EXIF/Prompt', value: 'Extraktion nach Upload in Warteschlange' });
     }
 
     return base;
-  }, [files.length, formState.assetType, formState.category, formState.description, formState.galleryMode, formState.tags, formState.targetGallery, formState.title, formState.visibility, totalSize]);
+  }, [
+    files.length,
+    formState.assetType,
+    formState.category,
+    formState.description,
+    formState.galleryMode,
+    formState.tags,
+    formState.targetGallery,
+    formState.title,
+    formState.visibility,
+    isGalleryMode,
+    totalSize,
+  ]);
 
   const handleSubmit = async () => {
     if (!validateStep('files')) {
@@ -247,15 +369,21 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
     try {
       await simulateProgress((value) => setProgressValue(Math.min(95, Math.round(value))));
 
+      const assetType = isGalleryMode ? 'image' : formState.assetType;
+      const title = formState.title.trim();
+      const description = formState.description.trim();
+      const targetGallery = formState.targetGallery.trim();
+
       const response = await api.createUploadDraft({
-        assetType: formState.assetType,
-        title: formState.title.trim(),
-        description: formState.description.trim(),
+        assetType,
+        context: isGalleryMode ? 'gallery' : 'asset',
+        title,
+        description: description.length > 0 ? description : undefined,
         visibility: formState.visibility,
-        category: formState.category,
+        category: !isGalleryMode ? formState.category : undefined,
         tags: formState.tags,
         galleryMode: formState.galleryMode,
-        targetGallery: formState.targetGallery.trim(),
+        targetGallery,
         files,
       });
 
@@ -263,6 +391,11 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
       const details = [
         response.assetSlug ? `Asset: ${response.assetSlug}` : null,
         response.gallerySlug ? `Galerie: ${response.gallerySlug}` : null,
+        response.imageIds && response.imageIds.length > 1
+          ? `${response.imageIds.length} Bilder`
+          : response.imageId
+            ? '1 Bild'
+            : null,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -314,10 +447,11 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
       <div className="upload-wizard__dialog">
         <header className="upload-wizard__header">
           <div>
-            <h2 id="upload-wizard-title">Upload-Assistent</h2>
+            <h2 id="upload-wizard-title">{isGalleryMode ? 'Galerie-Upload' : 'Upload-Assistent'}</h2>
             <p>
-              Führe neue LoRAs oder Renderings strukturiert ein. Nach Abschluss wird automatisch eine Upload-Session im Backend
-              angelegt.
+              {isGalleryMode
+                ? 'Füge neue Bilder strukturiert in bestehende Sammlungen ein oder starte eine frische Galerie.'
+                : 'Führe neue LoRAs oder Renderings strukturiert ein. Nach Abschluss wird automatisch eine Upload-Session im Backend angelegt.'}
             </p>
           </div>
           <button type="button" className="upload-wizard__close" onClick={onClose}>
@@ -351,42 +485,48 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
             <div className="upload-wizard__grid">
               <div className="upload-wizard__field">
                 <label>
-                  <span>Titel*</span>
+                  <span>{isGalleryMode ? 'Upload-Titel*' : 'Titel*'}</span>
                   <input
                     type="text"
                     value={formState.title}
                     onChange={(event) => setFormState((prev) => ({ ...prev, title: event.target.value }))}
-                    placeholder="z. B. Neon Depth Portrait Pack"
+                    placeholder={
+                      isGalleryMode
+                        ? 'z. B. Spotlight Serie – Nachtaufnahmen'
+                        : 'z. B. Neon Depth Portrait Pack'
+                    }
                   />
                 </label>
               </div>
 
               <div className="upload-wizard__field upload-wizard__field--inline">
-                <label>
-                  <span>Typ</span>
-                  <div className="upload-wizard__options">
-                    <label>
-                      <input
-                        type="radio"
-                        name="asset-type"
-                        value="lora"
-                        checked={formState.assetType === 'lora'}
-                        onChange={() => setFormState((prev) => ({ ...prev, assetType: 'lora' }))}
-                      />
-                      <span>LoRA / Safetensor</span>
-                    </label>
-                    <label>
-                      <input
-                        type="radio"
-                        name="asset-type"
-                        value="image"
-                        checked={formState.assetType === 'image'}
-                        onChange={() => setFormState((prev) => ({ ...prev, assetType: 'image' }))}
-                      />
-                      <span>Bild / Render</span>
-                    </label>
-                  </div>
-                </label>
+                {!isGalleryMode ? (
+                  <label>
+                    <span>Typ</span>
+                    <div className="upload-wizard__options">
+                      <label>
+                        <input
+                          type="radio"
+                          name="asset-type"
+                          value="lora"
+                          checked={formState.assetType === 'lora'}
+                          onChange={() => setFormState((prev) => ({ ...prev, assetType: 'lora' }))}
+                        />
+                        <span>LoRA / Safetensor</span>
+                      </label>
+                      <label>
+                        <input
+                          type="radio"
+                          name="asset-type"
+                          value="image"
+                          checked={formState.assetType === 'image'}
+                          onChange={() => setFormState((prev) => ({ ...prev, assetType: 'image' }))}
+                        />
+                        <span>Bild / Render</span>
+                      </label>
+                    </div>
+                  </label>
+                ) : null}
 
                 <label>
                   <span>Sichtbarkeit</span>
@@ -415,28 +555,34 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
                 </label>
               </div>
 
-              <div className="upload-wizard__field">
-                <label>
-                  <span>Kategorie</span>
-                  <select
-                    value={formState.category}
-                    onChange={(event) => setFormState((prev) => ({ ...prev, category: event.target.value }))}
-                  >
-                    <option value="style">Stil & Look</option>
-                    <option value="character">Character / Person</option>
-                    <option value="environment">Environment / Setting</option>
-                    <option value="workflow">Workflow / Utility</option>
-                  </select>
-                </label>
-              </div>
+              {!isGalleryMode ? (
+                <div className="upload-wizard__field">
+                  <label>
+                    <span>Kategorie</span>
+                    <select
+                      value={formState.category}
+                      onChange={(event) => setFormState((prev) => ({ ...prev, category: event.target.value }))}
+                    >
+                      <option value="style">Stil & Look</option>
+                      <option value="character">Character / Person</option>
+                      <option value="environment">Environment / Setting</option>
+                      <option value="workflow">Workflow / Utility</option>
+                    </select>
+                  </label>
+                </div>
+              ) : null}
 
               <div className="upload-wizard__field upload-wizard__field--full">
                 <label>
-                  <span>Beschreibung</span>
+                  <span>{isGalleryMode ? 'Beschreibung / Notiz' : 'Beschreibung'}</span>
                   <textarea
                     value={formState.description}
                     onChange={(event) => setFormState((prev) => ({ ...prev, description: event.target.value }))}
-                    placeholder="Kontext, Besonderheiten, Trigger-Wörter oder Basismodelle …"
+                    placeholder={
+                      isGalleryMode
+                        ? 'Optionaler Prompt-Kontext oder Hinweise zur Serie …'
+                        : 'Kontext, Besonderheiten, Trigger-Wörter oder Basismodelle …'
+                    }
                     rows={3}
                   />
                 </label>
@@ -479,7 +625,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
                       checked={formState.galleryMode === 'existing'}
                       onChange={() => setFormState((prev) => ({ ...prev, galleryMode: 'existing' }))}
                     />
-                    <span>Zu bestehender Galerie hinzufügen</span>
+                    <span>{isGalleryMode ? 'Zu bestehender Galerie hinzufügen' : 'Zu bestehender Galerie hinzufügen'}</span>
                   </label>
                   <label>
                     <input
@@ -489,7 +635,11 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
                       checked={formState.galleryMode === 'new'}
                       onChange={() => setFormState((prev) => ({ ...prev, galleryMode: 'new', targetGallery: '' }))}
                     />
-                    <span>Neue Galerie im Review-Schritt anlegen</span>
+                    <span>
+                      {isGalleryMode
+                        ? 'Neue Galerie während des Uploads anlegen'
+                        : 'Neue Galerie im Review-Schritt anlegen'}
+                    </span>
                   </label>
                 </div>
                 {formState.galleryMode === 'existing' ? (
@@ -499,7 +649,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
                       type="text"
                       value={formState.targetGallery}
                       onChange={(event) => setFormState((prev) => ({ ...prev, targetGallery: event.target.value }))}
-                      placeholder="z. B. Featured Portrait Set"
+                      placeholder="Titel oder Slug der Galerie"
                     />
                   </label>
                 ) : null}
@@ -517,6 +667,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
                 <input
                   type="file"
                   multiple
+                  accept={isGalleryMode ? 'image/*' : undefined}
                   onChange={(event) => {
                     if (event.target.files) {
                       handleFiles(event.target.files);
@@ -526,7 +677,13 @@ export const UploadWizard = ({ isOpen, onClose, onComplete }: UploadWizardProps)
                 />
                 <span>Ziehe Dateien hierher oder klicke, um sie auszuwählen.</span>
                 <span className="upload-wizard__dropzone-helper">
-                  Unterstützt Safetensors, PNG, JPG sowie ZIP-Bundles. Maximale Gesamtgröße aktuell 2 GB.
+                  {isGalleryMode
+                    ? `Unterstützt PNG, JPG, WebP und GIF. Mehrfachauswahl bis ${MAX_UPLOAD_FILES} Dateien mit insgesamt ${formatFileSize(
+                        MAX_TOTAL_SIZE_BYTES,
+                      )}.`
+                    : `Unterstützt Safetensors, PNG, JPG sowie ZIP-Bundles. Maximal ${MAX_UPLOAD_FILES} Dateien mit insgesamt ${formatFileSize(
+                        MAX_TOTAL_SIZE_BYTES,
+                      )}.`}
                 </span>
               </label>
 

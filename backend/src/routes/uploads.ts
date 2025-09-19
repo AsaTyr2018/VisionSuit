@@ -135,6 +135,7 @@ const normalizeTagInput = (value: unknown): string[] => {
 const createUploadSchema = z
   .object({
     assetType: z.enum(['lora', 'image']),
+    context: z.enum(['asset', 'gallery']).default('asset'),
     title: z.string().min(1).max(180),
     description: z
       .string()
@@ -206,6 +207,16 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
         message: 'Gesamtgröße der Dateien überschreitet das Limit von 2 GB.',
       });
       return;
+    }
+
+    if (payload.context === 'gallery') {
+      const invalidFiles = files.filter((file) => !file.mimetype.startsWith('image/'));
+      if (invalidFiles.length > 0) {
+        res.status(400).json({
+          message: 'Galerie-Uploads akzeptieren ausschließlich Bilddateien (PNG, JPG, WebP).',
+        });
+        return;
+      }
     }
     if (payload.galleryMode === 'existing' && payload.targetGallery) {
       const input = payload.targetGallery.trim();
@@ -365,7 +376,7 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
           },
         });
 
-        await tx.galleryEntry.create({
+        const entry = await tx.galleryEntry.create({
           data: {
             galleryId: gallery.id,
             assetId: modelAsset.id,
@@ -386,40 +397,64 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
           assetId: modelAsset.id,
           gallerySlug: gallery.slug,
           assetSlug: modelAsset.slug,
+          entryIds: [entry.id],
         };
       }
 
-      const imageAsset = await tx.imageAsset.create({
-        data: {
-          title: payload.title,
-          description: payload.description ?? null,
-          width: null,
-          height: null,
-          fileSize: primaryFile.size,
-          storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
-          prompt: null,
-          negativePrompt: null,
-          seed: null,
-          model: null,
-          sampler: null,
-          cfgScale: null,
-          steps: null,
-          tags: {
-            create: tagIds.map((tagId) => ({ tagId })),
+      let positionCursor = nextPosition;
+      const imageEntries: { imageId: string; entryId: string }[] = [];
+
+      for (let index = 0; index < storageFiles.length; index += 1) {
+        const stored = storageFiles[index];
+        const source = files[index];
+
+        if (!stored || !source) {
+          continue;
+        }
+
+        const baseTitle = payload.title.trim().length > 0 ? payload.title.trim() : stored.name ?? '';
+        const fallbackTitle = source.originalname?.replace(/\.[^/.]+$/, '')?.trim();
+        const candidate = (baseTitle || fallbackTitle || `Bild ${index + 1}`).slice(0, 160);
+        const title =
+          storageFiles.length > 1
+            ? `${candidate}${candidate.endsWith('#') ? '' : ' '}#${index + 1}`.trim()
+            : candidate;
+
+        const imageAsset = await tx.imageAsset.create({
+          data: {
+            title,
+            description: payload.description ?? null,
+            width: null,
+            height: null,
+            fileSize: source.size,
+            storagePath: toS3Uri(stored.bucket, stored.objectName),
+            prompt: null,
+            negativePrompt: null,
+            seed: null,
+            model: null,
+            sampler: null,
+            cfgScale: null,
+            steps: null,
+            tags: {
+              create: tagIds.map((tagId) => ({ tagId })),
+            },
           },
-        },
-      });
+        });
 
-      await tx.galleryEntry.create({
-        data: {
-          galleryId: gallery.id,
-          imageId: imageAsset.id,
-          position: nextPosition,
-          note: payload.description ?? null,
-        },
-      });
+        const entry = await tx.galleryEntry.create({
+          data: {
+            galleryId: gallery.id,
+            imageId: imageAsset.id,
+            position: positionCursor,
+            note: payload.description ?? null,
+          },
+        });
 
-      if (!gallery.coverImage) {
+        imageEntries.push({ imageId: imageAsset.id, entryId: entry.id });
+        positionCursor += 1;
+      }
+
+      if (!gallery.coverImage && imageEntries.length > 0) {
         await tx.gallery.update({
           where: { id: gallery.id },
           data: { coverImage: toS3Uri(primaryStored.bucket, primaryStored.objectName) },
@@ -428,8 +463,10 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
 
       return {
         draftId: draft.id,
-        imageId: imageAsset.id,
+        imageId: imageEntries[0]?.imageId,
+        imageIds: imageEntries.map((entry) => entry.imageId),
         gallerySlug: gallery.slug,
+        entryIds: imageEntries.map((entry) => entry.entryId),
       };
     });
 
@@ -437,10 +474,14 @@ uploadsRouter.post('/', upload.array('files'), async (req, res, next) => {
       uploadId: result.draftId,
       assetId: result.assetId,
       imageId: result.imageId,
+      imageIds: result.imageIds,
       gallerySlug: result.gallerySlug,
       assetSlug: result.assetSlug,
+      entryIds: result.entryIds,
       message:
-        'Upload abgeschlossen. Dateien wurden nach MinIO übertragen und stehen im Explorer zur Verfügung.',
+        result.imageIds && result.imageIds.length > 1
+          ? `Upload abgeschlossen. ${result.imageIds.length} Bilder wurden hinzugefügt und stehen im Explorer zur Verfügung.`
+          : 'Upload abgeschlossen. Dateien wurden nach MinIO übertragen und stehen im Explorer zur Verfügung.',
     });
   } catch (error) {
     next(error);
