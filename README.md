@@ -1,261 +1,167 @@
 # VisionSuit
 
-VisionSuit ist eine selbst-hostbare Plattform für kuratierte KI-Bildgalerien und LoRA-Safetensor-Hosting. Dieses Grundgerüst
-liefert eine lauffähige Node.js-API, ein Prisma-Datenmodell mit Seed-Daten sowie ein React-Frontend als visuelles Konzept für
-den Upload- und Kuration-Workflow.
+VisionSuit is a self-hosted platform for curated AI image galleries and LoRA safetensor distribution. The project ships with a runnable Node.js API, a Prisma data model including seed data, and a React front end that demonstrates the intended upload and curation workflow.
 
-## Highlights
+## Core Highlights
 
-- **Dashboard-Navigation** – Linke Seitenleiste mit direkter Umschaltung zwischen Home, Models und Images sowie Live-Service-Status für Frontend, Backend und MinIO.
-- **Rollenbasierte Authentifizierung** – Login-Dialog mit JWT-Token, persistiertem Zustand und Admin-Dashboard für Benutzer-, Modell- und Bildverwaltung.
-- **Upload-Wizard** – dreistufiger Assistent für Basisdaten, Dateiupload & Review inklusive Validierungen, Drag & Drop sowie Rückmeldung aus dem produktiven Upload-Endpunkt (`POST /api/uploads`).
-- **Englischsprachiges UI** – Navigation, Explorer, Dialoge und der Upload-Assistent wurden konsequent ins Englische übertragen und bieten eine durchgängige Nutzererfahrung.
-- **Model-Uploads mit Fokus** – Beim Modell-Assistenten sind exakt eine Safetensor-/ZIP-Datei plus ein Vorschaubild erlaubt; zusätzliche Render lassen sich später in der Galerie ergänzen.
-- **Galerie-Entwürfe** – separater Bild-Upload aus dem Galerie-Explorer, Multi-Upload (bis 12 Dateien/2 GB) mit rollenbasiertem Galerie-Dropdown oder direkter Neuanlage.
-- **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
-- **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
-- **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, 5-Spalten-Kacheln und nahtlosem Infinite Scroll samt aktiven Filterhinweisen.
-- **Modelcard mit Versionierung** – Der Modelldialog heißt jetzt „Modelcard“, zeigt die Beschreibung direkt im Header, bietet Version-Chips zum Umschalten zwischen allen Safetensor-Ständen und enthält einen Upload-Flow für neue Versionen inklusive Preview-Handling.
-- **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
-- **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
-- **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten sowie einem eigenständigen Detail-Dialog pro Sammlung inklusive EXIF-Lightbox für jedes Bild.
-- **Robuste Metadatenanzeige** – Galerie- und Bildansichten bleiben stabil, selbst wenn Einträge ohne ausgefüllte Bild-Metadaten vom Backend geliefert werden.
-- **Automatische Metadatenerfassung** – Uploads lesen EXIF-/Stable-Diffusion-Prompts sowie Safetensors-Header aus, speichern Basismodelle direkt in der Datenbank und machen sie in Galerie- und Modell-Explorer durchsuchbar.
-- **Intelligente LoRA-Metadaten** – Ermittelt Modelspezifikationen wie `modelspec.architecture` zuverlässig als Base-Model, bündelt Trainings-Tags (`ss_tag_frequency`) in einem separaten Frequenz-Dialog und macht Datensätze transparent nachvollziehbar.
+- **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus live health badges for the front end, API, and MinIO services.
+- **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, and protected upload flows.
+- **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
+- **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
+- **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, and an integrated flow for uploading new revisions including preview handling.
+- **Governed storage pipeline** – Direct MinIO ingestion with automatic tagging, secure download proxying via the backend, audit trails, and guardrails for file size (≤ 2 GB) and batch limits (≤ 12 files).
 
-## Architekturüberblick
+## Good to Know
 
-| Bereich       | Stack & Zweck                                                                                   |
-| ------------- | ----------------------------------------------------------------------------------------------- |
-| **Backend**   | Express 5 (TypeScript) + Prisma + SQLite. Stellt REST-Endpunkte für Assets, Galerien und Statistiken bereit. |
-| **Datenbank** | Prisma-Schema für Benutzer, LoRA-Assets, Galerie-Einträge und Tagging inklusive Referenzen & Constraints.    |
-| **Storage**   | MinIO (S3-kompatibel) verwaltet Buckets für Modell- und Bilddateien und wird automatisch provisioniert.      |
-| **Frontend**  | Vite + React (TypeScript). Enthält einen datengetriebenen Explorer für LoRA-Assets & Galerien inkl. Filter. |
+- Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
+- Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
+- Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
+- Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
+- Interface remains resilient even when the backend delivers entries without populated metadata.
+- Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
+
+## Architecture Overview
+
+| Layer | Purpose & Key Technologies |
+| ----- | -------------------------- |
+| **Backend API** | Express 5 with TypeScript orchestrated by Prisma ORM. Exposes REST endpoints for authentication, uploads, asset management, and statistics. |
+| **Database** | SQLite during development, modelled via Prisma schemas for users, LoRA assets, galleries, tags, upload drafts, and storage objects with referential constraints. |
+| **Object Storage** | MinIO (S3 compatible) provides buckets for model and image artifacts. Buckets and credentials are provisioned automatically by the install script. |
+| **Front End** | Vite + React (TypeScript) delivers the management console, explorers, and upload wizard with real-time data fetching. |
+| **Tooling & Ops** | Shell scripts automate environment setup, dependency installation, Prisma migrations, seeding, and optional Portainer CE provisioning. |
 
 ## Installation & Setup
 
-### Voraussetzungen
+### Prerequisites
 
-Stelle sicher, dass folgende Werkzeuge verfügbar sind:
+Ensure the following tools are available on the target host:
 
-- Node.js (empfohlen: 22 LTS) und npm
-- Python 3 (für kleine Hilfsskripte im Installer)
-- Docker Engine (inklusive laufendem Daemon)
-- Docker Compose Plugin oder die Legacy-Binary `docker-compose`
-- Portainer CE (wird auf Wunsch direkt über das Installationsskript eingerichtet)
+- Node.js 22 LTS (includes npm)
+- Python 3 (utility scripts used by the installer)
+- Docker Engine with a running daemon
+- Docker Compose plugin or the legacy `docker-compose` binary
+- Optional: Portainer CE (can be installed by the setup script)
 
-Das Skript `./install.sh` richtet Backend und Frontend gemeinsam ein und fragt nach den wichtigsten Parametern.
+### Guided setup script
+
+Run the bundled installer to configure the entire stack:
 
 ```bash
 ./install.sh
 ```
 
-Während der Ausführung erkennt das Skript automatisch die erreichbare Server-IP, ersetzt Loopback-Adressen durch diese Adresse
-und schlägt stimmige Standardwerte vor (u. a. Backend-Port `4000`, Frontend-Port `5173`, MinIO-Port `9000`). Die vorgeschlagene
-Konfiguration wird kompakt angezeigt; mit `Y` übernimmst du alle Werte, mit `N` wechselst du in eine manuelle Eingabe. Nur die
-externen Ports `4000` (API) und `5173` (Frontend) werden aktiv abgefragt, alle internen Komponenten nutzen bewährte Defaults.
-Am Ende bietet das Skript optional die Erstellung eines Admin-Accounts über `npm run create-admin` an.
+The script detects the reachable server IP, replaces loopback references, and proposes sensible defaults (API `4000`, front end `5173`, MinIO `9000`). Accept the summary with `Y` or provide custom values interactively. Only the external API and front end ports are requested; all internal services use vetted defaults.
 
-Funktionen im Überblick:
+During execution the installer:
 
-- Prüft, ob Docker, Docker Compose und Portainer verfügbar sind und bietet ggf. die automatische Installation von Portainer CE an.
-- Installiert die npm-Abhängigkeiten für Backend und Frontend.
-- Erstellt fehlende `.env`-Dateien aus den jeweiligen Vorlagen, ersetzt `HOST`/`VITE_API_URL` durch die Server-IP und stimmt die Ports automatisch ab.
-- Richtet den MinIO-Zugangspunkt samt Zugangsdaten und Bucket-Namen ein (Secret-Key wird bei Bedarf automatisch generiert) und startet anschließend einen passenden Docker-Container (`visionsuit-minio`).
-- Optionaler Direktaufruf von `npm run prisma:migrate` und `npm run seed` (Bestätigung per Prompt).
-- Optionaler Direktaufruf von `npm run create-admin`, um sofort einen administrativen Benutzer zu hinterlegen.
+1. Verifies Docker, Docker Compose, and optionally installs Portainer CE when missing.
+2. Installs npm dependencies for `backend` and `frontend`.
+3. Generates missing `.env` files from templates, aligning `HOST`/`VITE_API_URL` with the detected server IP.
+4. Provisions MinIO credentials, configures buckets, and launches the `visionsuit-minio` container.
+5. Offers optional execution of `npm run prisma:migrate`, `npm run seed`, and `npm run create-admin` for initial data.
 
-Nach Abschluss ist das Projekt sofort bereit für den Entwicklungsstart mit `./dev-start.sh`.
+After completion the stack is ready for development or evaluation. Use `./dev-start.sh` for a combined watch mode when coding locally.
 
-### Initialer Admin-Account via CLI
+### Creating an initial admin account
 
-Der Upload- und Administrationsbereich setzt ein angemeldetes Konto voraus. Ein initiales Admin-Profil lässt sich direkt per SSH auf der Zielmaschine einrichten:
+The administrative surfaces require a signed-in profile. Create one via SSH on the target machine:
 
 ```bash
 cd backend
 npm run create-admin -- \
   --email=admin@example.com \
-  --password="super-sicheres-passwort" \
+  --password="super-secure-password" \
   --name="VisionSuit Admin" \
-  --bio="Optionaler Profiltext"
+  --bio="Optional profile text"
 ```
 
-Das Skript erstellt den Account (oder aktualisiert ihn bei erneutem Aufruf) mit der Rolle `ADMIN`, aktiviert ihn und hinterlegt das gehashte Passwort in der Datenbank.
+The script upserts an `ADMIN` role account, activates it, and stores the hashed password.
 
-## Entwicklung starten
+## Development Workflow
 
-### Gemeinsamer Dev-Starter
+### Unified dev starter
 
-Der Befehl `./dev-start.sh` startet Backend und Frontend gemeinsam im Watch-Modus und bindet beide Services an die per
-`HOST`-Variable übergebene Server-IP. Standardmäßig nutzt das Skript die im Installer ermittelte Adresse; gib bei Bedarf deine
-Server-IP explizit an, um Missverständnisse mit `localhost` oder Docker-Netzen zu vermeiden.
+`./dev-start.sh` launches both API and front end in watch mode, binding services to the IP supplied through the `HOST` environment variable. Pass your server IP explicitly when developing across networks to avoid `localhost` confusion:
 
-1. Abhängigkeiten installieren:
-   ```bash
-   (cd backend && npm install)
-   (cd frontend && npm install)
-   ```
-2. Starter aufrufen (Beispiel mit expliziter IP):
-   ```bash
-   HOST=<deine-server-ip> ./dev-start.sh
-   ```
+```bash
+(cd backend && npm install)
+(cd frontend && npm install)
+HOST=<your-server-ip> ./dev-start.sh
+```
 
-Standard-Ports:
-- Backend: `4000` (änderbar über `BACKEND_PORT`)
-- Frontend: `5173` (änderbar über `FRONTEND_PORT`)
+Default ports:
 
-> Tipp: Setze `HOST` stets auf die tatsächliche Server-IP (z. B. `HOST=192.168.1.50 ./dev-start.sh`), wenn du die Dienste aus
-> dem lokalen Netzwerk oder aus Containern erreichbar machen möchtest.
+- Backend: `4000` (override with `BACKEND_PORT`)
+- Front end: `5173` (override with `FRONTEND_PORT`)
 
-### Node.js-Versionen & Kompatibilität
+> Tip: Always point `HOST` to a reachable address (e.g., `HOST=192.168.1.50 ./dev-start.sh`) when accessing services from other devices or containers.
 
-- Die Vite-CLI gibt unter Node.js 18.19.x einen Warnhinweis aus, funktioniert aber dank eines mitgelieferten
-  Polyfills ohne Fehlermeldung. Die npm-Skripte laden `scripts/node18-crypto-polyfill.cjs` automatisch vor,
-  wodurch `crypto.hash` auf älteren LTS-Versionen verfügbar wird.
-- Für neue Installationen wird Node.js **22 LTS** empfohlen, um die Warnung zu vermeiden und zukünftige Vite-Releases
-  ohne Anpassungen nutzen zu können. Ein Wechsel gelingt beispielsweise via `nvm install 22 && nvm use 22`.
+### Backend service
 
-
-### Einzelne Services
-
-#### Backend
 1. `cd backend`
-2. Stelle sicher, dass `./.env` aus der Vorlage erzeugt ist:
-   - `cp .env.example .env` legt eine lokale Entwicklungsdatei mit `DATABASE_URL="file:./dev.db"` an.
-   - Prisma CLI und Server teilen sich damit dieselbe Datenbank-URL; separate `prisma/.env`-Dateien werden nicht mehr benötigt.
-3. Prisma-Schema anwenden und Seed laden (optional, für Demodaten):
+2. Create `.env` from the template if it does not exist:
+   ```bash
+   cp .env.example .env
+   ```
+   The default sets `DATABASE_URL="file:./dev.db"` for both Prisma CLI and the dev server.
+3. Optionally apply migrations and seed demo data:
    ```bash
    npm run prisma:migrate
    npm run seed
    ```
-4. Entwicklungsserver (ideal mit Server-IP):
+4. Start the development server (ideally with the server IP):
    ```bash
-   HOST=<deine-server-ip> PORT=4000 npm run dev
+   HOST=<your-server-ip> PORT=4000 npm run dev
    ```
 
-#### Frontend
+### Front-end service
+
 1. `cd frontend`
-2. Entwicklungsserver starten (mit Server-IP):
+2. Start Vite with explicit host binding:
    ```bash
-   npm run dev -- --host <deine-server-ip> --port 5173
+   npm run dev -- --host <your-server-ip> --port 5173
    ```
-3. Node-Version prüfen:
+3. Confirm your Node.js version:
    ```bash
    node -v
    ```
-   Sollte die Ausgabe eine Version kleiner als 18 zeigen, bitte Node.js aktualisieren (z. B. via `nvm`).
-4. Öffne `http://<deine-server-ip>:5173`, um den Explorer mit Echtzeit-Filtern für LoRAs und Galerien zu testen.
+   Upgrade via `nvm` if the version is below 18.
+4. Open `http://<your-server-ip>:5173` to explore live filters for LoRA models and curated galleries.
 
-## Frontend-Erlebnis
+## Upload Pipeline
 
-Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-Transparenz und datengetriebenen Explorern:
+1. **Authentication** – Every upload requires a valid JWT. Missing or expired tokens respond with `401/403` immediately.
+2. **Draft creation** – `POST /api/uploads` stores an `UploadDraft` with owner, visibility, tags, and expected files.
+3. **Direct storage ingest** – Files stream straight to MinIO (`s3://<bucket>/<uuid>`). The backend issues random object IDs, stores metadata (name, MIME type, size) in `StorageObject`, and returns anonymized identifiers.
+4. **Asset linking** – The backend creates `ModelAsset` or `ImageAsset` entries, attaches tags, provisions galleries when requested, and auto-assigns covers.
+5. **Explorer refresh & auditing** – Drafts transition to `processed`, new tiles appear instantly, and storage metadata (bucket, object key, public URL) is included in the response.
 
-- **Neue Shell** – Ein dauerhaft sichtbares Sidebar-Layout bündelt die Hauptnavigation (Home, Models, Images) und zeigt den Status von Frontend, Backend und MinIO auf einen Blick.
-- **Admin-Panel** – Skaliert für vierstellige Bestände mit Filterchips, Mehrfachauswahl, Bulk-Löschungen sowie direkter Galerie-
-  und Albumbearbeitung inklusive Reihung und Metadatenpflege.
-- **Home-Dashboard** – Zweigeteilte 5er-Grids für neue Modelle und Bilder mit klaren Meta-Blöcken (Name, Model, Kurator:in) und klickbaren Tag-Badges, die direkt in die gefilterten Explorer springen.
-- **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Dialog samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien. Die Modelcard bringt Version-Chips mit Live-Preview, Downloadumschaltung und einen integrierten Dialog für neue Modellversionen mit.
-- **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination sowie eine dialogbasierte Detailansicht pro Sammlung mit EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
-- **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback – inklusive eigenem Galerie-Modus für Bildserien.
+Batch uploads validate up to 12 files per request and enforce the 2 GB size ceiling with descriptive error messages.
 
-Die Explorer-Filter arbeiten vollständig clientseitig und reagieren selbst auf große Datenmengen ohne zusätzliche Server-Requests.
+## API Snapshot
 
-### Upload-Pipeline & Backend
-
-1. **Auth-Check** – Jeder Upload erfordert ein gültiges JWT; das Backend schlägt bei fehlender/abgelaufener Authentifizierung sofort mit `401` oder `403` fehl.
-2. **Session anlegen** – Der Wizard legt per `POST /api/uploads` einen `UploadDraft` inklusive Owner, Sichtbarkeit, Tags und erwarteter Dateien an.
-3. **Direkter Storage-Ingest** – Dateien werden gestreamt nach MinIO übertragen (`s3://bucket/<uuid>`). Das Backend vergibt dafür zufällige Objekt-IDs, speichert sie inklusive Dateiname, Content-Type und Größe in `StorageObject` und reicht nur die anonymisierte ID weiter.
-4. **Asset-Erzeugung & Linking** – Das Backend erzeugt sofort `ModelAsset`- bzw. `ImageAsset`-Datensätze, verknüpft Tags, erstellt auf Wunsch neue Galerien und setzt Cover-Bilder automatisch.
-5. **Explorer-Refresh & Audit** – UploadDrafts erhalten einen `processed`-Status, Explorer-Kacheln sind direkt sichtbar und alle Storage-Informationen (Bucket, Object-Key, Public-URL) werden im API-Response ausgespielt.
-
-Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit klaren Fehlermeldungen, sobald Größen- oder Anzahllimits überschritten werden.
-
-## API-Schnittstellen (Auszug)
-- `GET /health` – Health-Check des Servers.
-- `POST /api/auth/login` – Authentifizierung via E-Mail/Passwort; liefert JWT und User-Details.
-- `POST /api/uploads` – Legt UploadDrafts an und steuert die Upload-Pipeline.
+- `GET /health` – Service health probe.
+- `POST /api/auth/login` – Email/password authentication returning JWT and profile data.
+- `GET /api/auth/me` – Validates a JWT and returns the current account.
+- `GET /api/meta/stats` – Aggregated counters for assets, galleries, and tags.
+- `GET /api/assets/models` – LoRA assets including owners, tags, and metadata.
+- `GET /api/assets/images` – Image assets with prompts, model info, and tags.
+- `GET /api/galleries` – Curated gallery collections and associated assets.
+- `POST /api/uploads` – Initiates the upload pipeline for models or galleries (JWT required).
+- `GET /api/storage/:bucket/:objectId` – Secure file proxy resolving anonymized IDs to originals.
+- `GET /api/users` – Admin-only listing of accounts.
+- `POST /api/users` – Admin-only account provisioning.
+- `PUT /api/users/:id` – Admin-only account maintenance, deactivation, and password resets.
+- `DELETE /api/users/:id` – Admin-only user removal (no self-delete).
+- `POST /api/users/bulk-delete` – Bulk account deletion (admin only).
+- `POST /api/assets/models/bulk-delete` – Bulk removal of models including storage cleanup.
+- `POST /api/assets/models/:id/versions` – Adds safetensor revisions with previews to an existing modelcard.
+- `POST /api/assets/images/bulk-delete` – Bulk removal of gallery images and cover cleanup.
+- `PUT /api/galleries/:id` – Edit gallery metadata, visibility, and ordering.
+- `DELETE /api/galleries/:id` – Delete a gallery (admin or owner permissions).
 
 ## Troubleshooting
 
-- **Fehler: `Cannot find module './types/express'` beim Backend-Start** – Dieser Hinweis stammt aus älteren Builds, in denen die
-  Express-Typdefinitionen noch als `.d.ts`-Dateien eingebunden waren. Seit Mai 2024 liegen sie als reguläre TypeScript-Module vor
-  und werden beim Transpilieren zu lauffähigem JavaScript gebündelt. Stelle sicher, dass du den aktuellen Stand installiert hast
-  (`git pull`, anschließend `cd backend && npm install && npm run build` bzw. `npm run dev`).
-- `GET /api/auth/me` – Prüft ein JWT und liefert das aktuelle Profil zurück.
-- `GET /api/meta/stats` – Aggregierte Kennzahlen (Assets, Galerien, Tags).
-- `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
-- `GET /api/assets/images` – Bild-Assets (Prompt, Modelldaten, Tags).
-- `GET /api/galleries` – Kuratierte Galerien mit zugehörigen Assets & Bildern.
-- `GET /api/storage/:bucket/:objectId` – Proxied-Dateizugriff über ID-Auflösung in der Datenbank.
-- `POST /api/uploads` – Legt eine UploadDraft-Session (nur mit gültigem Token) an, prüft Limits & Validierung und plant Dateien für die Analyse-Queue ein.
-- `GET /api/users` – Administrations-Endpunkt für Benutzerlisten (JWT + Rolle `ADMIN` erforderlich).
-- `POST /api/users` – Neue Benutzer:innen anlegen (Admin-only).
-- `PUT /api/users/:id` – Bestehende Accounts pflegen, deaktivieren oder Passwort neu setzen (Admin-only).
-- `DELETE /api/users/:id` – Benutzer:innen löschen (Admin-only, kein Self-Delete).
-- `POST /api/users/bulk-delete` – Mehrere Accounts in einem Schritt entfernen (Admin-only).
-- `POST /api/assets/models/bulk-delete` – Bulk-Löschung von Modellen inkl. Storage-Bereinigung.
-- `POST /api/assets/models/:id/versions` – Fügt einer bestehenden Modelcard eine neue Safetensor-Version inklusive Vorschaubild hinzu.
-- `POST /api/assets/images/bulk-delete` – Bulk-Löschung von Bildern und Cover-Bereinigung.
-- `PUT /api/galleries/:id` – Galerie-Metadaten, Sichtbarkeit und Reihenfolge bearbeiten.
-- `DELETE /api/galleries/:id` – Galerie inklusive Einträge löschen (Admin oder Owner).
+- **`Cannot find module './types/express'` when starting the backend** – Legacy builds expected Express type definitions as `.d.ts` files. Ensure you are on the latest code, then reinstall dependencies and rebuild: `git pull`, `cd backend`, `npm install`, `npm run build` (or `npm run dev`).
+- **Node 18 warnings from Vite** – A crypto polyfill is bundled for Node.js 18.19.x, but upgrading to Node.js 22 LTS removes the warning and future-proofs the toolchain (`nvm install 22 && nvm use 22`).
 
-## Datenmodell-Highlights
-- **User** verwaltet Kurator:innen inklusive Rollen & Profilinfos.
-- **ModelAsset** & **ImageAsset** besitzen eindeutige `storagePath`-Constraints für Dateiverweise.
-- **StorageObject** verwaltet Bucket, Objekt-ID, Originalnamen und Metadaten, damit Downloads trotz anonymisierter Pfade den richtigen Dateinamen behalten.
-- **Gallery** bündelt Assets/Bilder über `GalleryEntry` (Positionierung + Notizen).
-- **Tag** wird über Pivot-Tabellen (`AssetTag`, `ImageTag`) zugewiesen.
-- **UploadDraft** protokolliert Upload-Sessions mit Dateiliste, Gesamtgröße, Status und Audit-Timestamps.
-
-## Seed-Inhalte
-- Demo-Kurator*in inklusive Basisprofil.
-- Beispiel-LoRA „NeoSynth Cinematic LoRA“ mit Metadaten & Trigger-Wörtern.
-- Showcase-Bild samt Prompt-/Sampler-Informationen.
-- Kuratierte Galerie „Featured Cinematic Set“ als Startpunkt für UI-Iterationen.
-
-Weitere Schritte umfassen Upload-Flows, Review-Prozesse und erweiterte Filter-/Suchfunktionen.
-
-## Storage mit MinIO
-
-- Der Backend-Start ruft `initializeStorage` auf und sorgt (abhängig von `MINIO_AUTO_CREATE_BUCKETS`) dafür, dass die konfigurierten
-  Buckets existieren. So entfällt das manuelle Anlegen per Konsole.
-- Die relevanten Variablen liegen in `backend/.env` (`STORAGE_DRIVER`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_BUCKET_*`, …).
-  Standardmäßig werden zwei Buckets (`visionsuit-models`, `visionsuit-images`) genutzt.
-- `install.sh` erzeugt nach dem Abfragen deiner Zugangsdaten automatisch einen MinIO-Docker-Container namens `visionsuit-minio`.
-  - Die Daten werden im Ordner `docker-data/minio/` unterhalb des Repos persistiert.
-  - Der API-Port entspricht deiner Eingabe (`MINIO_PORT`), der Administrationszugang liegt standardmäßig auf Port `MINIO_PORT + 1`.
-  - Existiert bereits ein Container, kannst du ihn direkt weiterverwenden oder komfortabel neu provisionieren lassen.
-- Portainer CE lässt sich im selben Schritt (optional) bereitstellen und bietet dir ein Dashboard für MinIO und weitere Container.
-
-Da MinIO in vielen Setups nur intern erreichbar ist, übernimmt das Backend das Ausliefern der Dateien. Über den Proxy-Endpunkt `/api/storage/:bucket/:objectId` wird die Objekt-ID zunächst in `StorageObject` aufgelöst, anschließend Content-Type, Dateigröße sowie ursprünglicher Dateiname gesetzt – Downloads und Inline-Previews im Frontend funktionieren damit trotz anonymisierter MinIO-Pfade zuverlässig.
-
-## Rollback & Bereinigung
-
-Für Test-Szenarien oder wenn ein kompletter Reset der Arbeitskopie benötigt wird, stellt das Repository das Skript
-`./rollback.sh` bereit. Es entfernt installierte Abhängigkeiten, löscht Build-Artefakte, setzt Konfigurationsdateien auf ihre
-Beispielwerte zurück, säubert Cache-Verzeichnisse für Front- und Backend **und** räumt sämtliche lokal installierten Node.js
-Toolchains samt globalen npm/pnpm/yarn-Artefakten auf.
-
-**Was wird zurückgesetzt?**
-
-- npm-Abhängigkeiten und Build-Ordner in `backend/` und `frontend/`.
-- `.env`-Dateien werden aus den jeweiligen `*.env.example`-Vorlagen wiederhergestellt.
-- Projektweite Cache-Verzeichnisse (`.turbo`, `.cache`, `.eslintcache`, `.vite`, `tsconfig.tsbuildinfo`).
-- npm-Cache (`npm cache clean --force`, falls verfügbar) sowie globale Prefixes im Home-Verzeichnis (z. B. `~/.npm-global`).
-- Lokale Node-Versionen und Toolchains in Home- oder Projektpfaden (u. a. `~/.nvm`, `~/.fnm`, `~/.asdf/installs/nodejs`,
-  `~/.volta`, `./.toolchains`).
-
-> ⚠️ **Achtung**: Der Toolchain-Purge löscht alle lokal via nvm/fnm/asdf/volta installierten Node.js-Versionen sowie globale
-> npm-Installationen im Home-Verzeichnis. Prüfe mit `./rollback.sh --dry-run`, ob weitere Projekte betroffen wären, und sichere
-> ggf. benötigte Toolchains vor dem produktiven Lauf.
-
-```bash
-# Übersicht der geplanten Schritte ohne Änderungen an der Arbeitskopie
-./rollback.sh --dry-run
-
-# Rollback ohne Rückfrage durchführen
-./rollback.sh --yes
-```
-
-> Hinweis: Die lokalen `.env`-Dateien werden durch die jeweiligen `*.env.example`-Vorlagen ersetzt. Eigene Anpassungen sollten
-> vor dem Rollback gesichert werden.
