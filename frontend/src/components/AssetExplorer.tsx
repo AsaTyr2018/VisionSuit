@@ -209,7 +209,7 @@ export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplore
           </p>
         </div>
         <button type="button" className="panel__action panel__action--primary" onClick={() => onStartUpload?.()}>
-          Upload-Assistent starten
+          LoRA-Upload öffnen
         </button>
       </header>
 

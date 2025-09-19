@@ -4,6 +4,7 @@ import type { DragEvent } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
+import type { Gallery } from '../types/api';
 
 export type UploadWizardResult =
   | { status: 'success'; uploadId?: string; message?: string }
@@ -113,7 +114,10 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<UploadWizardResult | null>(null);
   const [progressValue, setProgressValue] = useState(0);
-  const { token } = useAuth();
+  const [availableGalleries, setAvailableGalleries] = useState<Gallery[]>([]);
+  const [isLoadingGalleries, setIsLoadingGalleries] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const { token, user } = useAuth();
 
   const isGalleryMode = mode === 'gallery';
   const steps = useMemo(
@@ -127,6 +131,14 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
   );
 
   const currentStep = steps[currentStepIndex];
+
+  const userId = user?.id;
+  const userRole = user?.role;
+
+  const selectedTargetGallery = useMemo(
+    () => availableGalleries.find((gallery) => gallery.slug === formState.targetGallery.trim()),
+    [availableGalleries, formState.targetGallery],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -157,8 +169,70 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       setSubmitResult(null);
       setProgressValue(0);
       setIsSubmitting(false);
+      setAvailableGalleries([]);
+      setIsLoadingGalleries(false);
+      setGalleryError(null);
     }
   }, [isOpen, mode]);
+
+  useEffect(() => {
+    if (!isOpen || !isGalleryMode) {
+      return;
+    }
+
+    let isActive = true;
+
+    const loadGalleries = async () => {
+      setIsLoadingGalleries(true);
+      setGalleryError(null);
+
+      try {
+        const entries = await api.getGalleries();
+        if (!isActive) return;
+
+        const filtered =
+          userRole === 'ADMIN'
+            ? entries
+            : entries.filter((gallery) => (userId ? gallery.owner.id === userId : false));
+
+        setAvailableGalleries(filtered);
+      } catch (error) {
+        if (!isActive) return;
+        console.error('Failed to load galleries for upload wizard', error);
+        setAvailableGalleries([]);
+        setGalleryError('Galerien konnten nicht geladen werden. Bitte später erneut versuchen.');
+      } finally {
+        if (isActive) {
+          setIsLoadingGalleries(false);
+        }
+      }
+    };
+
+    void loadGalleries();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isOpen, isGalleryMode, userId, userRole]);
+
+  useEffect(() => {
+    if (!isGalleryMode || formState.galleryMode !== 'existing') {
+      return;
+    }
+
+    const trimmedTarget = formState.targetGallery.trim();
+    const hasSelection = trimmedTarget.length > 0;
+    const match = availableGalleries.some((gallery) => gallery.slug === trimmedTarget);
+
+    if (hasSelection && !match) {
+      setFormState((prev) => ({ ...prev, targetGallery: '' }));
+      return;
+    }
+
+    if (!hasSelection && availableGalleries.length === 1) {
+      setFormState((prev) => ({ ...prev, targetGallery: availableGalleries[0].slug }));
+    }
+  }, [availableGalleries, formState.galleryMode, formState.targetGallery, isGalleryMode]);
 
   const handleAddTag = () => {
     const trimmed = tagDraft.trim();
@@ -312,7 +386,11 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
         label: 'Ziel-Galerie',
         value:
           formState.galleryMode === 'existing'
-            ? formState.targetGallery || 'Bestehende Galerie wird später ausgewählt'
+            ? selectedTargetGallery
+              ? `${selectedTargetGallery.title} (${selectedTargetGallery.owner.displayName})`
+              : formState.targetGallery
+                ? 'Ausgewählte Galerie nicht mehr verfügbar'
+                : 'Bitte Galerie auswählen'
             : 'Neue Galerie wird nach Upload angelegt',
       },
       { label: 'Dateien', value: `${files.length} · ${formatFileSize(totalSize)}` },
@@ -352,6 +430,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
     formState.title,
     formState.visibility,
     isGalleryMode,
+    selectedTargetGallery,
     totalSize,
   ]);
 
@@ -653,15 +732,41 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
                   </label>
                 </div>
                 {formState.galleryMode === 'existing' ? (
-                  <label className="upload-wizard__gallery-select">
-                    <span className="sr-only">Bestehende Galerie</span>
-                    <input
-                      type="text"
-                      value={formState.targetGallery}
-                      onChange={(event) => setFormState((prev) => ({ ...prev, targetGallery: event.target.value }))}
-                      placeholder="Titel oder Slug der Galerie"
-                    />
-                  </label>
+                  <div className="upload-wizard__gallery-select">
+                    <label>
+                      <span className="sr-only">Bestehende Galerie</span>
+                      <select
+                        value={formState.targetGallery}
+                        onChange={(event) =>
+                          setFormState((prev) => ({ ...prev, targetGallery: event.target.value }))
+                        }
+                        disabled={isLoadingGalleries || availableGalleries.length === 0}
+                      >
+                        <option value="">
+                          {isLoadingGalleries
+                            ? 'Galerien werden geladen …'
+                            : availableGalleries.length === 0
+                              ? 'Keine Galerie verfügbar'
+                              : 'Bitte Galerie auswählen'}
+                        </option>
+                        {availableGalleries.map((gallery) => (
+                          <option key={gallery.id} value={gallery.slug}>
+                            {gallery.title} · {gallery.owner.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {galleryError ? (
+                      <p className="upload-wizard__error" role="alert">
+                        {galleryError}
+                      </p>
+                    ) : null}
+                    {!galleryError && !isLoadingGalleries && availableGalleries.length === 0 ? (
+                      <p className="upload-wizard__helper">
+                        Keine passenden Galerien gefunden. Lege eine neue Galerie an oder ändere die Auswahl.
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>

@@ -9,7 +9,7 @@ den Upload- und Kuration-Workflow.
 - **Dashboard-Navigation** – Linke Seitenleiste mit direkter Umschaltung zwischen Home, Models und Images sowie Live-Service-Status für Frontend, Backend und MinIO.
 - **Rollenbasierte Authentifizierung** – Login-Dialog mit JWT-Token, persistiertem Zustand und Admin-Dashboard für Benutzer-, Modell- und Bildverwaltung.
 - **Upload-Wizard** – dreistufiger Assistent für Basisdaten, Dateiupload & Review inklusive Validierungen, Drag & Drop sowie Rückmeldung aus dem produktiven Upload-Endpunkt (`POST /api/uploads`).
-- **Galerie-Entwürfe** – separater Bild-Upload aus dem Galerie-Explorer, Multi-Upload (bis 12 Dateien/2 GB) mit automatischer Galerie-Auswahl oder -Neuanlage.
+- **Galerie-Entwürfe** – separater Bild-Upload aus dem Galerie-Explorer, Multi-Upload (bis 12 Dateien/2 GB) mit rollenbasiertem Galerie-Dropdown oder direkter Neuanlage.
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
