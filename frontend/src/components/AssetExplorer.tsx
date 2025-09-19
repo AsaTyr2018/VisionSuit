@@ -1,14 +1,17 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { ModelAsset } from '../types/api';
+import type { Gallery, ModelAsset } from '../types/api';
 
-import { AssetCard } from './AssetCard';
+import { resolveStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
 
 interface AssetExplorerProps {
   assets: ModelAsset[];
+  galleries: Gallery[];
   isLoading: boolean;
   onStartUpload?: () => void;
+  onNavigateToGallery?: (galleryId: string) => void;
+  initialAssetId?: string | null;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -19,7 +22,7 @@ type TagOption = { id: string; label: string; count: number };
 
 type TypeOption = { id: string; label: string; count: number };
 
-const ASSET_BATCH_SIZE = 24;
+const ASSET_BATCH_SIZE = 25;
 
 const fileSizeLabels: Record<Exclude<FileSizeFilter, 'all'>, string> = {
   small: '≤ 50 MB',
@@ -97,7 +100,34 @@ const matchesSearch = (asset: ModelAsset, query: string) => {
 
 const findModelType = (asset: ModelAsset) => asset.tags.find((tag) => tag.category === 'model-type');
 
-export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplorerProps) => {
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes || Number.isNaN(bytes)) {
+    return '–';
+  }
+  if (bytes < 1_000_000) {
+    return `${Math.round(bytes / 1_000)} KB`;
+  }
+  if (bytes < 1_000_000_000) {
+    return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  }
+  return `${(bytes / 1_000_000_000).toFixed(2)} GB`;
+};
+
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString('de-DE', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+export const AssetExplorer = ({
+  assets,
+  galleries,
+  isLoading,
+  onStartUpload,
+  onNavigateToGallery,
+  initialAssetId,
+}: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -105,6 +135,9 @@ export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplore
   const [fileSizeFilter, setFileSizeFilter] = useState<FileSizeFilter>('all');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [visibleLimit, setVisibleLimit] = useState(ASSET_BATCH_SIZE);
+  const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -180,7 +213,89 @@ export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplore
     setVisibleLimit(ASSET_BATCH_SIZE);
   }, [normalizedQuery, selectedOwner, selectedType, fileSizeFilter, selectedTags, sortOption]);
 
+  useEffect(() => {
+    if (initialAssetId) {
+      setActiveAssetId(initialAssetId);
+    }
+  }, [initialAssetId]);
+
+  useEffect(() => {
+    if (activeAssetId && !assets.some((asset) => asset.id === activeAssetId)) {
+      setActiveAssetId(null);
+    }
+  }, [activeAssetId, assets]);
+
   const visibleAssets = useMemo(() => filteredAssets.slice(0, visibleLimit), [filteredAssets, visibleLimit]);
+
+  const canLoadMore = visibleAssets.length < filteredAssets.length;
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || !canLoadMore) {
+      return undefined;
+    }
+
+    let isLoadingMore = false;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !isLoadingMore) {
+            isLoadingMore = true;
+            setVisibleLimit((current) => Math.min(filteredAssets.length, current + ASSET_BATCH_SIZE));
+            window.setTimeout(() => {
+              isLoadingMore = false;
+            }, 150);
+          }
+        });
+      },
+      { rootMargin: '240px 0px' },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [canLoadMore, filteredAssets.length]);
+
+  const activeAsset = useMemo(
+    () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
+    [activeAssetId, assets],
+  );
+
+  const relatedGalleries = useMemo(() => {
+    if (!activeAsset) {
+      return [] as { id: string; title: string; slug: string }[];
+    }
+
+    const matches = new Map<string, { id: string; title: string; slug: string }>();
+    galleries.forEach((gallery) => {
+      const hasModel = gallery.entries.some((entry) => entry.modelAsset?.id === activeAsset.id);
+      if (hasModel) {
+        matches.set(gallery.id, { id: gallery.id, title: gallery.title, slug: gallery.slug });
+      }
+    });
+    return Array.from(matches.values());
+  }, [activeAsset, galleries]);
+
+  const metadataEntries = useMemo(() => {
+    if (!activeAsset?.metadata) {
+      return [] as { key: string; value: string }[];
+    }
+
+    const rows: { key: string; value: string }[] = [];
+    Object.entries(activeAsset.metadata).forEach(([key, value]) => {
+      if (value == null) return;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        rows.push({ key, value: String(value) });
+      } else if (Array.isArray(value)) {
+        const filtered = value.filter((entry) => entry != null).map((entry) => String(entry));
+        if (filtered.length > 0) {
+          rows.push({ key, value: filtered.join(', ') });
+        }
+      } else if (typeof value === 'object') {
+        rows.push({ key, value: JSON.stringify(value, null, 2) });
+      }
+    });
+    return rows;
+  }, [activeAsset?.metadata]);
 
   const activeFilters = useMemo(() => {
     const filters: { id: string; label: string; onClear: () => void }[] = [];
@@ -232,10 +347,6 @@ export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplore
     setFileSizeFilter('all');
     setSortOption('recent');
     setSearchTerm('');
-  };
-
-  const loadMoreAssets = () => {
-    setVisibleLimit((current) => Math.min(filteredAssets.length, current + ASSET_BATCH_SIZE));
   };
 
   return (
@@ -374,23 +485,189 @@ export const AssetExplorer = ({ assets, isLoading, onStartUpload }: AssetExplore
         {isLoading && assets.length === 0 ? 'Lade LoRA-Assets …' : `Zeigt ${visibleAssets.length} von ${filteredAssets.length} Assets`}
       </div>
 
-      <div className="panel__grid panel__grid--columns">
-        {isLoading && assets.length === 0
-          ? Array.from({ length: 6 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
-          : visibleAssets.map((asset) => <AssetCard key={asset.id} asset={asset} />)}
+      <div className="asset-explorer__layout">
+        <div className="asset-explorer__grid" role="list" aria-label="LoRA-Assets">
+          {isLoading && assets.length === 0
+            ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+            : visibleAssets.map((asset) => {
+                const previewUrl =
+                  resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ??
+                  asset.previewImage ?? undefined;
+                const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA';
+                const isActive = activeAssetId === asset.id;
+                return (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    role="listitem"
+                    className={`asset-tile${isActive ? ' asset-tile--active' : ''}`}
+                    onClick={() => setActiveAssetId(asset.id)}
+                  >
+                    <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
+                      {previewUrl ? (
+                        <img src={previewUrl} alt={`Preview von ${asset.title}`} loading="lazy" />
+                      ) : (
+                        <span>Kein Preview</span>
+                      )}
+                    </div>
+                    <div className="asset-tile__body">
+                      <div className="asset-tile__headline">
+                        <h3>{asset.title}</h3>
+                        <span>{modelType}</span>
+                      </div>
+                      <p>Version {asset.version}</p>
+                      <p className="asset-tile__owner">{asset.owner.displayName}</p>
+                    </div>
+                  </button>
+                );
+              })}
+        </div>
+
+        <aside className="asset-explorer__detail">
+          {activeAsset ? (
+            <div className="asset-detail" role="region" aria-live="polite">
+              <header className="asset-detail__header">
+                <div>
+                  <span className="asset-detail__version">Version {activeAsset.version}</span>
+                  <h3>{activeAsset.title}</h3>
+                  <p>Kuratiert von {activeAsset.owner.displayName}</p>
+                </div>
+                <button type="button" className="asset-detail__close" onClick={() => setActiveAssetId(null)}>
+                  Auswahl aufheben
+                </button>
+              </header>
+
+              {activeAsset.description ? (
+                <p className="asset-detail__description">{activeAsset.description}</p>
+              ) : (
+                <p className="asset-detail__description asset-detail__description--muted">
+                  Noch keine Beschreibung hinterlegt.
+                </p>
+              )}
+
+              {activeAsset.previewImage ? (
+                <div className="asset-detail__preview">
+                  <img
+                    src={
+                      resolveStorageUrl(
+                        activeAsset.previewImage,
+                        activeAsset.previewImageBucket,
+                        activeAsset.previewImageObject,
+                      ) ?? activeAsset.previewImage
+                    }
+                    alt={`Preview von ${activeAsset.title}`}
+                  />
+                </div>
+              ) : null}
+
+              <section className="asset-detail__section">
+                <h4>Speicher &amp; Größe</h4>
+                <dl>
+                  <div>
+                    <dt>Storage Objekt</dt>
+                    <dd>
+                      <a
+                        href={
+                          resolveStorageUrl(activeAsset.storagePath, activeAsset.storageBucket, activeAsset.storageObject) ??
+                          activeAsset.storagePath
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {activeAsset.storageObject ?? activeAsset.storagePath}
+                      </a>
+                    </dd>
+                  </div>
+                  {activeAsset.storageBucket ? (
+                    <div>
+                      <dt>Bucket</dt>
+                      <dd>{activeAsset.storageBucket}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt>Dateigröße</dt>
+                    <dd>{formatFileSize(activeAsset.fileSize)}</dd>
+                  </div>
+                  <div>
+                    <dt>Checksumme</dt>
+                    <dd>{activeAsset.checksum ?? '–'}</dd>
+                  </div>
+                  <div>
+                    <dt>Aktualisiert</dt>
+                    <dd>{formatDate(activeAsset.updatedAt)}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section className="asset-detail__section">
+                <h4>Tags</h4>
+                {activeAsset.tags.length > 0 ? (
+                  <div className="asset-detail__tags">
+                    {activeAsset.tags.map((tag) => (
+                      <span key={tag.id}>{tag.label}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="asset-detail__description asset-detail__description--muted">Keine Tags hinterlegt.</p>
+                )}
+              </section>
+
+              <section className="asset-detail__section">
+                <h4>Metadaten</h4>
+                {metadataEntries.length > 0 ? (
+                  <dl className="asset-detail__metadata">
+                    {metadataEntries.map((row) => (
+                      <div key={row.key}>
+                        <dt>{row.key}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="asset-detail__description asset-detail__description--muted">Keine Metadaten verfügbar.</p>
+                )}
+              </section>
+
+              <section className="asset-detail__section">
+                <h4>Verknüpfte Bild-Sammlungen</h4>
+                {relatedGalleries.length > 0 ? (
+                  <ul className="asset-detail__gallery-links">
+                    {relatedGalleries.map((gallery) => (
+                      <li key={gallery.id}>
+                        {onNavigateToGallery ? (
+                          <button
+                            type="button"
+                            onClick={() => onNavigateToGallery(gallery.id)}
+                            className="asset-detail__gallery-button"
+                          >
+                            {gallery.title}
+                          </button>
+                        ) : (
+                          <span>{gallery.title}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="asset-detail__description asset-detail__description--muted">
+                    Dieses LoRA ist noch keiner Bildsammlung zugeordnet.
+                  </p>
+                )}
+              </section>
+            </div>
+          ) : (
+            <div className="asset-detail asset-detail--empty">
+              <p>Wähle ein LoRA aus der Liste, um Metadaten und zugehörige Galerien zu sehen.</p>
+            </div>
+          )}
+        </aside>
       </div>
 
       {!isLoading && filteredAssets.length === 0 ? (
         <p className="panel__empty">Keine Assets entsprechen den aktuellen Filtern.</p>
       ) : null}
 
-      {!isLoading && visibleAssets.length < filteredAssets.length ? (
-        <div className="panel__footer">
-          <button type="button" className="panel__action panel__action--ghost" onClick={loadMoreAssets}>
-            Weitere {Math.min(ASSET_BATCH_SIZE, filteredAssets.length - visibleAssets.length)} Assets laden
-          </button>
-        </div>
-      ) : null}
+      <div ref={sentinelRef} className="asset-explorer__sentinel" aria-hidden="true" />
     </section>
   );
 };

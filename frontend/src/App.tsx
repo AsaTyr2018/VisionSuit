@@ -85,6 +85,8 @@ export const App = () => {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
+  const [focusedGalleryId, setFocusedGalleryId] = useState<string | null>(null);
   const availableViews = useMemo<ViewKey[]>(() => {
     const views: ViewKey[] = ['home', 'models', 'images'];
     if (authUser?.role === 'ADMIN') {
@@ -211,6 +213,18 @@ export const App = () => {
       return;
     }
     setIsGalleryUploadOpen(true);
+  };
+
+  const handleNavigateToGallery = (galleryId: string) => {
+    setFocusedGalleryId(galleryId);
+    setFocusedAssetId(null);
+    setActiveView('images');
+  };
+
+  const handleNavigateToModel = (modelId: string) => {
+    setFocusedAssetId(modelId);
+    setFocusedGalleryId(null);
+    setActiveView('models');
   };
 
   const handleLoginSubmit = async (email: string, password: string) => {
@@ -380,8 +394,11 @@ export const App = () => {
       return (
         <AssetExplorer
           assets={assets}
+          galleries={galleries}
           isLoading={isLoading}
           onStartUpload={handleOpenAssetUpload}
+          onNavigateToGallery={handleNavigateToGallery}
+          initialAssetId={focusedAssetId}
         />
       );
     }
@@ -392,6 +409,8 @@ export const App = () => {
           galleries={galleries}
           isLoading={isLoading}
           onStartGalleryDraft={handleOpenGalleryUpload}
+          onNavigateToModel={handleNavigateToModel}
+          initialGalleryId={focusedGalleryId}
         />
       );
     }
