@@ -35,7 +35,7 @@ const sendBucketNotAllowed = (res: Response) => {
 
 export const storageRouter = Router();
 
-storageRouter.get('/:bucket/:objectKey(.*)', async (req: Request, res: Response, next: NextFunction) => {
+const handleObjectRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const bucket = req.params.bucket;
 
@@ -44,7 +44,8 @@ storageRouter.get('/:bucket/:objectKey(.*)', async (req: Request, res: Response,
       return;
     }
 
-    const objectName = toProxyObjectName(req.params.objectKey);
+    const objectKeyParam = req.params[0];
+    const objectName = toProxyObjectName(objectKeyParam);
 
     if (!objectName) {
       sendNotFound(res);
@@ -104,4 +105,7 @@ storageRouter.get('/:bucket/:objectKey(.*)', async (req: Request, res: Response,
   } catch (error) {
     next(error);
   }
-});
+};
+
+storageRouter.get('/:bucket/*', handleObjectRequest);
+storageRouter.head('/:bucket/*', handleObjectRequest);
