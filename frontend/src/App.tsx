@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AssetExplorer } from './components/AssetExplorer';
 import { GalleryExplorer } from './components/GalleryExplorer';
-import { ImageGallery } from './components/ImageGallery';
 import { UploadWizard } from './components/UploadWizard';
 import type { UploadWizardResult } from './components/UploadWizard';
 import { LoginDialog } from './components/LoginDialog';
@@ -389,14 +388,11 @@ export const App = () => {
 
     if (activeView === 'images') {
       return (
-        <div className="content__stack">
-          <ImageGallery images={images} isLoading={isLoading} />
-          <GalleryExplorer
-            galleries={galleries}
-            isLoading={isLoading}
-            onStartGalleryDraft={handleOpenGalleryUpload}
-          />
-        </div>
+        <GalleryExplorer
+          galleries={galleries}
+          isLoading={isLoading}
+          onStartGalleryDraft={handleOpenGalleryUpload}
+        />
       );
     }
 

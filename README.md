@@ -16,7 +16,7 @@ den Upload- und Kuration-Workflow.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, Pagination und aktiven Filterhinweisen.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
-- **Galerie-Alben** – Collections zeigen mehrteilige Sets mit heroischen Vorschaubildern, Thumbnail-Leiste und Zoom-Lightbox für fokussierte Präsentationen.
+- **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten, Detailpanel pro Sammlung und EXIF-Lightbox für jedes Bild.
 - **Robuste Metadatenanzeige** – Galerie- und Bildansichten bleiben stabil, selbst wenn Einträge ohne ausgefüllte Bild-Metadaten vom Backend geliefert werden.
 
 ## Architekturüberblick
@@ -142,7 +142,7 @@ Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-
   und Albumbearbeitung inklusive Reihung und Metadatenpflege.
 - **Home-Dashboard** – Kachel-Layout mit den neuesten Modellen und Bildern inklusive Kurator:innen, Versionen, Prompts und Tag-Highlights.
 - **Models** – Der ausgebaute Model Explorer bleibt Dreh- und Angelpunkt für LoRA-Recherchen mit Volltext, Typ- und Größenfiltern sowie Lazy-Loading.
-- **Images** – Die Bildgalerie kombiniert Volltextsuche, Sortierung und Tag-Anrisse mit kuratierten Alben samt Collage-Layout und Zoom-Lightbox.
+- **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination, Detailpanel pro Sammlung sowie EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
 - **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback – inklusive eigenem Galerie-Modus für Bildserien.
 
 Die Explorer-Filter arbeiten vollständig clientseitig und reagieren selbst auf große Datenmengen ohne zusätzliche Server-Requests.
