@@ -19,6 +19,23 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface ModelVersion {
+  id: string;
+  version: string;
+  storagePath: string;
+  storageBucket?: string | null;
+  storageObject?: string | null;
+  previewImage?: string | null;
+  previewImageBucket?: string | null;
+  previewImageObject?: string | null;
+  fileSize?: number | null;
+  checksum?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+  isPrimary: boolean;
+}
+
 export interface ModelAsset {
   id: string;
   slug: string;
@@ -40,6 +57,9 @@ export interface ModelAsset {
     email: string;
   };
   tags: Tag[];
+  versions: ModelVersion[];
+  latestVersionId: string;
+  primaryVersionId: string;
   createdAt: string;
   updatedAt: string;
 }

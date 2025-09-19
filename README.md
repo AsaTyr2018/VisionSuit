@@ -14,7 +14,7 @@ den Upload- und Kuration-Workflow.
 - **Produktionsreifes Frontend** – Sticky-Navigation, Live-Status-Badge, Trust-Metriken und CTA-Panels transportieren einen fertigen Produktlook inklusive Toast-Benachrichtigungen für Upload-Events.
 - **Upload-Governance** – neue UploadDraft-Persistenz mit Audit-Trail, Größenlimit (≤ 2 GB), Dateianzahl-Limit (≤ 12 Dateien) und automatischem Übergang in die Analyse-Queue.
 - **Datengetriebene Explorer** – performante Filter für LoRA-Bibliothek & Galerien mit Volltextsuche, Tag-Badges, 5-Spalten-Kacheln und nahtlosem Infinite Scroll samt aktiven Filterhinweisen.
-- **Neu gestaltete Modelldetails** – Zwei-Spalten-Layout mit kompakter Infotabelle, prominentem Preview inklusive Download-CTA und klar getrennten Metadatenbereichen.
+- **Modelcard mit Versionierung** – Der Modelldialog heißt jetzt „Modelcard“, zeigt die Beschreibung direkt im Header, bietet Version-Chips zum Umschalten zwischen allen Safetensor-Ständen und enthält einen Upload-Flow für neue Versionen inklusive Preview-Handling.
 - **Direkte MinIO-Ingests** – Uploads landen unmittelbar in den konfigurierten Buckets, werden automatisch mit Tags versehen und tauchen ohne Wartezeit in Explorer & Galerien auf.
 - **Gesicherte Downloads** – Dateien werden über `/api/storage/:bucket/:objectId` durch das Backend geproxied; eine Datenbank-Tabelle ordnet die anonymisierten Objekt-IDs wieder den ursprünglichen Dateinamen zu.
 - **Galerie-Explorer** – Fünfspaltiges Grid mit zufälligen Vorschaubildern, fixen Kachelbreiten sowie einem eigenständigen Detail-Dialog pro Sammlung inklusive EXIF-Lightbox für jedes Bild.
@@ -144,7 +144,7 @@ Der aktuelle Prototyp fokussiert sich auf einen klaren Kontrollraum mit Service-
 - **Admin-Panel** – Skaliert für vierstellige Bestände mit Filterchips, Mehrfachauswahl, Bulk-Löschungen sowie direkter Galerie-
   und Albumbearbeitung inklusive Reihung und Metadatenpflege.
 - **Home-Dashboard** – Zweigeteilte 5er-Grids für neue Modelle und Bilder mit klaren Meta-Blöcken (Name, Model, Kurator:in) und klickbaren Tag-Badges, die direkt in die gefilterten Explorer springen.
-- **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Dialog samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien.
+- **Models** – Der ausgebaute Model Explorer bündelt Volltext, Typ- und Größenfilter mit einem festen 5er-Grid, Detail-Dialog samt Metadaten und Deep-Links direkt in die zugehörigen Bildgalerien. Die Modelcard bringt Version-Chips mit Live-Preview, Downloadumschaltung und einen integrierten Dialog für neue Modellversionen mit.
 - **Images** – Der Galerie-Explorer nutzt feste Grid-Kacheln mit zufälligen Vorschaubildern, Scrollpagination sowie eine dialogbasierte Detailansicht pro Sammlung mit EXIF- und Promptanzeige in einer bildfüllenden Lightbox.
 - **Upload-Wizard** – Jederzeit erreichbar über die Shell; validiert Eingaben, verwaltet Datei-Drops und liefert unmittelbares Backend-Feedback – inklusive eigenem Galerie-Modus für Bildserien.
 
@@ -184,6 +184,7 @@ Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit
 - `DELETE /api/users/:id` – Benutzer:innen löschen (Admin-only, kein Self-Delete).
 - `POST /api/users/bulk-delete` – Mehrere Accounts in einem Schritt entfernen (Admin-only).
 - `POST /api/assets/models/bulk-delete` – Bulk-Löschung von Modellen inkl. Storage-Bereinigung.
+- `POST /api/assets/models/:id/versions` – Fügt einer bestehenden Modelcard eine neue Safetensor-Version inklusive Vorschaubild hinzu.
 - `POST /api/assets/images/bulk-delete` – Bulk-Löschung von Bildern und Cover-Bereinigung.
 - `PUT /api/galleries/:id` – Galerie-Metadaten, Sichtbarkeit und Reihenfolge bearbeiten.
 - `DELETE /api/galleries/:id` – Galerie inklusive Einträge löschen (Admin oder Owner).
