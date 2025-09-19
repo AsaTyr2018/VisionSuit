@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import type { Gallery, ImageAsset, ModelAsset } from '../types/api';
 
@@ -12,6 +12,7 @@ interface GalleryExplorerProps {
   onStartGalleryDraft: () => void;
   onNavigateToModel?: (modelId: string) => void;
   initialGalleryId?: string | null;
+  onCloseDetail?: () => void;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -173,6 +174,7 @@ export const GalleryExplorer = ({
   onStartGalleryDraft,
   onNavigateToModel,
   initialGalleryId,
+  onCloseDetail,
 }: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
@@ -231,15 +233,37 @@ export const GalleryExplorer = ({
     }
   }, [initialGalleryId]);
 
+  const closeDetail = useCallback(() => {
+    setActiveGalleryId(null);
+    setActiveImage(null);
+    onCloseDetail?.();
+  }, [onCloseDetail]);
+
   useEffect(() => {
     if (activeGalleryId && !galleries.some((gallery) => gallery.id === activeGalleryId)) {
-      setActiveGalleryId(null);
+      closeDetail();
     }
-  }, [activeGalleryId, galleries]);
+  }, [activeGalleryId, galleries, closeDetail]);
 
   useEffect(() => {
     setActiveImage(null);
   }, [activeGalleryId]);
+
+  useEffect(() => {
+    if (!activeGalleryId || activeImage) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDetail();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeGalleryId, activeImage, closeDetail]);
 
   const visibleGalleries = useMemo(() => filteredGalleries.slice(0, visibleLimit), [filteredGalleries, visibleLimit]);
 
@@ -418,68 +442,87 @@ export const GalleryExplorer = ({
           : `Zeigt ${visibleGalleries.length} von ${filteredGalleries.length} Sammlungen`}
       </div>
 
-      <div className="gallery-explorer__layout">
-        <div className="gallery-explorer__grid" role="list">
-          {isLoading && galleries.length === 0
-            ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
-            : visibleGalleries.map((gallery) => {
-                const previewImage = selectPreviewImage(gallery);
-                const totalImages = gallery.entries.filter((entry) => Boolean(entry.imageAsset)).length;
-                const totalModels = gallery.entries.filter((entry) => Boolean(entry.modelAsset)).length;
-                return (
-                  <button
-                    key={gallery.id}
-                    type="button"
-                    role="listitem"
-                    className={`gallery-card${activeGalleryId === gallery.id ? ' gallery-card--active' : ''}`}
-                    onClick={() => setActiveGalleryId(gallery.id)}
-                  >
-                    <div className="gallery-card__preview" aria-hidden={previewImage ? 'false' : 'true'}>
-                      {previewImage ? (
-                        <img src={resolveStorageUrl(previewImage.storagePath, previewImage.storageBucket, previewImage.storageObject) ?? previewImage.storagePath} alt={previewImage.title} loading="lazy" />
-                      ) : (
-                        <span>Kein Vorschaubild</span>
-                      )}
-                    </div>
-                    <div className="gallery-card__body">
-                      <h3 className="gallery-card__title">{gallery.title}</h3>
-                      <p className="gallery-card__meta">Kuratiert von {gallery.owner.displayName}</p>
-                      <dl className="gallery-card__stats">
-                        <div>
-                          <dt>Einträge</dt>
-                          <dd>{gallery.entries.length}</dd>
-                        </div>
-                        <div>
-                          <dt>Bilder</dt>
-                          <dd>{totalImages}</dd>
-                        </div>
-                        <div>
-                          <dt>LoRAs</dt>
-                          <dd>{totalModels}</dd>
-                        </div>
-                      </dl>
-                      <p className="gallery-card__timestamp">Zuletzt aktualisiert am {formatDate(gallery.updatedAt)}</p>
-                    </div>
-                  </button>
-                );
-              })}
-        </div>
+      <div className="gallery-explorer__grid" role="list" aria-label="Galerien">
+        {isLoading && galleries.length === 0
+          ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+          : visibleGalleries.map((gallery) => {
+              const previewImage = selectPreviewImage(gallery);
+              const totalImages = gallery.entries.filter((entry) => Boolean(entry.imageAsset)).length;
+              const totalModels = gallery.entries.filter((entry) => Boolean(entry.modelAsset)).length;
+              return (
+                <button
+                  key={gallery.id}
+                  type="button"
+                  role="listitem"
+                  className={`gallery-card${activeGalleryId === gallery.id ? ' gallery-card--active' : ''}`}
+                  onClick={() => setActiveGalleryId(gallery.id)}
+                >
+                  <div className="gallery-card__preview" aria-hidden={previewImage ? 'false' : 'true'}>
+                    {previewImage ? (
+                      <img
+                        src={
+                          resolveStorageUrl(
+                            previewImage.storagePath,
+                            previewImage.storageBucket,
+                            previewImage.storageObject,
+                          ) ?? previewImage.storagePath
+                        }
+                        alt={previewImage.title}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span>Kein Vorschaubild</span>
+                    )}
+                  </div>
+                  <div className="gallery-card__body">
+                    <h3 className="gallery-card__title">{gallery.title}</h3>
+                    <p className="gallery-card__meta">Kuratiert von {gallery.owner.displayName}</p>
+                    <dl className="gallery-card__stats">
+                      <div>
+                        <dt>Einträge</dt>
+                        <dd>{gallery.entries.length}</dd>
+                      </div>
+                      <div>
+                        <dt>Bilder</dt>
+                        <dd>{totalImages}</dd>
+                      </div>
+                      <div>
+                        <dt>LoRAs</dt>
+                        <dd>{totalModels}</dd>
+                      </div>
+                    </dl>
+                    <p className="gallery-card__timestamp">Zuletzt aktualisiert am {formatDate(gallery.updatedAt)}</p>
+                  </div>
+                </button>
+              );
+            })}
+      </div>
 
-        <aside className="gallery-explorer__detail">
-          {activeGallery ? (
-            <div className="gallery-detail">
+      {!isLoading && visibleGalleries.length < filteredGalleries.length ? (
+        <div className="panel__footer">
+          <button type="button" className="panel__action panel__action--ghost" onClick={loadMore}>
+            Weitere {Math.min(GALLERY_BATCH_SIZE, filteredGalleries.length - visibleGalleries.length)} Galerien laden
+          </button>
+        </div>
+      ) : null}
+
+      {activeGallery ? (
+        <div className="gallery-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="gallery-detail-title">
+          <div className="gallery-detail-dialog__backdrop" onClick={closeDetail} aria-hidden="true" />
+          <div className="gallery-detail-dialog__container">
+            <div className="gallery-detail" role="document">
               <header className="gallery-detail__header">
                 <div>
                   <span className={`gallery-detail__badge${activeGallery.isPublic ? ' gallery-detail__badge--public' : ''}`}>
                     {activeGallery.isPublic ? 'Öffentliche Sammlung' : 'Private Sammlung'}
                   </span>
-                  <h3>{activeGallery.title}</h3>
+                  <h3 id="gallery-detail-title">{activeGallery.title}</h3>
                   <p>
                     Kuratiert von {activeGallery.owner.displayName} · Aktualisiert am {formatDate(activeGallery.updatedAt)}
                   </p>
                 </div>
-                <button type="button" className="gallery-detail__close" onClick={() => setActiveGalleryId(null)}>
-                  Auswahl zurücksetzen
+                <button type="button" className="gallery-detail__close" onClick={closeDetail}>
+                  Zurück zur Galerie
                 </button>
               </header>
 
@@ -538,19 +581,7 @@ export const GalleryExplorer = ({
                 )}
               </div>
             </div>
-          ) : (
-            <div className="gallery-detail gallery-detail--empty">
-              <p>Wähle eine Sammlung, um alle Bilder zu sehen und EXIF-Daten einzublenden.</p>
-            </div>
-          )}
-        </aside>
-      </div>
-
-      {!isLoading && visibleGalleries.length < filteredGalleries.length ? (
-        <div className="panel__footer">
-          <button type="button" className="panel__action panel__action--ghost" onClick={loadMore}>
-            Weitere {Math.min(GALLERY_BATCH_SIZE, filteredGalleries.length - visibleGalleries.length)} Galerien laden
-          </button>
+          </div>
         </div>
       ) : null}
 

@@ -399,6 +399,7 @@ export const App = () => {
           onStartUpload={handleOpenAssetUpload}
           onNavigateToGallery={handleNavigateToGallery}
           initialAssetId={focusedAssetId}
+          onCloseDetail={() => setFocusedAssetId(null)}
         />
       );
     }
@@ -411,6 +412,7 @@ export const App = () => {
           onStartGalleryDraft={handleOpenGalleryUpload}
           onNavigateToModel={handleNavigateToModel}
           initialGalleryId={focusedGalleryId}
+          onCloseDetail={() => setFocusedGalleryId(null)}
         />
       );
     }
