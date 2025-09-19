@@ -158,6 +158,14 @@ Der Upload-Endpunkt validiert pro Request bis zu **12 Dateien** und reagiert mit
 ## API-Schnittstellen (Auszug)
 - `GET /health` – Health-Check des Servers.
 - `POST /api/auth/login` – Authentifizierung via E-Mail/Passwort; liefert JWT und User-Details.
+- `POST /api/uploads` – Legt UploadDrafts an und steuert die Upload-Pipeline.
+
+## Troubleshooting
+
+- **Fehler: `Cannot find module './types/express'` beim Backend-Start** – Dieser Hinweis stammt aus älteren Builds, in denen die
+  Express-Typdefinitionen noch als `.d.ts`-Dateien eingebunden waren. Seit Mai 2024 liegen sie als reguläre TypeScript-Module vor
+  und werden beim Transpilieren zu lauffähigem JavaScript gebündelt. Stelle sicher, dass du den aktuellen Stand installiert hast
+  (`git pull`, anschließend `cd backend && npm install && npm run build` bzw. `npm run dev`).
 - `GET /api/auth/me` – Prüft ein JWT und liefert das aktuelle Profil zurück.
 - `GET /api/meta/stats` – Aggregierte Kennzahlen (Assets, Galerien, Tags).
 - `GET /api/assets/models` – LoRA-Assets inkl. Owner, Tags, Metadaten.
