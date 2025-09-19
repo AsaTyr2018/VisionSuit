@@ -120,18 +120,18 @@ const getImageEntries = (gallery: Gallery): GalleryImageEntry[] =>
     .map((entry) => ({ entryId: entry.id, image: entry.imageAsset, note: entry.note ?? null }));
 
 const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString('de-DE', {
+  new Date(value).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
   });
 
 const formatDimensions = (image: ImageAsset) =>
-  image.dimensions ? `${image.dimensions.width} × ${image.dimensions.height}px` : 'Unbekannt';
+  image.dimensions ? `${image.dimensions.width} × ${image.dimensions.height}px` : 'Unknown';
 
 const formatFileSize = (size?: number | null) => {
   if (!size || Number.isNaN(size)) {
-    return 'Unbekannt';
+    return 'Unknown';
   }
   if (size < 1024 * 1024) {
     return `${Math.round(size / 1024)} KB`;
@@ -160,15 +160,15 @@ const selectPreviewImage = (gallery: Gallery) => {
 const buildMetadataRows = (image: ImageAsset) => {
   const exif = image.metadata ?? {};
   return [
-    { label: 'Prompt', value: image.prompt ?? 'Kein Prompt hinterlegt.' },
-    { label: 'Negativer Prompt', value: image.negativePrompt ?? '–' },
-    { label: 'Model', value: exif.model ?? 'Unbekannt' },
-    { label: 'Sampler', value: exif.sampler ?? 'Unbekannt' },
+    { label: 'Prompt', value: image.prompt ?? 'No prompt provided.' },
+    { label: 'Negative prompt', value: image.negativePrompt ?? '–' },
+    { label: 'Model', value: exif.model ?? 'Unknown' },
+    { label: 'Sampler', value: exif.sampler ?? 'Unknown' },
     { label: 'Seed', value: exif.seed ?? '–' },
     { label: 'CFG Scale', value: exif.cfgScale != null ? exif.cfgScale.toString() : '–' },
     { label: 'Steps', value: exif.steps != null ? exif.steps.toString() : '–' },
-    { label: 'Dimensionen', value: formatDimensions(image) },
-    { label: 'Dateigröße', value: formatFileSize(image.fileSize) },
+    { label: 'Dimensions', value: formatDimensions(image) },
+    { label: 'File size', value: formatFileSize(image.fileSize) },
   ];
 };
 
@@ -210,7 +210,7 @@ export const GalleryExplorer = ({
         ownersMap.set(gallery.owner.id, { id: gallery.owner.id, label: gallery.owner.displayName });
       }
     });
-    return Array.from(ownersMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'de'));
+    return Array.from(ownersMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'en'));
   }, [galleries]);
 
   const filteredGalleries = useMemo(() => {
@@ -230,7 +230,7 @@ export const GalleryExplorer = ({
 
     const sorters: Record<SortOption, (a: Gallery, b: Gallery) => number> = {
       recent: (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      alpha: (a, b) => a.title.localeCompare(b.title, 'de'),
+      alpha: (a, b) => a.title.localeCompare(b.title, 'en'),
       'entries-desc': (a, b) => b.entries.length - a.entries.length,
       'entries-asc': (a, b) => a.entries.length - b.entries.length,
     };
@@ -286,13 +286,13 @@ export const GalleryExplorer = ({
     const filters: { id: string; label: string; onClear: () => void }[] = [];
 
     if (normalizedQuery) {
-      filters.push({ id: 'search', label: `Suche: “${deferredSearch.trim()}”`, onClear: () => setSearchTerm('') });
+      filters.push({ id: 'search', label: `Search: “${deferredSearch.trim()}”`, onClear: () => setSearchTerm('') });
     }
 
     if (visibility !== 'all') {
       filters.push({
         id: `visibility-${visibility}`,
-        label: visibility === 'public' ? 'Status · Öffentlich' : 'Status · Privat',
+        label: visibility === 'public' ? 'Status · Public' : 'Status · Private',
         onClear: () => setVisibility('all'),
       });
     }
@@ -300,9 +300,9 @@ export const GalleryExplorer = ({
     if (entryFilter !== 'all') {
       const labels: Record<EntryFilter, string> = {
         all: '',
-        'with-image': 'Inhalte · Mit Bildern',
-        'with-model': 'Inhalte · Mit LoRAs',
-        empty: 'Inhalte · Ohne Einträge',
+        'with-image': 'Content · With images',
+        'with-model': 'Content · With LoRAs',
+        empty: 'Content · No entries',
       };
       filters.push({
         id: `entries-${entryFilter}`,
@@ -314,7 +314,7 @@ export const GalleryExplorer = ({
     if (ownerId !== 'all') {
       const owner = ownerOptions.find((option) => option.id === ownerId);
       if (owner) {
-        filters.push({ id: `owner-${owner.id}`, label: `Kurator:in · ${owner.label}`, onClear: () => setOwnerId('all') });
+        filters.push({ id: `owner-${owner.id}`, label: `Curator · ${owner.label}`, onClear: () => setOwnerId('all') });
       }
     }
 
@@ -373,50 +373,49 @@ export const GalleryExplorer = ({
     <section className="panel">
       <header className="panel__header">
         <div>
-          <h2 className="panel__title">Galerie-Explorer</h2>
+          <h2 className="panel__title">Gallery explorer</h2>
           <p className="panel__subtitle">
-            Kuratierte Sammlungen mit zufälligen Vorschaubildern, festen Kachelbreiten und detailreichen Bildansichten inklusive
-            EXIF-Daten.
+            Curated collections with random preview tiles, fixed column widths, and detailed image views including EXIF data.
           </p>
         </div>
         <button type="button" className="panel__action" onClick={onStartGalleryDraft}>
-          Galerie-Upload öffnen
+          Open gallery upload
         </button>
       </header>
 
-      <div className="filter-toolbar" aria-label="Filter für Galerien">
+      <div className="filter-toolbar" aria-label="Filters for galleries">
         <div className="filter-toolbar__row">
           <label className="filter-toolbar__search">
-            <span className="sr-only">Suche in Galerien</span>
+            <span className="sr-only">Search in galleries</span>
             <input
               type="search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Titel, Kurator:in oder Slug durchsuchen"
+              placeholder="Search title, curator, or slug"
               disabled={isLoading && galleries.length === 0}
             />
           </label>
 
           <label className="filter-toolbar__control">
-            <span>Sortierung</span>
+            <span>Sort order</span>
             <select value={sortOption} onChange={(event) => setSortOption(event.target.value as SortOption)} className="filter-select">
-              <option value="recent">Aktualisiert · Neueste zuerst</option>
-              <option value="alpha">Titel · A → Z</option>
-              <option value="entries-desc">Einträge · Viele → Wenige</option>
-              <option value="entries-asc">Einträge · Wenige → Viele</option>
+              <option value="recent">Updated · Newest first</option>
+              <option value="alpha">Title · A → Z</option>
+              <option value="entries-desc">Entries · Many → Few</option>
+              <option value="entries-asc">Entries · Few → Many</option>
             </select>
           </label>
 
-          <div className="filter-toolbar__chips" role="group" aria-label="Sichtbarkeit filtern">
-            <FilterChip label="Alle" isActive={visibility === 'all'} onClick={() => setVisibility('all')} />
-            <FilterChip label="Öffentlich" isActive={visibility === 'public'} onClick={() => setVisibility('public')} />
-            <FilterChip label="Privat" isActive={visibility === 'private'} onClick={() => setVisibility('private')} />
+          <div className="filter-toolbar__chips" role="group" aria-label="Filter visibility">
+            <FilterChip label="All" isActive={visibility === 'all'} onClick={() => setVisibility('all')} />
+            <FilterChip label="Public" isActive={visibility === 'public'} onClick={() => setVisibility('public')} />
+            <FilterChip label="Private" isActive={visibility === 'private'} onClick={() => setVisibility('private')} />
           </div>
 
           <label className="filter-toolbar__control">
-            <span>Kurator:in</span>
+            <span>Curator</span>
             <select value={ownerId} onChange={(event) => setOwnerId(event.target.value)} className="filter-select">
-              <option value="all">Alle Personen</option>
+              <option value="all">All people</option>
               {ownerOptions.map((owner) => (
                 <option key={owner.id} value={owner.id}>
                   {owner.label}
@@ -426,16 +425,16 @@ export const GalleryExplorer = ({
           </label>
         </div>
 
-        <div className="filter-toolbar__chips" role="group" aria-label="Inhaltstyp filtern">
-          <FilterChip label="Alle Inhalte" isActive={entryFilter === 'all'} onClick={() => setEntryFilter('all')} />
-          <FilterChip label="Mit Bildern" isActive={entryFilter === 'with-image'} onClick={() => setEntryFilter('with-image')} />
-          <FilterChip label="Mit LoRAs" isActive={entryFilter === 'with-model'} onClick={() => setEntryFilter('with-model')} />
-          <FilterChip label="Ohne Einträge" isActive={entryFilter === 'empty'} onClick={() => setEntryFilter('empty')} />
+        <div className="filter-toolbar__chips" role="group" aria-label="Filter content type">
+          <FilterChip label="All content" isActive={entryFilter === 'all'} onClick={() => setEntryFilter('all')} />
+          <FilterChip label="With images" isActive={entryFilter === 'with-image'} onClick={() => setEntryFilter('with-image')} />
+          <FilterChip label="With LoRAs" isActive={entryFilter === 'with-model'} onClick={() => setEntryFilter('with-model')} />
+          <FilterChip label="No entries" isActive={entryFilter === 'empty'} onClick={() => setEntryFilter('empty')} />
         </div>
 
         {activeFilters.length > 0 ? (
           <div className="filter-toolbar__active">
-            <span className="filter-toolbar__active-label">Aktive Filter:</span>
+            <span className="filter-toolbar__active-label">Active filters:</span>
             <div className="filter-toolbar__active-chips">
               {activeFilters.map((filter) => (
                 <button key={filter.id} type="button" className="active-filter" onClick={filter.onClear}>
@@ -445,7 +444,7 @@ export const GalleryExplorer = ({
               ))}
             </div>
             <button type="button" className="filter-toolbar__reset" onClick={resetFilters}>
-              Alle Filter zurücksetzen
+              Reset all filters
             </button>
           </div>
         ) : null}
@@ -453,8 +452,8 @@ export const GalleryExplorer = ({
 
       <div className="result-info" role="status">
         {isLoading && galleries.length === 0
-          ? 'Lade Galerien …'
-          : `Zeigt ${visibleGalleries.length} von ${filteredGalleries.length} Sammlungen`}
+          ? 'Loading galleries…'
+          : `Showing ${visibleGalleries.length} of ${filteredGalleries.length} collections`}
       </div>
 
       <div className="gallery-explorer__grid" role="list" aria-label="Galerien">
@@ -486,19 +485,19 @@ export const GalleryExplorer = ({
                         loading="lazy"
                       />
                     ) : (
-                      <span>Kein Vorschaubild</span>
+                      <span>No preview available</span>
                     )}
                   </div>
                   <div className="gallery-card__body">
                     <h3 className="gallery-card__title">{gallery.title}</h3>
-                    <p className="gallery-card__meta">Kuratiert von {gallery.owner.displayName}</p>
+                    <p className="gallery-card__meta">Curated by {gallery.owner.displayName}</p>
                     <dl className="gallery-card__stats">
                       <div>
-                        <dt>Einträge</dt>
+                        <dt>Entries</dt>
                         <dd>{gallery.entries.length}</dd>
                       </div>
                       <div>
-                        <dt>Bilder</dt>
+                        <dt>Images</dt>
                         <dd>{totalImages}</dd>
                       </div>
                       <div>
@@ -506,7 +505,7 @@ export const GalleryExplorer = ({
                         <dd>{totalModels}</dd>
                       </div>
                     </dl>
-                    <p className="gallery-card__timestamp">Zuletzt aktualisiert am {formatDate(gallery.updatedAt)}</p>
+                    <p className="gallery-card__timestamp">Last updated on {formatDate(gallery.updatedAt)}</p>
                   </div>
                 </button>
               );
@@ -516,7 +515,7 @@ export const GalleryExplorer = ({
       {!isLoading && visibleGalleries.length < filteredGalleries.length ? (
         <div className="panel__footer">
           <button type="button" className="panel__action panel__action--ghost" onClick={loadMore}>
-            Weitere {Math.min(GALLERY_BATCH_SIZE, filteredGalleries.length - visibleGalleries.length)} Galerien laden
+            Load {Math.min(GALLERY_BATCH_SIZE, filteredGalleries.length - visibleGalleries.length)} more galleries
           </button>
         </div>
       ) : null}
@@ -529,15 +528,15 @@ export const GalleryExplorer = ({
               <header className="gallery-detail__header">
                 <div>
                   <span className={`gallery-detail__badge${activeGallery.isPublic ? ' gallery-detail__badge--public' : ''}`}>
-                    {activeGallery.isPublic ? 'Öffentliche Sammlung' : 'Private Sammlung'}
+                    {activeGallery.isPublic ? 'Public collection' : 'Private collection'}
                   </span>
                   <h3 id="gallery-detail-title">{activeGallery.title}</h3>
                   <p>
-                    Kuratiert von {activeGallery.owner.displayName} · Aktualisiert am {formatDate(activeGallery.updatedAt)}
+                    Curated by {activeGallery.owner.displayName} · Updated on {formatDate(activeGallery.updatedAt)}
                   </p>
                 </div>
                 <button type="button" className="gallery-detail__close" onClick={closeDetail}>
-                  Zurück zur Galerie
+                  Back to galleries
                 </button>
               </header>
 
@@ -545,13 +544,13 @@ export const GalleryExplorer = ({
                 <p className="gallery-detail__description">{activeGallery.description}</p>
               ) : (
                 <p className="gallery-detail__description gallery-detail__description--muted">
-                  Noch keine Galerie-Beschreibung hinterlegt.
+                  No gallery description provided yet.
                 </p>
               )}
 
               {activeGalleryModels.length > 0 ? (
                 <section className="gallery-detail__models">
-                  <h4>Verknüpfte LoRAs</h4>
+                  <h4>Linked LoRAs</h4>
                   <ul>
                     {activeGalleryModels.map((model) => (
                       <li key={model.id}>
@@ -592,7 +591,7 @@ export const GalleryExplorer = ({
                     );
                   })
                 ) : (
-                  <div className="gallery-detail__empty">Diese Sammlung enthält noch keine Bilder.</div>
+                  <div className="gallery-detail__empty">This collection does not contain any images yet.</div>
                 )}
               </div>
             </div>
@@ -601,15 +600,15 @@ export const GalleryExplorer = ({
       ) : null}
 
       {activeImage ? (
-        <div className="gallery-image-modal" role="dialog" aria-modal="true" aria-label={`${activeImage.image.title} vergrößern`}>
+        <div className="gallery-image-modal" role="dialog" aria-modal="true" aria-label={`Enlarge ${activeImage.image.title}`}>
           <div className="gallery-image-modal__backdrop" onClick={() => setActiveImage(null)} aria-hidden="true" />
           <div className="gallery-image-modal__content">
             <header className="gallery-image-modal__header">
               <div>
                 <h3>{activeImage.image.title}</h3>
-                <p>Kuratiert von {activeGallery?.owner.displayName ?? 'Unbekannt'}</p>
+                <p>Curated by {activeGallery?.owner.displayName ?? 'Unknown'}</p>
               </div>
-              <button type="button" className="gallery-image-modal__close" onClick={() => setActiveImage(null)} aria-label="Bildansicht schließen">
+              <button type="button" className="gallery-image-modal__close" onClick={() => setActiveImage(null)} aria-label="Close image view">
                 ×
               </button>
             </header>
@@ -627,7 +626,7 @@ export const GalleryExplorer = ({
                 />
               </div>
               <div className="gallery-image-modal__meta">
-                {activeImage.note ? <p className="gallery-image-modal__note">Notiz: {activeImage.note}</p> : null}
+                {activeImage.note ? <p className="gallery-image-modal__note">Note: {activeImage.note}</p> : null}
                 <dl>
                   {buildMetadataRows(activeImage.image).map((row) => (
                     <div key={row.label}>

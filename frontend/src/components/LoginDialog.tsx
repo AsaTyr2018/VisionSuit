@@ -30,14 +30,14 @@ export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, e
     setLocalError(null);
 
     if (!email.trim() || !password) {
-      setLocalError('Bitte E-Mail und Passwort eingeben.');
+      setLocalError('Please enter your email and password.');
       return;
     }
 
     try {
       await onSubmit(email.trim(), password);
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.');
+      setLocalError(error instanceof Error ? error.message : 'Sign in failed.');
     }
   };
 
@@ -48,14 +48,14 @@ export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, e
       <div className="modal__backdrop" onClick={onClose} aria-hidden="true" />
       <div className="modal__content modal__content--compact">
         <header className="modal__header">
-          <h2 id="login-dialog-title">Anmeldung</h2>
-          <button type="button" className="modal__close" onClick={onClose} aria-label="Dialog schließen">
+          <h2 id="login-dialog-title">Sign in</h2>
+          <button type="button" className="modal__close" onClick={onClose} aria-label="Close dialog">
             ×
           </button>
         </header>
         <form className="modal__body" onSubmit={handleSubmit}>
           <label className="form-field">
-            <span>E-Mail</span>
+            <span>Email</span>
             <input
               type="email"
               value={email}
@@ -65,7 +65,7 @@ export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, e
             />
           </label>
           <label className="form-field">
-            <span>Passwort</span>
+            <span>Password</span>
             <input
               type="password"
               value={password}
@@ -77,10 +77,10 @@ export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, e
           {displayError ? <p className="form-error">{displayError}</p> : null}
           <div className="modal__actions">
             <button type="button" className="button" onClick={onClose} disabled={isSubmitting}>
-              Abbrechen
+              Cancel
             </button>
             <button type="submit" className="button button--primary" disabled={isSubmitting}>
-              {isSubmitting ? 'Anmeldung…' : 'Anmelden'}
+              {isSubmitting ? 'Signing in…' : 'Sign in'}
             </button>
           </div>
         </form>
