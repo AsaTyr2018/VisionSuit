@@ -23,6 +23,8 @@ type TagOption = { id: string; label: string; count: number };
 
 type TypeOption = { id: string; label: string; count: number };
 
+type MetadataRow = { key: string; value: string };
+
 const ASSET_BATCH_SIZE = 25;
 
 const fileSizeLabels: Record<Exclude<FileSizeFilter, 'all'>, string> = {
@@ -42,40 +44,166 @@ const categorizeFileSize = (value?: number | null): FileSizeFilter => {
 
 const normalize = (value?: string | null) => value?.toLowerCase().normalize('NFKD') ?? '';
 
+const tryParseStructuredValue = (value: string): unknown => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (trimmed === 'true' || trimmed === 'True') {
+    return true;
+  }
+
+  if (trimmed === 'false' || trimmed === 'False') {
+    return false;
+  }
+
+  if (trimmed === 'null') {
+    return null;
+  }
+
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('Konnte Metadatenwert nicht parsen:', error);
+      }
+    }
+  }
+
+  return trimmed;
+};
+
+const normalizeMetadataValue = (value: unknown): unknown => {
+  if (typeof value === 'string') {
+    const parsed = tryParseStructuredValue(value);
+    if (parsed !== value) {
+      return normalizeMetadataValue(parsed);
+    }
+    return parsed;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeMetadataValue(entry));
+  }
+
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+      result[key] = normalizeMetadataValue(entry);
+    });
+    return result;
+  }
+
+  return value;
+};
+
+const formatPrimitiveMetadataValue = (value: unknown) => {
+  if (value == null || value === '') {
+    return '–';
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return String(value);
+};
+
+const flattenMetadataValue = (value: unknown, key: string, rows: MetadataRow[]) => {
+  if (value == null) {
+    rows.push({ key, value: '–' });
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      rows.push({ key, value: '[]' });
+      return;
+    }
+
+    value.forEach((entry, index) => {
+      flattenMetadataValue(entry, `${key}[${index}]`, rows);
+    });
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      rows.push({ key, value: '{}' });
+      return;
+    }
+
+    entries.forEach(([childKey, childValue]) => {
+      const nextKey = key ? `${key}.${childKey}` : childKey;
+      flattenMetadataValue(childValue, nextKey, rows);
+    });
+    return;
+  }
+
+  rows.push({ key, value: formatPrimitiveMetadataValue(value) });
+};
+
+const buildMetadataRows = (metadata?: Record<string, unknown> | null) => {
+  if (!metadata) {
+    return [] as MetadataRow[];
+  }
+
+  const normalized = normalizeMetadataValue(metadata);
+  const rows: MetadataRow[] = [];
+
+  if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
+    Object.entries(normalized as Record<string, unknown>).forEach(([key, value]) => {
+      flattenMetadataValue(value, key, rows);
+    });
+    return rows;
+  }
+
+  if (Array.isArray(normalized)) {
+    normalized.forEach((entry, index) => {
+      flattenMetadataValue(entry, `[${index}]`, rows);
+    });
+    return rows;
+  }
+
+  rows.push({ key: 'Wert', value: formatPrimitiveMetadataValue(normalized) });
+  return rows;
+};
+
 const collectMetadataStrings = (metadata?: Record<string, unknown> | null) => {
   if (!metadata) {
     return [] as string[];
   }
 
-  const record = metadata as Record<string, unknown>;
+  const normalized = normalizeMetadataValue(metadata);
   const values = new Set<string>();
 
-  const addValue = (value: unknown) => {
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (trimmed.length > 0) {
-        values.add(trimmed);
+  const visit = (value: unknown) => {
+    if (value == null) {
+      return;
+    }
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      const text = String(value).trim();
+      if (text.length > 0) {
+        values.add(text);
       }
-    } else if (Array.isArray(value)) {
-      value.forEach(addValue);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    if (value && typeof value === 'object') {
+      Object.values(value as Record<string, unknown>).forEach(visit);
     }
   };
 
-  addValue(record['baseModel']);
-  addValue(record['modelName']);
-  addValue(record['model']);
-  addValue(record['models']);
-  addValue(record['modelAliases']);
-
-  const extracted = record['extracted'];
-  if (extracted && typeof extracted === 'object') {
-    const nested = extracted as Record<string, unknown>;
-    addValue(nested['ss_base_model']);
-    addValue(nested['sshs_model_name']);
-    addValue(nested['base_model']);
-    addValue(nested['model']);
-    addValue(nested['model_name']);
-  }
+  visit(normalized);
 
   return Array.from(values);
 };
@@ -306,27 +434,10 @@ export const AssetExplorer = ({
     return Array.from(matches.values());
   }, [activeAsset, galleries]);
 
-  const metadataEntries = useMemo(() => {
-    if (!activeAsset?.metadata) {
-      return [] as { key: string; value: string }[];
-    }
-
-    const rows: { key: string; value: string }[] = [];
-    Object.entries(activeAsset.metadata).forEach(([key, value]) => {
-      if (value == null) return;
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-        rows.push({ key, value: String(value) });
-      } else if (Array.isArray(value)) {
-        const filtered = value.filter((entry) => entry != null).map((entry) => String(entry));
-        if (filtered.length > 0) {
-          rows.push({ key, value: filtered.join(', ') });
-        }
-      } else if (typeof value === 'object') {
-        rows.push({ key, value: JSON.stringify(value, null, 2) });
-      }
-    });
-    return rows;
-  }, [activeAsset?.metadata]);
+  const metadataEntries = useMemo(
+    () => buildMetadataRows(activeAsset?.metadata as Record<string, unknown> | null),
+    [activeAsset?.metadata],
+  );
 
   const activeFilters = useMemo(() => {
     const filters: { id: string; label: string; onClear: () => void }[] = [];
@@ -647,14 +758,28 @@ export const AssetExplorer = ({
               <section className="asset-detail__section">
                 <h4>Metadaten</h4>
                 {metadataEntries.length > 0 ? (
-                  <dl className="asset-detail__metadata">
-                    {metadataEntries.map((row) => (
-                      <div key={row.key}>
-                        <dt>{row.key}</dt>
-                        <dd>{row.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                  <div className="asset-detail__metadata">
+                    <div className="asset-detail__metadata-scroll">
+                      <table className="asset-detail__metadata-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Schlüssel</th>
+                            <th scope="col">Wert</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {metadataEntries.map((row) => (
+                            <tr key={row.key}>
+                              <th scope="row">{row.key}</th>
+                              <td>
+                                <span className="asset-detail__metadata-value">{row.value}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 ) : (
                   <p className="asset-detail__description asset-detail__description--muted">Keine Metadaten verfügbar.</p>
                 )}
