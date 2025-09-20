@@ -322,3 +322,8 @@
 - **General**: Elevated the home dashboard with clickable previews that jump directly into the explorers.
 - **Technical Changes**: Added media buttons on home tiles that focus the respective model or gallery, introduced gallery lookups for image cards, updated hover/focus styling, and refreshed README guidance.
 - **Data Changes**: None.
+
+## 2025-09-20 – Modelcard primary-first ordering
+- **General**: Ensured modelcard version listings surface the primary release before sequential versions for quicker recognition.
+- **Technical Changes**: Updated backend asset mapping to keep the primary version at the top while numerically ordering the remaining versions and retaining latest-version metadata via creation timestamps.
+- **Data Changes**: None; response payload ordering only.
