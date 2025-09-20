@@ -193,6 +193,32 @@ const postModelVersion = async (
   }
 };
 
+const putModelVersion = async (
+  token: string,
+  modelId: string,
+  versionId: string,
+  payload: { version: string },
+) => {
+  try {
+    return await request<ModelAsset>(
+      `/api/assets/models/${modelId}/versions/${versionId}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    );
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(
+      error instanceof Error ? error.message : 'Unbekannter Fehler beim Bearbeiten der Modellversion.',
+    );
+  }
+};
+
 export const api = {
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: () => request<ModelAsset[]>('/api/assets/models'),
@@ -201,6 +227,7 @@ export const api = {
   getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
   createUploadDraft: postUploadDraft,
   createModelVersion: postModelVersion,
+  updateModelVersion: putModelVersion,
   login: (email: string, password: string) =>
     request<AuthResponse>('/api/auth/login', {
       method: 'POST',

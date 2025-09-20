@@ -198,6 +198,7 @@
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
+
 ## 2025-09-19 – Model card layout polish (commit TBD)
 - **General**: Smoothed the model card experience by aligning primary actions and tightening the dataset tags table.
 - **Technical Changes**: Converted the preview action stack to a full-width flex column, equalized button typography, and padded the tag frequency table with a fixed layout so headers and rows stay inside the dialog.
@@ -272,3 +273,8 @@
 - **General**: Realigned the model card so the metadata panel sits beneath the preview and regains breathing room.
 - **Technical Changes**: Repositioned the metadata section inside the summary grid, removed the squeezing flex growth, and added styling to center the metadata card below the preview.
 - **Data Changes**: None.
+
+## 2025-09-20 – Model version management enhancements (commit TBD)
+- **General**: Empowered curators and admins to rename model versions from the modelcard while giving the metadata section more breathing room.
+- **Technical Changes**: Added `PUT /api/assets/models/:modelId/versions/:versionId`, expanded the frontend API client, introduced an edit dialog with permission checks, refined version chip labelling with edit controls, and stretched the metadata card styling.
+- **Data Changes**: None; operates on existing model/version records without schema updates.
