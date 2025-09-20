@@ -4,6 +4,66 @@ import { FormEvent, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { resolveStorageUrl } from '../lib/storage';
 import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
+import { UserCreationDialog, type AsyncActionResult } from './UserCreationDialog';
+
+const roleSummaries: Record<
+  User['role'],
+  { title: string; headline: string; bullets: string[] }
+> = {
+  CURATOR: {
+    title: 'Curator permissions',
+    headline: 'Curators focus on creative intake and gallery management with safe defaults.',
+    bullets: [
+      'Upload LoRA safetensors and gallery imagery for review.',
+      'Edit titles, descriptions, tags, and visibility on owned content.',
+      'Collaborate on gallery curation without access to destructive admin tooling.',
+    ],
+  },
+  ADMIN: {
+    title: 'Admin permissions',
+    headline: 'Admins unlock full governance across users, assets, and storage.',
+    bullets: [
+      'Provision, deactivate, or delete any account with bulk actions.',
+      'Manage model, image, and gallery metadata platform-wide.',
+      'Review storage objects and enforce retention policies when required.',
+    ],
+  },
+};
+
+const RoleSummaryDialog = ({ role, isOpen, onClose }: { role: User['role']; isOpen: boolean; onClose: () => void }) => {
+  if (!isOpen) {
+    return null;
+  }
+
+  const summary = roleSummaries[role];
+
+  return (
+    <div className="modal role-summary-dialog" role="dialog" aria-modal="true" aria-labelledby="role-summary-title">
+      <div className="modal__backdrop" onClick={onClose} aria-hidden="true" />
+      <div className="modal__content modal__content--compact">
+        <header className="modal__header">
+          <h2 id="role-summary-title">{summary.title}</h2>
+          <button type="button" className="modal__close" onClick={onClose} aria-label="Close dialog">
+            ×
+          </button>
+        </header>
+        <div className="modal__body role-summary-dialog__body">
+          <p className="role-summary-dialog__intro">{summary.headline}</p>
+          <ul className="role-summary-dialog__list">
+            {summary.bullets.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <div className="modal__actions">
+            <button type="button" className="button button--primary" onClick={onClose}>
+              Got it
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface AdminPanelProps {
   users: User[];
@@ -112,6 +172,9 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
+  const [userDialogInitialRole, setUserDialogInitialRole] = useState<User['role']>('CURATOR');
+  const [roleSummary, setRoleSummary] = useState<User['role'] | null>(null);
 
   const [userFilter, setUserFilter] = useState<{ query: string; role: FilterValue<User['role']>; status: FilterValue<UserStatusFilter> }>(
     { query: '', role: 'all', status: 'all' },
@@ -138,18 +201,52 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
   const resetStatus = () => setStatus(null);
 
-  const withStatus = async (action: () => Promise<void>, successMessage: string) => {
+  const withStatus = async (
+    action: () => Promise<void>,
+    successMessage: string,
+  ): Promise<AsyncActionResult> => {
     resetStatus();
     setIsBusy(true);
     try {
       await action();
       setStatus({ type: 'success', message: successMessage });
       await onRefresh();
+      return { ok: true };
     } catch (error) {
-      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Action failed.' });
+      const message = error instanceof Error ? error.message : 'Action failed.';
+      setStatus({ type: 'error', message });
+      return { ok: false, message };
     } finally {
       setIsBusy(false);
     }
+  };
+
+  const handleCreateUser = async (payload: {
+    email: string;
+    displayName: string;
+    password: string;
+    role: User['role'];
+    bio?: string;
+  }) => {
+    const result = await withStatus(
+      () =>
+        api
+          .createUser(token, {
+            email: payload.email,
+            displayName: payload.displayName,
+            password: payload.password,
+            role: payload.role,
+            bio: payload.bio,
+          })
+          .then(() => undefined),
+      'User account created.',
+    );
+
+    if (result.ok) {
+      setIsCreateUserDialogOpen(false);
+    }
+
+    return result;
   };
 
   const filteredUsers = useMemo(() => {
@@ -298,37 +395,6 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       }
       return new Set(ids);
     });
-  };
-
-  const handleCreateUser = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const email = (formData.get('email') as string | null)?.trim();
-    const displayName = (formData.get('displayName') as string | null)?.trim();
-    const password = formData.get('password') as string | null;
-    const role = (formData.get('role') as string | null) ?? 'CURATOR';
-    const bio = (formData.get('bio') as string | null)?.trim();
-
-    if (!email || !displayName || !password) {
-      setStatus({ type: 'error', message: 'All required fields must be filled in.' });
-      return;
-    }
-
-    await withStatus(
-      () =>
-        api
-          .createUser(token, {
-            email,
-            displayName,
-            password,
-            role,
-            bio: bio && bio.length > 0 ? bio : undefined,
-          })
-          .then(() => {
-            event.currentTarget.reset();
-          }),
-      'User account created.',
-    );
   };
 
   const handleUpdateUser = async (event: FormEvent<HTMLFormElement>, userId: string) => {
@@ -635,39 +701,94 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
 
       {activeTab === 'users' ? (
         <div className="admin__panel">
-          <section className="admin__section">
-            <h3>Create new account</h3>
-            <form className="admin__form" onSubmit={handleCreateUser}>
-              <div className="admin__form-grid">
-                <label>
-                  <span>Email</span>
-                  <input name="email" type="email" required disabled={isBusy} />
-                </label>
-                <label>
-                  <span>Display name</span>
-                  <input name="displayName" required disabled={isBusy} />
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input name="password" type="password" required disabled={isBusy} />
-                </label>
-                <label>
-                  <span>Role</span>
-                  <select name="role" defaultValue="CURATOR" disabled={isBusy}>
-                    <option value="CURATOR">Curator</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </label>
-              </div>
-              <label>
-                <span>Bio</span>
-                <textarea name="bio" rows={2} disabled={isBusy} />
-              </label>
-              <button type="submit" className="button button--primary" disabled={isBusy}>
-                Create account
-              </button>
-            </form>
+          <section className="admin__section admin__section--onboarding">
+            <div className="admin__section-intro">
+              <h3>Invite new teammates</h3>
+              <p>
+                Launch the guided dialog to collect essentials in focused steps. Presets prefill permissions while leaving every
+                detail editable.
+              </p>
+            </div>
+            <div className="user-onboarding-grid">
+              <article className="user-onboarding-card">
+                <header>
+                  <h4>Curator preset</h4>
+                  <p>For artists and moderators who manage uploads, tags, and galleries.</p>
+                </header>
+                <ul className="user-onboarding-list">
+                  <li>Upload LoRA models and gallery images</li>
+                  <li>Curate collections with tagging and visibility controls</li>
+                  <li>Safe by default—no destructive admin tooling</li>
+                </ul>
+                <div className="user-onboarding-actions">
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    onClick={() => {
+                      setUserDialogInitialRole('CURATOR');
+                      setIsCreateUserDialogOpen(true);
+                    }}
+                    disabled={isBusy}
+                  >
+                    Create curator account
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() => setRoleSummary('CURATOR')}
+                  >
+                    Quick preview
+                  </button>
+                </div>
+              </article>
+              <article className="user-onboarding-card">
+                <header>
+                  <h4>Admin preset</h4>
+                  <p>Equip trusted operators with end-to-end governance and rollout tooling.</p>
+                </header>
+                <ul className="user-onboarding-list">
+                  <li>Full access to user, model, gallery, and storage management</li>
+                  <li>Bulk actions for account cleanup and content governance</li>
+                  <li>Ideal for platform leads and incident response teams</li>
+                </ul>
+                <div className="user-onboarding-actions">
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    onClick={() => {
+                      setUserDialogInitialRole('ADMIN');
+                      setIsCreateUserDialogOpen(true);
+                    }}
+                    disabled={isBusy}
+                  >
+                    Create admin account
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() => setRoleSummary('ADMIN')}
+                  >
+                    Review permissions
+                  </button>
+                </div>
+              </article>
+            </div>
+            <p className="user-onboarding-footnote">
+              Need something custom? Start with any preset and adjust fields directly inside the dialog-driven workflow.
+            </p>
           </section>
+          <UserCreationDialog
+            isOpen={isCreateUserDialogOpen}
+            onClose={() => setIsCreateUserDialogOpen(false)}
+            onSubmit={handleCreateUser}
+            isSubmitting={isBusy}
+            initialRole={userDialogInitialRole}
+          />
+          <RoleSummaryDialog
+            role={roleSummary ?? 'CURATOR'}
+            isOpen={roleSummary !== null}
+            onClose={() => setRoleSummary(null)}
+          />
 
           <section className="admin__section">
             <div className="admin__section-header">

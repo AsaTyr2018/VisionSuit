@@ -327,3 +327,8 @@
 - **General**: Ensured modelcard version listings surface the primary release before sequential versions for quicker recognition.
 - **Technical Changes**: Updated backend asset mapping to keep the primary version at the top while numerically ordering the remaining versions and retaining latest-version metadata via creation timestamps.
 - **Data Changes**: None; response payload ordering only.
+
+## 2025-09-19 – Dialog-driven user onboarding (pending)
+- **General**: Reimagined account creation with preset-driven dialogs and clearer role guidance for administrators.
+- **Technical Changes**: Added a multi-step `UserCreationDialog` with validation and password generation, introduced role summary popups, revamped the admin onboarding panel styling, extended status handling, and refreshed README highlights.
+- **Data Changes**: None; interface and workflow updates only.
