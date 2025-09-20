@@ -27,6 +27,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
 - Modelcards include a dedicated Trigger/Activator field that is required during uploads or edits and ships with a click-to-copy shortcut for quick prompting.
 - Click any curator name—from home cards to explorer panels and admin lists—to jump straight into the curator’s profile with contribution stats and navigation back to their models or collections.
+- Administrators can fine-tune rank weights, curate new tiers, reset individual curator ladders, or temporarily block a curator from ranking via the dedicated `/api/rankings` controls.
 
 ## Community Roadmap
 
@@ -198,6 +199,15 @@ Batch uploads validate up to 12 files per request and enforce the 2 GB size ce
 - `GET /api/users/:id/avatar` – Streams curator avatars through the API without exposing MinIO endpoints.
 - `GET /api/users` – Admin-only listing of accounts.
 - `POST /api/users` – Admin-only account provisioning.
+- `GET /api/rankings/settings` – Admin-only view of the current score weights with fallback defaults.
+- `PUT /api/rankings/settings` – Admin-only update to model/gallery/image weightings.
+- `GET /api/rankings/tiers` – List rank tiers (including inactive ones when present).
+- `POST /api/rankings/tiers` – Add a new rank tier with label, description, and minimum score.
+- `PUT /api/rankings/tiers/:id` – Adjust the label, thresholds, or ordering of an existing tier.
+- `DELETE /api/rankings/tiers/:id` – Remove a tier from the ladder.
+- `POST /api/rankings/users/:id/reset` – Reset a curator’s effective score back to zero without deleting uploads.
+- `POST /api/rankings/users/:id/block` – Exclude a curator from ranking without altering contributions.
+- `POST /api/rankings/users/:id/unblock` – Restore a curator to the public ranking ladder.
 - `PUT /api/users/:id` – Admin-only account maintenance, deactivation, and role changes.
 - `POST /api/users/:id/avatar` – Uploads a curator avatar (PNG/JPG/WebP up to 5 MB, GIFs rejected) and returns the refreshed profile payload.
 - `PUT /api/users/:id/profile` – Update a curator’s display name or bio (self-service or admin override).

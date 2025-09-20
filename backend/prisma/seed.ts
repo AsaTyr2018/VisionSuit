@@ -36,6 +36,54 @@ const ensureStorageObject = async (
 };
 
 const main = async () => {
+  const existingSettings = await prisma.rankingSettings.findFirst();
+  if (!existingSettings) {
+    await prisma.rankingSettings.create({
+      data: {
+        modelWeight: 3,
+        galleryWeight: 2,
+        imageWeight: 1,
+      },
+    });
+  }
+
+  const defaultTiers = [
+    {
+      label: 'Newcomer',
+      description: 'Getting started with first uploads and curated collections.',
+      minimumScore: 0,
+      position: 0,
+    },
+    {
+      label: 'Curator',
+      description: 'Actively maintains a growing catalog of models and showcases.',
+      minimumScore: 6,
+      position: 1,
+    },
+    {
+      label: 'Senior Curator',
+      description: 'Regularly delivers polished LoRAs and collections for the community.',
+      minimumScore: 18,
+      position: 2,
+    },
+    {
+      label: 'Master Curator',
+      description: 'Leads large-scale curation programs with sustained contributions.',
+      minimumScore: 40,
+      position: 3,
+    },
+  ];
+
+  await Promise.all(
+    defaultTiers.map((tier) =>
+      prisma.rankTier.upsert({
+        where: { minimumScore: tier.minimumScore },
+        update: tier,
+        create: tier,
+      }),
+    ),
+  );
+
   const curatorPassword = await bcrypt.hash('curator123', 12);
 
   const curator = await prisma.user.upsert({

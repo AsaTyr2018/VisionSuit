@@ -26,6 +26,7 @@ export interface UserProfileRank {
   nextLabel: string | null;
   nextScore: number | null;
   score: number;
+  isBlocked: boolean;
 }
 
 export interface UserProfileModelSummary {

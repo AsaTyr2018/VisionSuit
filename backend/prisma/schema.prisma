@@ -28,6 +28,7 @@ model User {
   assets      ModelAsset[] @relation("AssetOwner")
   images      ImageAsset[] @relation("ImageOwner")
   uploadDrafts UploadDraft[]
+  rankingState UserRankingState?
 }
 
 model Gallery {
@@ -176,4 +177,36 @@ model UploadDraft {
   owner         User     @relation(fields: [ownerId], references: [id])
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model RankingSettings {
+  id            Int      @id @default(autoincrement())
+  modelWeight   Int      @default(3)
+  galleryWeight Int      @default(2)
+  imageWeight   Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model RankTier {
+  id           String   @id @default(cuid())
+  label        String
+  description  String
+  minimumScore Int
+  position     Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([minimumScore])
+}
+
+model UserRankingState {
+  userId      String   @id
+  scoreOffset Int      @default(0)
+  isExcluded  Boolean  @default(false)
+  lastResetAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
 }
