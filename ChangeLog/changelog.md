@@ -347,3 +347,12 @@
 - **General**: Updated the browser tab title to reflect the VisionSuit brand instead of the Vite starter text.
 - **Technical Changes**: Changed the HTML document title in `frontend/index.html` to "VisionSuit" for production readiness.
 - **Data Changes**: None.
+## 2025-09-23 – Sidebar service status refinement
+- **General**: Elevated the service indicator deck with cohesive glassmorphism cards and contextual badges.
+- **Technical Changes**: Reworked the sidebar status markup with service initials, introduced gradient icon styling and status-aware card accents, refreshed health pill visuals, and updated the README highlight to describe the polished cards.
+- **Data Changes**: None; presentation-only updates for health indicators.
+
+## 2025-09-23 – Sidebar status LED redesign (commit TBD)
+- **General**: Replaced the sidebar service text badges with compact LED indicators that stay visible within the card layout.
+- **Technical Changes**: Updated the service status header markup, introduced dedicated LED styling with accessibility helpers, and refreshed the README highlight to mention the beacons.
+- **Data Changes**: None.

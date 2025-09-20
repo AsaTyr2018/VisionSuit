@@ -48,6 +48,12 @@ const statusLabels: Record<ServiceState, string> = {
   unknown: 'Unknown',
 };
 
+const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
+  frontend: 'UI',
+  backend: 'API',
+  minio: 'S3',
+};
+
 const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
   frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
   backend: { label: 'Backend', status: 'unknown', message: 'Status check in progress…' },
@@ -544,12 +550,20 @@ export const App = () => {
               {(['frontend', 'backend', 'minio'] as ServiceStatusKey[]).map((key) => {
                 const entry = serviceStatus[key];
                 return (
-                  <li key={key} className="sidebar__status-item">
-                    <div className="sidebar__status-header">
-                      <span>{entry.label}</span>
-                      <span className={`status-pill status-pill--${entry.status}`}>{statusLabels[entry.status]}</span>
+                  <li key={key} className={`sidebar__status-item sidebar__status-item--${entry.status}`}>
+                    <span className={`sidebar__status-icon sidebar__status-icon--${key}`} aria-hidden="true">
+                      {serviceBadgeLabels[key]}
+                    </span>
+                    <div className="sidebar__status-content">
+                      <div className="sidebar__status-header">
+                        <span className="sidebar__status-title">{entry.label}</span>
+                        <span className="status-led-wrapper">
+                          <span className={`status-led status-led--${entry.status}`} aria-hidden="true" />
+                          <span className="visually-hidden">{statusLabels[entry.status]}</span>
+                        </span>
+                      </div>
+                      <p className="sidebar__status-message">{entry.message}</p>
                     </div>
-                    <p>{entry.message}</p>
                   </li>
                 );
               })}
