@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { FormEvent, useMemo, useState } from 'react';
 
 import { api } from '../lib/api';
+import { resolveStorageUrl } from '../lib/storage';
 import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
 
 interface AdminPanelProps {
@@ -87,6 +88,26 @@ const collectImageMetadataStrings = (metadata?: ImageAsset['metadata']) => {
   return Array.from(values);
 };
 
+const formatFileSize = (bytes?: number | null) => {
+  if (typeof bytes !== 'number' || Number.isNaN(bytes) || bytes <= 0) {
+    return null;
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, exponent);
+  const formatted = value >= 10 ? value.toFixed(0) : value.toFixed(1);
+  return `${formatted} ${units[exponent]}`;
+};
+
+const truncateText = (value: string, limit = 160) => {
+  if (value.length <= limit) {
+    return value;
+  }
+
+  return `${value.slice(0, limit - 1).trimEnd()}…`;
+};
+
 export const AdminPanel = ({ users, models, images, galleries, token, onRefresh }: AdminPanelProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -110,6 +131,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
 
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
@@ -472,6 +494,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       next.delete(image.id);
       return next;
     });
+    setExpandedImageId((previous) => (previous === image.id ? null : previous));
   };
 
   const handleBulkDeleteImages = async () => {
@@ -488,6 +511,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
       () =>
         api.bulkDeleteImageAssets(token, ids).then(() => {
           setSelectedImages(new Set());
+          setExpandedImageId(null);
         }),
       `${ids.length} images removed.`,
     );
@@ -996,126 +1020,225 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
               handleBulkDeleteImages,
             )}
 
-            <div className="admin__table" role="grid">
-              <div className="admin__table-header" role="row">
-                <span className="admin__table-cell admin__table-cell--checkbox" role="columnheader" aria-label="Selection" />
-                <span className="admin__table-cell" role="columnheader">
-                  Image
-                </span>
-                <span className="admin__table-cell" role="columnheader">
-                  Metadata
-                </span>
-                <span className="admin__table-cell admin__table-cell--actions" role="columnheader">
-                  Actions
-                </span>
-              </div>
-              <div className="admin__table-body">
-                {filteredImages.length === 0 ? (
-                  <p className="admin__empty">No images available.</p>
-                ) : (
-                  filteredImages.map((image) => (
+            {filteredImages.length === 0 ? (
+              <p className="admin__empty">No images available.</p>
+            ) : (
+              <div className="admin-image-grid" role="list">
+                {filteredImages.map((image) => {
+                  const previewUrl =
+                    resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+                  const metadataEntries = [
+                    image.metadata?.seed ? { label: 'Seed', value: image.metadata.seed } : null,
+                    image.metadata?.model ? { label: 'Model', value: image.metadata.model } : null,
+                    image.metadata?.sampler ? { label: 'Sampler', value: image.metadata.sampler } : null,
+                    image.metadata?.cfgScale !== undefined && image.metadata?.cfgScale !== null
+                      ? { label: 'CFG', value: image.metadata.cfgScale.toString() }
+                      : null,
+                    image.metadata?.steps !== undefined && image.metadata?.steps !== null
+                      ? { label: 'Steps', value: image.metadata.steps.toString() }
+                      : null,
+                  ].filter((entry): entry is { label: string; value: string } => {
+                    if (!entry) {
+                      return false;
+                    }
+                    return entry.value.trim().length > 0;
+                  });
+                  const visibleTags = image.tags.slice(0, 5);
+                  const remainingTagCount = image.tags.length - visibleTags.length;
+                  const isExpanded = expandedImageId === image.id;
+                  const dimensionsLabel = image.dimensions
+                    ? `${image.dimensions.width}×${image.dimensions.height}`
+                    : null;
+                  const fileSizeLabel = formatFileSize(image.fileSize);
+                  const updatedLabel = new Date(image.updatedAt).toLocaleDateString('en-US');
+
+                  return (
                     <form
                       key={image.id}
-                      className="admin-row"
+                      className={`admin-image-card${isExpanded ? ' admin-image-card--expanded' : ''}`}
                       onSubmit={(event) => handleUpdateImage(event, image)}
                       aria-label={`Settings for ${image.title}`}
+                      role="listitem"
                     >
-                      <div className="admin-row__cell admin-row__cell--checkbox">
-                        <input
-                          type="checkbox"
-                          checked={selectedImages.has(image.id)}
-                          onChange={(event) => toggleSelection(setSelectedImages, image.id, event.currentTarget.checked)}
-                          disabled={isBusy}
-                          aria-label={`Select ${image.title}`}
-                        />
-                      </div>
-                      <div className="admin-row__cell admin-row__cell--meta">
-                        <h4>{image.title}</h4>
-                        <span className="admin-row__subtitle">by {image.owner.displayName}</span>
-                        <div className="admin-row__badges">
-                          <span className="admin-badge admin-badge--muted">
-                            {new Date(image.updatedAt).toLocaleDateString('en-US')}
-                          </span>
-                          <span className="admin-badge">{image.tags.map((tag) => tag.label).slice(0, 3).join(', ')}</span>
+                      <div className="admin-image-card__body">
+                        <div className="admin-image-card__media">
+                          {previewUrl ? (
+                            <img src={previewUrl} alt={image.title} loading="lazy" />
+                          ) : (
+                            <div className="admin-image-card__placeholder">No preview</div>
+                          )}
                         </div>
-                      </div>
-                      <div className="admin-row__cell admin-row__cell--form">
-                        <label>
-                          <span>Title</span>
-                          <input name="title" defaultValue={image.title} disabled={isBusy} />
-                        </label>
-                        <label>
-                          <span>Description</span>
-                          <textarea name="description" rows={2} defaultValue={image.description ?? ''} disabled={isBusy} />
-                        </label>
-                        <label>
-                          <span>Prompt</span>
-                          <textarea name="prompt" rows={2} defaultValue={image.prompt ?? ''} disabled={isBusy} />
-                        </label>
-                        <label>
-                          <span>Negative prompt</span>
-                          <textarea name="negativePrompt" rows={2} defaultValue={image.negativePrompt ?? ''} disabled={isBusy} />
-                        </label>
-                        <label>
-                          <span>Tags</span>
-                          <input
-                            name="tags"
-                            defaultValue={image.tags.map((tag) => tag.label).join(', ')}
-                            placeholder="Comma separated"
-                            disabled={isBusy}
-                          />
-                        </label>
-                        <label>
-                          <span>Owner</span>
-                          <select name="ownerId" defaultValue={image.owner.id} disabled={isBusy}>
-                            {userOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.label}
-                              </option>
+                        <div className="admin-image-card__summary">
+                          <div className="admin-image-card__summary-header">
+                            <label className="admin-image-card__checkbox">
+                              <input
+                                type="checkbox"
+                                checked={selectedImages.has(image.id)}
+                                onChange={(event) =>
+                                  toggleSelection(setSelectedImages, image.id, event.currentTarget.checked)
+                                }
+                                disabled={isBusy}
+                                aria-label={`Select ${image.title}`}
+                              />
+                            </label>
+                            <div className="admin-image-card__titles">
+                              <h4>{image.title}</h4>
+                              <span className="admin-image-card__subtitle">by {image.owner.displayName}</span>
+                            </div>
+                            <div className="admin-image-card__meta">
+                              <span className="admin-badge admin-badge--muted">{updatedLabel}</span>
+                              {dimensionsLabel ? (
+                                <span className="admin-badge admin-badge--muted">{dimensionsLabel}</span>
+                              ) : null}
+                              {fileSizeLabel ? (
+                                <span className="admin-badge admin-badge--muted">{fileSizeLabel}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="admin-image-card__tags">
+                            {visibleTags.map((tag) => (
+                              <span key={tag.id} className="admin-badge">
+                                {tag.label}
+                              </span>
                             ))}
-                          </select>
-                        </label>
-                        <div className="admin__form-grid">
-                          <label>
-                            <span>Seed</span>
-                            <input name="seed" defaultValue={image.metadata?.seed ?? ''} disabled={isBusy} />
-                          </label>
-                          <label>
-                            <span>Model</span>
-                            <input name="model" defaultValue={image.metadata?.model ?? ''} disabled={isBusy} />
-                          </label>
-                          <label>
-                            <span>Sampler</span>
-                            <input name="sampler" defaultValue={image.metadata?.sampler ?? ''} disabled={isBusy} />
-                          </label>
-                          <label>
-                            <span>CFG</span>
-                            <input name="cfgScale" defaultValue={image.metadata?.cfgScale?.toString() ?? ''} disabled={isBusy} />
-                          </label>
-                          <label>
-                            <span>Steps</span>
-                            <input name="steps" defaultValue={image.metadata?.steps?.toString() ?? ''} disabled={isBusy} />
-                          </label>
+                            {remainingTagCount > 0 ? (
+                              <span className="admin-badge admin-badge--muted">+{remainingTagCount} more</span>
+                            ) : null}
+                          </div>
+                          {metadataEntries.length > 0 ? (
+                            <ul className="admin-image-card__metadata">
+                              {metadataEntries.map((entry) => (
+                                <li key={entry.label}>
+                                  <span>{entry.label}</span>
+                                  <strong>{entry.value}</strong>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <div className="admin-image-card__prompts">
+                            {image.prompt ? (
+                              <p>
+                                <strong>Prompt:</strong> {truncateText(image.prompt)}
+                              </p>
+                            ) : null}
+                            {image.negativePrompt ? (
+                              <p>
+                                <strong>Negative:</strong> {truncateText(image.negativePrompt)}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="admin-image-card__quick-actions">
+                            {previewUrl ? (
+                              <a className="button button--subtle" href={previewUrl} target="_blank" rel="noreferrer">
+                                Open
+                              </a>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="button button--subtle"
+                              onClick={() =>
+                                setExpandedImageId((previous) => (previous === image.id ? null : image.id))
+                              }
+                            >
+                              {isExpanded ? 'Collapse' : 'Edit'}
+                            </button>
+                            <button
+                              type="button"
+                              className="button button--danger"
+                              onClick={() => handleDeleteImage(image)}
+                              disabled={isBusy}
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <div className="admin-row__cell admin-row__cell--actions">
-                        <button type="submit" className="button" disabled={isBusy}>
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="button button--danger"
-                          onClick={() => handleDeleteImage(image)}
-                          disabled={isBusy}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      {isExpanded ? (
+                        <div className="admin-image-card__form admin__form">
+                          <div className="admin-image-card__form-fields">
+                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
+                              <span>Title</span>
+                              <input name="title" defaultValue={image.title} disabled={isBusy} />
+                            </label>
+                            <label className="admin-image-card__form-item">
+                              <span>Owner</span>
+                              <select name="ownerId" defaultValue={image.owner.id} disabled={isBusy}>
+                                {userOptions.map((option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="admin-image-card__form-item">
+                              <span>Tags</span>
+                              <input
+                                name="tags"
+                                defaultValue={image.tags.map((tag) => tag.label).join(', ')}
+                                placeholder="Comma separated"
+                                disabled={isBusy}
+                              />
+                            </label>
+                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
+                              <span>Description</span>
+                              <textarea name="description" rows={3} defaultValue={image.description ?? ''} disabled={isBusy} />
+                            </label>
+                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
+                              <span>Prompt</span>
+                              <textarea name="prompt" rows={3} defaultValue={image.prompt ?? ''} disabled={isBusy} />
+                            </label>
+                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
+                              <span>Negative prompt</span>
+                              <textarea
+                                name="negativePrompt"
+                                rows={3}
+                                defaultValue={image.negativePrompt ?? ''}
+                                disabled={isBusy}
+                              />
+                            </label>
+                          </div>
+                          <div className="admin__form-grid admin-image-card__form-grid">
+                            <label>
+                              <span>Seed</span>
+                              <input name="seed" defaultValue={image.metadata?.seed ?? ''} disabled={isBusy} />
+                            </label>
+                            <label>
+                              <span>Model</span>
+                              <input name="model" defaultValue={image.metadata?.model ?? ''} disabled={isBusy} />
+                            </label>
+                            <label>
+                              <span>Sampler</span>
+                              <input name="sampler" defaultValue={image.metadata?.sampler ?? ''} disabled={isBusy} />
+                            </label>
+                            <label>
+                              <span>CFG</span>
+                              <input
+                                name="cfgScale"
+                                defaultValue={image.metadata?.cfgScale?.toString() ?? ''}
+                                disabled={isBusy}
+                              />
+                            </label>
+                            <label>
+                              <span>Steps</span>
+                              <input
+                                name="steps"
+                                defaultValue={image.metadata?.steps?.toString() ?? ''}
+                                disabled={isBusy}
+                              />
+                            </label>
+                          </div>
+                          <div className="admin-image-card__form-footer">
+                            <button type="submit" className="button button--primary" disabled={isBusy}>
+                              Save changes
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </form>
-                  ))
-                )}
+                  );
+                })}
               </div>
-            </div>
+            )}
           </section>
         </div>
       ) : null}
