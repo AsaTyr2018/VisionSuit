@@ -262,3 +262,8 @@
 - **General**: Rebuilt the model card layout into a two-column canvas with more breathing room and stabilized table alignment.
 - **Technical Changes**: Introduced a responsive layout grid for summary and metadata panes, widened the dialog container, enforced fixed table layouts, and added flexible metadata scroll containers.
 - **Data Changes**: None.
+
+## 2025-09-20 – Model card width expansion
+- **General**: Enlarged the model detail dialog so metadata columns remain readable on wide screens.
+- **Technical Changes**: Adjusted the dialog container to span 80% of the viewport (capped at 1400px) and loosened the tablet breakpoint width to retain proportional spacing.
+- **Data Changes**: None.

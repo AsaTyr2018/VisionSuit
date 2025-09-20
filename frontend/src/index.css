@@ -1682,7 +1682,7 @@ main {
 
 .asset-detail-dialog__container {
   position: relative;
-  width: min(1180px, 96vw);
+  width: min(1400px, 80vw);
   max-height: 88vh;
   display: flex;
   justify-content: center;
@@ -4880,7 +4880,7 @@ button {
 
   .gallery-detail-dialog__container,
   .asset-detail-dialog__container {
-    width: min(720px, 96vw);
+    width: min(720px, 90vw);
   }
 }
 
