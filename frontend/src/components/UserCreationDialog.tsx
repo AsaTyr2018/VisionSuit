@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import type { User } from '../types/api';
 
 export type AsyncActionResult = { ok: true } | { ok: false; message: string };

@@ -312,7 +312,7 @@ const toTagFrequencyGroups = (value: unknown): TagFrequencyGroup[] => {
     return [];
   }
 
-  let working = value;
+  let working: unknown = value;
   if (typeof working === 'string') {
     const trimmed = working.trim();
     if (trimmed) {

@@ -400,3 +400,8 @@
 - **General**: Fixed the blank screen on startup by ensuring the primary view navigation helper initializes before any effects run.
 - **Technical Changes**: Moved the `openPrimaryView` callback above dependent effects in `frontend/src/App.tsx` so React doesn’t hit the temporal dead zone when guarding the admin view.
 - **Data Changes**: None; state management only.
+
+## 2025-09-24 – Self-service account settings
+- **General**: Empowered curators to manage their own profile details and passwords directly from the console sidebar.
+- **Technical Changes**: Added authenticated profile/password routes, new API helpers, an account settings modal with validation, refreshed sidebar styling, and updated README guidance.
+- **Data Changes**: None; updates operate on existing user records only.

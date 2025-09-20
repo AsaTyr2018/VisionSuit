@@ -7,6 +7,7 @@ import type { UploadWizardResult } from './components/UploadWizard';
 import { LoginDialog } from './components/LoginDialog';
 import { AdminPanel } from './components/AdminPanel';
 import { UserProfile as UserProfileView } from './components/UserProfile';
+import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveStorageUrl } from './lib/storage';
@@ -67,7 +68,7 @@ const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
 });
 
 export const App = () => {
-  const { user: authUser, token, isAuthenticated, login, logout } = useAuth();
+  const { user: authUser, token, isAuthenticated, login, logout, refreshUser } = useAuth();
   const [activeView, setActiveView] = useState<ViewKey>('home');
   const [returnView, setReturnView] = useState<PrimaryViewKey>('home');
   const [assets, setAssets] = useState<ModelAsset[]>([]);
@@ -92,6 +93,7 @@ export const App = () => {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileReloadKey, setProfileReloadKey] = useState(0);
+  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const availableViews = useMemo<PrimaryViewKey[]>(() => {
     const views: PrimaryViewKey[] = ['home', 'models', 'images'];
     if (authUser?.role === 'ADMIN') {
@@ -233,6 +235,7 @@ export const App = () => {
     if (!isAuthenticated) {
       setIsAssetUploadOpen(false);
       setIsGalleryUploadOpen(false);
+      setIsAccountSettingsOpen(false);
     }
   }, [isAuthenticated]);
 
@@ -413,6 +416,7 @@ export const App = () => {
     setActiveProfile(null);
     setProfileError(null);
     setProfileReloadKey(0);
+    setIsAccountSettingsOpen(false);
     openPrimaryView('home');
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   };
@@ -703,9 +707,19 @@ export const App = () => {
               <>
                 <p className="sidebar__auth-name">{authUser?.displayName}</p>
                 <p className="sidebar__auth-role">{authUser?.role === 'ADMIN' ? 'Administrator' : 'Curator'}</p>
-                <button type="button" className="sidebar__auth-button" onClick={handleLogout} disabled={isLoggingIn}>
-                  Sign out
-                </button>
+                <div className="sidebar__auth-actions">
+                  <button
+                    type="button"
+                    className="sidebar__auth-button sidebar__auth-button--primary"
+                    onClick={() => setIsAccountSettingsOpen(true)}
+                    disabled={isLoggingIn}
+                  >
+                    Manage account
+                  </button>
+                  <button type="button" className="sidebar__auth-button" onClick={handleLogout} disabled={isLoggingIn}>
+                    Sign out
+                  </button>
+                </div>
               </>
             ) : (
               <button
@@ -780,6 +794,21 @@ export const App = () => {
         onClose={() => setIsGalleryUploadOpen(false)}
         onComplete={handleWizardCompletion}
       />
+      {isAuthenticated && token && authUser ? (
+        <AccountSettingsDialog
+          isOpen={isAccountSettingsOpen}
+          onClose={() => setIsAccountSettingsOpen(false)}
+          token={token}
+          user={authUser}
+          onRefreshUser={refreshUser}
+          onProfileSaved={(message) => {
+            setToast({ type: 'success', message });
+          }}
+          onPasswordChanged={(message) => {
+            setToast({ type: 'success', message });
+          }}
+        />
+      ) : null}
       <LoginDialog
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { FormEvent, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 
 import { api } from '../lib/api';
 import { resolveStorageUrl } from '../lib/storage';
@@ -202,8 +203,8 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
 
   const resetStatus = () => setStatus(null);
 
-  const withStatus = async (
-    action: () => Promise<void>,
+  const withStatus = async <T,>(
+    action: () => Promise<T>,
     successMessage: string,
   ): Promise<AsyncActionResult> => {
     resetStatus();

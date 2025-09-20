@@ -1,4 +1,5 @@
-import { FormEvent, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import type { FormEvent } from 'react';
 
 interface LoginDialogProps {
   isOpen: boolean;

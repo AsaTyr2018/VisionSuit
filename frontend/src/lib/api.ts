@@ -275,6 +275,32 @@ export const api = {
       },
       token,
     ),
+  updateOwnProfile: (
+    token: string,
+    id: string,
+    payload: Partial<{ displayName: string; bio: string | null; avatarUrl: string | null }>,
+  ) =>
+    request<{ user: User }>(
+      `/api/users/${id}/profile`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  changePassword: (
+    token: string,
+    id: string,
+    payload: { currentPassword: string; newPassword: string; confirmPassword: string },
+  ) =>
+    request<{ message: string }>(
+      `/api/users/${id}/password`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
   deleteUser: (token: string, id: string) => request(`/api/users/${id}`, { method: 'DELETE' }, token),
   bulkDeleteUsers: (token: string, ids: string[]) =>
     request<{ deleted: string[] }>(
