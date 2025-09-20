@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 
+import type { User } from '@prisma/client';
+import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
@@ -7,6 +10,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { hashPassword, toAuthUser, verifyPassword } from '../lib/auth';
 import { requireAdmin, requireAuth, requireSelfOrAdmin } from '../lib/middleware/auth';
+import { resolveAvatarUrl } from '../lib/avatar';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { MAX_AVATAR_SIZE_BYTES } from '../lib/uploadLimits';
 
@@ -16,7 +20,6 @@ const createUserSchema = z.object({
   password: z.string().min(8),
   role: z.enum(['CURATOR', 'ADMIN']).default('CURATOR'),
   bio: z.string().max(600).optional(),
-  avatarUrl: z.string().url().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -25,7 +28,6 @@ const updateUserSchema = z.object({
   password: z.string().min(8).optional(),
   role: z.enum(['CURATOR', 'ADMIN']).optional(),
   bio: z.string().max(600).nullable().optional(),
-  avatarUrl: z.string().url().nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -33,7 +35,6 @@ const updateProfileSchema = z
   .object({
     displayName: z.string().min(2).max(160).optional(),
     bio: z.string().max(600).nullable().optional(),
-    avatarUrl: z.string().url().nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'No profile changes provided.',
@@ -154,6 +155,127 @@ const computeRank = (score: number) => {
   };
 };
 
+const pickFirstHeaderValue = (value?: string) => {
+  if (!value) {
+    return undefined;
+  }
+
+  const [first] = value.split(',');
+  const trimmed = first?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+};
+
+const getRequestOrigin = (req: Request): string | null => {
+  const forwardedHost = pickFirstHeaderValue(req.get('x-forwarded-host'));
+  const host = forwardedHost ?? req.get('host');
+
+  if (!host) {
+    return null;
+  }
+
+  const forwardedProto = pickFirstHeaderValue(req.get('x-forwarded-proto'));
+  const protocol = forwardedProto ?? req.protocol;
+
+  return `${protocol}://${host}`;
+};
+
+const sendAvatarNotFound = (res: Response) => {
+  res.status(404).json({ message: 'Avatar not found.' });
+};
+
+const serializeUserWithOrigin = (
+  req: Request,
+  user: Pick<User, 'id' | 'email' | 'displayName' | 'role' | 'bio' | 'avatarUrl'>,
+) => {
+  const origin = getRequestOrigin(req);
+  const location = resolveStorageLocation(user.avatarUrl ?? undefined);
+
+  return {
+    ...toAuthUser(user),
+    avatarUrl: resolveAvatarUrl(user.id, user.avatarUrl ?? null, { origin, location }),
+  };
+};
+
+const handleAvatarRequest = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({ message: 'User ID missing.' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        avatarUrl: true,
+        isActive: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      sendAvatarNotFound(res);
+      return;
+    }
+
+    const avatar = resolveStorageLocation(user.avatarUrl ?? undefined);
+
+    if (!avatar.bucket || !avatar.objectName) {
+      sendAvatarNotFound(res);
+      return;
+    }
+
+    let stat;
+    try {
+      stat = await storageClient.statObject(avatar.bucket, avatar.objectName);
+    } catch (error) {
+      const code = (error as Error & { code?: string }).code;
+      if (code === 'NoSuchKey' || code === 'NotFound') {
+        sendAvatarNotFound(res);
+        return;
+      }
+
+      throw error;
+    }
+
+    const isHeadRequest = req.method === 'HEAD';
+    const objectStream = isHeadRequest ? null : await storageClient.getObject(avatar.bucket, avatar.objectName);
+
+    const contentType =
+      stat.metaData?.['content-type'] ??
+      stat.metaData?.['Content-Type'] ??
+      stat.metaData?.['Content-type'] ??
+      'application/octet-stream';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+    res.setHeader('Content-Length', stat.size.toString());
+
+    if (stat.lastModified) {
+      res.setHeader('Last-Modified', stat.lastModified.toUTCString());
+    }
+
+    if (stat.etag) {
+      res.setHeader('ETag', stat.etag.startsWith('"') ? stat.etag : `"${stat.etag}"`);
+    }
+
+    if (!objectStream) {
+      res.status(200).end();
+      return;
+    }
+
+    objectStream.on('error', next);
+
+    await pipeline(objectStream, res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+usersRouter.get('/:id/avatar', handleAvatarRequest);
+usersRouter.head('/:id/avatar', handleAvatarRequest);
+
 usersRouter.get('/:id/profile', async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -254,14 +376,19 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
     const galleryCount = mappedGalleries.length;
     const contributionScore = modelCount * 3 + galleryCount * 2 + imageCount;
     const rank = computeRank(contributionScore);
-    const avatar = resolveStorageLocation(user.avatarUrl ?? undefined);
+    const avatarLocation = resolveStorageLocation(user.avatarUrl ?? undefined);
+    const origin = getRequestOrigin(req);
+    const avatarUrl = resolveAvatarUrl(user.id, user.avatarUrl ?? null, {
+      origin,
+      location: avatarLocation,
+    });
 
     res.json({
       profile: {
         id: user.id,
         displayName: user.displayName,
         bio: user.bio ?? null,
-        avatarUrl: avatar.url ?? user.avatarUrl ?? null,
+        avatarUrl,
         role: user.role,
         joinedAt: user.createdAt,
         rank: {
@@ -402,7 +529,7 @@ usersRouter.post('/:id/avatar', requireAuth, requireSelfOrAdmin, (req, res, next
           .catch((cleanupError) => console.warn('Failed to remove previous avatar object', cleanupError));
       }
 
-      res.json({ user: toAuthUser(updatedUser) });
+      res.json({ user: serializeUserWithOrigin(req, updatedUser) });
     } catch (handlerError) {
       next(handlerError);
     }
@@ -446,10 +573,6 @@ usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res
       }
     }
 
-    if (payload.avatarUrl !== undefined) {
-      updates.avatarUrl = payload.avatarUrl;
-    }
-
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ message: 'No profile changes provided.' });
       return;
@@ -468,7 +591,7 @@ usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res
       },
     });
 
-    res.json({ user: toAuthUser(user) });
+    res.json({ user: serializeUserWithOrigin(req, user) });
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2025') {
       res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
@@ -525,19 +648,21 @@ usersRouter.put('/:id/password', requireAuth, requireSelfOrAdmin, async (req, re
 
 usersRouter.use(requireAuth, requireAdmin);
 
-usersRouter.get('/', async (_req, res, next) => {
+usersRouter.get('/', async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: 'asc' },
     });
 
-    res.json({ users: users.map((user) => ({
-      ...toAuthUser(user),
-      isActive: user.isActive,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    })) });
+    res.json({
+      users: users.map((user) => ({
+        ...serializeUserWithOrigin(req, user),
+        isActive: user.isActive,
+        lastLoginAt: user.lastLoginAt,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      })),
+    });
   } catch (error) {
     next(error);
   }
@@ -561,12 +686,16 @@ usersRouter.post('/', async (req, res, next) => {
         role: payload.role,
         passwordHash,
         bio: payload.bio ?? null,
-        avatarUrl: payload.avatarUrl ?? null,
         isActive: true,
       },
     });
 
-    res.status(201).json({ user: { ...toAuthUser(user), isActive: user.isActive } });
+    res.status(201).json({
+      user: {
+        ...serializeUserWithOrigin(req, user),
+        isActive: user.isActive,
+      },
+    });
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2002') {
       res.status(409).json({ message: 'E-Mail-Adresse wird bereits verwendet.' });
@@ -604,10 +733,6 @@ usersRouter.put('/:id', async (req, res, next) => {
       updates.bio = payload.bio;
     }
 
-    if (payload.avatarUrl !== undefined) {
-      updates.avatarUrl = payload.avatarUrl;
-    }
-
     if (payload.isActive !== undefined) {
       updates.isActive = payload.isActive;
     }
@@ -621,7 +746,12 @@ usersRouter.put('/:id', async (req, res, next) => {
       data: updates,
     });
 
-    res.json({ user: { ...toAuthUser(user), isActive: user.isActive } });
+    res.json({
+      user: {
+        ...serializeUserWithOrigin(req, user),
+        isActive: user.isActive,
+      },
+    });
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2025') {
       res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });

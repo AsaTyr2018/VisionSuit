@@ -275,11 +275,7 @@ export const api = {
       },
       token,
     ),
-  updateOwnProfile: (
-    token: string,
-    id: string,
-    payload: Partial<{ displayName: string; bio: string | null; avatarUrl: string | null }>,
-  ) =>
+  updateOwnProfile: (token: string, id: string, payload: Partial<{ displayName: string; bio: string | null }>) =>
     request<{ user: User }>(
       `/api/users/${id}/profile`,
       {

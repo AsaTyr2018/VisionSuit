@@ -410,3 +410,8 @@
 - **General**: Empowered curators to manage their own profile details and passwords directly from the console sidebar.
 - **Technical Changes**: Added authenticated profile/password routes, new API helpers, an account settings modal with validation, refreshed sidebar styling, and updated README guidance.
 - **Data Changes**: None; updates operate on existing user records only.
+
+## 2025-09-24 – Avatar relay hardening
+- **General**: Ensured curator avatars remain visible regardless of MinIO hostname settings by proxying them through the API and removing the manual URL field from account settings.
+- **Technical Changes**: Added a `/api/users/:id/avatar` stream endpoint, centralized avatar URL resolution with request-aware helpers, updated user serializers to emit proxied links, refreshed the React profile view to normalize avatar sources, and simplified the account settings dialog plus docs.
+- **Data Changes**: None; avatars continue to upload into the existing image bucket with unchanged storage paths.
