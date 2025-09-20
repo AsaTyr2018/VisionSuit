@@ -4,7 +4,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 ## Core Highlights
 
-- **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus live health badges for the front end, API, and MinIO services.
+- **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus glassy health cards with color-coded LED beacons for the front end, API, and MinIO services.
 - **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, and protected upload flows.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
