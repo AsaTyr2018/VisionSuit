@@ -242,3 +242,8 @@
 - **General**: Consolidated all legacy changelog entries into the unified format and cleaned up redundant files.
 - **Technical Changes**: Transcribed prior per-commit notes into the new changelog layout and removed superseded markdown entries.
 - **Data Changes**: None.
+
+## 2025-09-20 – Preview gallery quick actions
+- **General**: Moved linked image collection access directly beneath the model preview with action-style buttons.
+- **Technical Changes**: Updated the asset detail preview card to render gallery navigation buttons alongside downloads and refreshed the associated styling while removing the old section list.
+- **Data Changes**: None.
