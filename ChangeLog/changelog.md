@@ -283,3 +283,8 @@
 - **General**: Restored the model gallery so the Asset Explorer shows tiles instead of failing with a blank screen.
 - **Technical Changes**: Reordered the `activeAsset` memo and its permission guard ahead of dependent effects to remove the temporal dead zone runtime error that crashed the component on load.
 - **Data Changes**: None.
+
+## 2025-09-20 – Gallery detail grid expansion (commit TBD)
+- **General**: Extended the gallery detail view to surface six thumbnails per row on wide screens without distorting the layout.
+- **Technical Changes**: Updated `.gallery-detail__grid` breakpoints and thumbnail sizing in `frontend/src/index.css` to provide a six-column base with responsive fallbacks and square previews.
+- **Data Changes**: None; visual styling only.
