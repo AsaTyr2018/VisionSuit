@@ -198,6 +198,11 @@
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
+## 2025-09-19 – Model card layout polish (commit TBD)
+- **General**: Smoothed the model card experience by aligning primary actions and tightening the dataset tags table.
+- **Technical Changes**: Converted the preview action stack to a full-width flex column, equalized button typography, and padded the tag frequency table with a fixed layout so headers and rows stay inside the dialog.
+- **Data Changes**: None.
+
 ## 2025-09-20 – Trigger activator modelcards
 - **General**: Added a dedicated Trigger/Activator field to modelcards with copy-to-clipboard handling during uploads and admin edits.
 - **Technical Changes**: Extended the Prisma schema, API validation, upload wizard, admin panel, and explorer UI to capture and display trigger phrases while equalizing modelcard summary column sizing and styling the copy action.
