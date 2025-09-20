@@ -257,3 +257,8 @@
 - **General**: Tightened the model card actions by matching button styling and clarifying the surrounding tag and metadata layout.
 - **Technical Changes**: Reduced preview action width stretching, unified the open-collection button palette with downloads, simplified its label, introduced a detail grid for tags versus metadata, and refreshed spacing utilities for both sections.
 - **Data Changes**: None.
+
+## 2025-09-20 – Model card layout restructure
+- **General**: Rebuilt the model card layout into a two-column canvas with more breathing room and stabilized table alignment.
+- **Technical Changes**: Introduced a responsive layout grid for summary and metadata panes, widened the dialog container, enforced fixed table layouts, and added flexible metadata scroll containers.
+- **Data Changes**: None.
