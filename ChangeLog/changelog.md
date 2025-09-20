@@ -252,3 +252,8 @@
 - **General**: Moved linked image collection access directly beneath the model preview with action-style buttons.
 - **Technical Changes**: Updated the asset detail preview card to render gallery navigation buttons alongside downloads and refreshed the associated styling while removing the old section list.
 - **Data Changes**: None.
+
+## 2025-09-20 – Model card action polish (commit TBD)
+- **General**: Tightened the model card actions by matching button styling and clarifying the surrounding tag and metadata layout.
+- **Technical Changes**: Reduced preview action width stretching, unified the open-collection button palette with downloads, simplified its label, introduced a detail grid for tags versus metadata, and refreshed spacing utilities for both sections.
+- **Data Changes**: None.
