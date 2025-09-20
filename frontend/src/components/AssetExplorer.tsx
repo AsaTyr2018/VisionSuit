@@ -6,6 +6,7 @@ import { resolveStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
 import { ModelVersionEditDialog } from './ModelVersionEditDialog';
+import { ModelAssetEditDialog } from './ModelAssetEditDialog';
 
 interface AssetExplorerProps {
   assets: ModelAsset[];
@@ -474,6 +475,7 @@ export const AssetExplorer = ({
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [isTagDialogOpen, setTagDialogOpen] = useState(false);
   const [isVersionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [isEditDialogOpen, setEditDialogOpen] = useState(false);
   const [versionToEdit, setVersionToEdit] = useState<ModelVersion | null>(null);
   const [versionFeedback, setVersionFeedback] = useState<string | null>(null);
   const [triggerCopyStatus, setTriggerCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
@@ -512,6 +514,12 @@ export const AssetExplorer = ({
   useEffect(() => {
     setTriggerCopyStatus('idle');
   }, [activeAssetId, activeVersionId]);
+
+  useEffect(() => {
+    if (!activeAsset) {
+      setEditDialogOpen(false);
+    }
+  }, [activeAsset]);
 
   useEffect(() => {
     if (triggerCopyStatus === 'idle') {
@@ -1138,9 +1146,20 @@ export const AssetExplorer = ({
                     <p className="asset-detail__version-feedback" role="status">{versionFeedback}</p>
                   ) : null}
                 </div>
-                <button type="button" className="asset-detail__close" onClick={closeDetail}>
-                  Back to model list
-                </button>
+                <div className="asset-detail__actions">
+                  {canManageActiveAsset ? (
+                    <button
+                      type="button"
+                      className="asset-detail__edit"
+                      onClick={() => setEditDialogOpen(true)}
+                    >
+                      Edit model
+                    </button>
+                  ) : null}
+                  <button type="button" className="asset-detail__close" onClick={closeDetail}>
+                    Back to model list
+                  </button>
+                </div>
               </header>
 
 
@@ -1428,6 +1447,19 @@ export const AssetExplorer = ({
             } else {
               setVersionFeedback('Model updated.');
             }
+          }}
+        />
+      ) : null}
+
+      {activeAsset ? (
+        <ModelAssetEditDialog
+          isOpen={isEditDialogOpen}
+          onClose={() => setEditDialogOpen(false)}
+          model={activeAsset}
+          token={authToken ?? null}
+          onSuccess={(updated) => {
+            onAssetUpdated?.(updated);
+            setVersionFeedback('Model details updated.');
           }}
         />
       ) : null}
