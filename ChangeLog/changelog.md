@@ -385,3 +385,8 @@
 - **General**: Shortened the image metadata edit experience by spreading controls into columns so the dialog stays within the viewport.
 - **Technical Changes**: Widened the image edit dialog container and introduced a responsive three-column grid for metadata fields in `frontend/src/components/ImageAssetEditDialog.tsx` and `frontend/src/index.css`.
 - **Data Changes**: None; purely presentational improvements to existing metadata inputs.
+
+## 2025-09-24 – Curator profile spotlight
+- **General**: Introduced curator profile pages with contribution stats, ranks, and full listings of each curator’s models and collections.
+- **Technical Changes**: Added a public `/api/users/:id/profile` endpoint, new profile view state management, reusable curator link styling, `UserProfile` component, and expanded explorers/admin panels to open profiles.
+- **Data Changes**: None; profile data is derived from existing users, models, galleries, and images.

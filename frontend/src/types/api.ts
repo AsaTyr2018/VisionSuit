@@ -19,6 +19,64 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface UserProfileRank {
+  label: string;
+  description: string;
+  minimumScore: number;
+  nextLabel: string | null;
+  nextScore: number | null;
+  score: number;
+}
+
+export interface UserProfileModelSummary {
+  id: string;
+  title: string;
+  slug: string;
+  version: string;
+  description?: string | null;
+  previewImage?: string | null;
+  previewImageBucket?: string | null;
+  previewImageObject?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  tags: Tag[];
+}
+
+export interface UserProfileGallerySummary {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  isPublic: boolean;
+  coverImage?: string | null;
+  coverImageBucket?: string | null;
+  coverImageObject?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  stats: {
+    entryCount: number;
+    imageCount: number;
+    modelCount: number;
+  };
+}
+
+export interface UserProfile {
+  id: string;
+  displayName: string;
+  bio: string | null;
+  avatarUrl: string | null;
+  role: UserRole;
+  joinedAt: string;
+  rank: UserProfileRank;
+  stats: {
+    modelCount: number;
+    galleryCount: number;
+    imageCount: number;
+  };
+  models: UserProfileModelSummary[];
+  galleries: UserProfileGallerySummary[];
+}
+
 export interface ModelVersion {
   id: string;
   version: string;

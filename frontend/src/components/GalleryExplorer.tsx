@@ -21,6 +21,7 @@ interface GalleryExplorerProps {
   currentUser?: User | null;
   onGalleryUpdated?: (gallery: Gallery) => void;
   onImageUpdated?: (image: ImageAsset) => void;
+  onOpenProfile?: (userId: string) => void;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -96,8 +97,6 @@ const getGalleryOwner = (gallery: Gallery) => {
   const owner = (gallery as Gallery & { owner?: Gallery['owner'] | null }).owner;
   return owner ?? null;
 };
-
-const getGalleryOwnerName = (gallery: Gallery) => getGalleryOwner(gallery)?.displayName ?? 'Unknown curator';
 
 const matchesSearch = (gallery: Gallery, query: string) => {
   if (!query) return true;
@@ -205,6 +204,7 @@ export const GalleryExplorer = ({
   currentUser,
   onGalleryUpdated,
   onImageUpdated,
+  onOpenProfile,
 }: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
@@ -530,14 +530,21 @@ export const GalleryExplorer = ({
               const previewImage = selectPreviewImage(gallery);
               const totalImages = entries.filter((entry) => Boolean(entry.imageAsset)).length;
               const totalModels = entries.filter((entry) => Boolean(entry.modelAsset)).length;
-              const ownerName = getGalleryOwnerName(gallery);
+              const owner = getGalleryOwner(gallery);
+              const ownerName = owner?.displayName ?? 'Unknown curator';
               return (
-                <button
+                <article
                   key={gallery.id}
-                  type="button"
                   role="listitem"
+                  tabIndex={0}
                   className={`gallery-card${activeGalleryId === gallery.id ? ' gallery-card--active' : ''}`}
                   onClick={() => setActiveGalleryId(gallery.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setActiveGalleryId(gallery.id);
+                    }
+                  }}
                 >
                   <div className="gallery-card__preview" aria-hidden={previewImage ? 'false' : 'true'}>
                     {previewImage ? (
@@ -558,7 +565,23 @@ export const GalleryExplorer = ({
                   </div>
                   <div className="gallery-card__body">
                     <h3 className="gallery-card__title">{gallery.title}</h3>
-                    <p className="gallery-card__meta">Curated by {ownerName}</p>
+                    <p className="gallery-card__meta">
+                      Curated by{' '}
+                      {onOpenProfile && owner?.id ? (
+                        <button
+                          type="button"
+                          className="curator-link"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenProfile(owner.id);
+                          }}
+                        >
+                          {ownerName}
+                        </button>
+                      ) : (
+                        ownerName
+                      )}
+                    </p>
                     <dl className="gallery-card__stats">
                       <div>
                         <dt>Entries</dt>
@@ -575,7 +598,7 @@ export const GalleryExplorer = ({
                     </dl>
                     <p className="gallery-card__timestamp">Last updated on {formatDate(gallery.updatedAt)}</p>
                   </div>
-                </button>
+                </article>
               );
             })}
       </div>
@@ -600,8 +623,19 @@ export const GalleryExplorer = ({
                   </span>
                   <h3 id="gallery-detail-title">{activeGallery.title}</h3>
                   <p>
-                    Curated by {activeGalleryOwner?.displayName ?? 'Unknown curator'} · Updated on{' '}
-                    {formatDate(activeGallery.updatedAt)}
+                    Curated by{' '}
+                    {onOpenProfile && activeGalleryOwner?.id ? (
+                      <button
+                        type="button"
+                        className="curator-link"
+                        onClick={() => onOpenProfile(activeGalleryOwner.id)}
+                      >
+                        {activeGalleryOwner.displayName}
+                      </button>
+                    ) : (
+                      activeGalleryOwner?.displayName ?? 'Unknown curator'
+                    )}{' '}
+                    · Updated on {formatDate(activeGallery.updatedAt)}
                   </p>
                 </div>
                 <div className="gallery-detail__actions">
@@ -686,7 +720,20 @@ export const GalleryExplorer = ({
             <header className="gallery-image-modal__header">
               <div>
                 <h3>{activeImage.image.title}</h3>
-                <p>Curated by {activeGalleryOwner?.displayName ?? 'Unknown curator'}</p>
+                <p>
+                  Curated by{' '}
+                  {onOpenProfile && activeGalleryOwner?.id ? (
+                    <button
+                      type="button"
+                      className="curator-link"
+                      onClick={() => onOpenProfile(activeGalleryOwner.id)}
+                    >
+                      {activeGalleryOwner.displayName}
+                    </button>
+                  ) : (
+                    activeGalleryOwner?.displayName ?? 'Unknown curator'
+                  )}
+                </p>
               </div>
               <div className="gallery-image-modal__actions">
                 {canManageActiveImage ? (

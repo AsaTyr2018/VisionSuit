@@ -5,6 +5,7 @@ import type {
   MetaStats,
   ModelAsset,
   ServiceStatusResponse,
+  UserProfile,
   User,
 } from '../types/api';
 
@@ -254,6 +255,7 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   getCurrentUser: (token: string) => request<{ user: User }>('/api/auth/me', {}, token),
+  getUserProfile: (userId: string) => request<{ profile: UserProfile }>(`/api/users/${userId}/profile`),
   getUsers: (token: string) => request<{ users: User[] }>('/api/users', {}, token),
   createUser: (token: string, payload: { email: string; displayName: string; password: string; role: string; bio?: string }) =>
     request<{ user: User }>(

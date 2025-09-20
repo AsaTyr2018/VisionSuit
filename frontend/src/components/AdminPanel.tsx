@@ -72,6 +72,7 @@ interface AdminPanelProps {
   galleries: Gallery[];
   token: string;
   onRefresh: () => Promise<void>;
+  onOpenProfile?: (userId: string) => void;
 }
 
 type AdminTab = 'users' | 'models' | 'images' | 'galleries';
@@ -168,7 +169,7 @@ const truncateText = (value: string, limit = 160) => {
   return `${value.slice(0, limit - 1).trimEnd()}…`;
 };
 
-export const AdminPanel = ({ users, models, images, galleries, token, onRefresh }: AdminPanelProps) => {
+export const AdminPanel = ({ users, models, images, galleries, token, onRefresh, onOpenProfile }: AdminPanelProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -1118,7 +1119,20 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                             </label>
                             <div className="admin-model-card__titles">
                               <h4>{model.title}</h4>
-                              <span className="admin-model-card__subtitle">by {model.owner.displayName}</span>
+                              <span className="admin-model-card__subtitle">
+                                by{' '}
+                                {onOpenProfile ? (
+                                  <button
+                                    type="button"
+                                    className="curator-link"
+                                    onClick={() => onOpenProfile(model.owner.id)}
+                                  >
+                                    {model.owner.displayName}
+                                  </button>
+                                ) : (
+                                  model.owner.displayName
+                                )}
+                              </span>
                             </div>
                             <div className="admin-model-card__meta">
                               <span className="admin-badge">{model.version}</span>
@@ -1458,7 +1472,20 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                             </label>
                             <div className="admin-image-card__titles">
                               <h4>{image.title}</h4>
-                              <span className="admin-image-card__subtitle">by {image.owner.displayName}</span>
+                              <span className="admin-image-card__subtitle">
+                                by{' '}
+                                {onOpenProfile ? (
+                                  <button
+                                    type="button"
+                                    className="curator-link"
+                                    onClick={() => onOpenProfile(image.owner.id)}
+                                  >
+                                    {image.owner.displayName}
+                                  </button>
+                                ) : (
+                                  image.owner.displayName
+                                )}
+                              </span>
                             </div>
                             <div className="admin-image-card__meta">
                               <span className="admin-badge admin-badge--muted">{updatedLabel}</span>
