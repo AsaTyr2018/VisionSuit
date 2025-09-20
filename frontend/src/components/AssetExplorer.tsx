@@ -483,6 +483,22 @@ export const AssetExplorer = ({
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
 
+  const activeAsset = useMemo(
+    () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
+    [activeAssetId, assets],
+  );
+
+  const canManageActiveAsset = useMemo(
+    () =>
+      Boolean(
+        authToken &&
+          activeAsset &&
+          currentUser &&
+          (currentUser.role === 'ADMIN' || currentUser.id === activeAsset.owner.id),
+      ),
+    [activeAsset, authToken, currentUser],
+  );
+
   useEffect(() => {
     if (!externalSearchQuery) {
       return;
@@ -692,21 +708,6 @@ export const AssetExplorer = ({
     return () => observer.disconnect();
   }, [canLoadMore, filteredAssets.length]);
 
-  const activeAsset = useMemo(
-    () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
-    [activeAssetId, assets],
-  );
-
-  const canManageActiveAsset = useMemo(
-    () =>
-      Boolean(
-        authToken &&
-          activeAsset &&
-          currentUser &&
-          (currentUser.role === 'ADMIN' || currentUser.id === activeAsset.owner.id),
-      ),
-    [activeAsset, authToken, currentUser],
-  );
 
   useEffect(() => {
     if (!activeAsset) {

@@ -278,3 +278,8 @@
 - **General**: Empowered curators and admins to rename model versions from the modelcard while giving the metadata section more breathing room.
 - **Technical Changes**: Added `PUT /api/assets/models/:modelId/versions/:versionId`, expanded the frontend API client, introduced an edit dialog with permission checks, refined version chip labelling with edit controls, and stretched the metadata card styling.
 - **Data Changes**: None; operates on existing model/version records without schema updates.
+
+## 2025-09-20 – Asset explorer crash fix (commit TBD)
+- **General**: Restored the model gallery so the Asset Explorer shows tiles instead of failing with a blank screen.
+- **Technical Changes**: Reordered the `activeAsset` memo and its permission guard ahead of dependent effects to remove the temporal dead zone runtime error that crashed the component on load.
+- **Data Changes**: None.
