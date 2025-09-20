@@ -1,4 +1,239 @@
-## 2025-09-20
+## 2024-05-22 – Express startup fix
+- **General**: Stabilized the backend boot process after Express failed to locate the request augmentation module.
+- **Technical Changes**: Converted the Express request extension from `.d.ts` to `.ts`, refreshed backend linting, and documented the troubleshooting steps and upload endpoint in the README.
+- **Data Changes**: None; runtime typings only.
+
+## 2025-09-18 – Storage proxy hardening (0c8e4b3)
+- **General**: Delivered a reliable storage proxy so MinIO assets stream through the backend with consistent limits and messaging.
+- **Technical Changes**: Added `/api/storage/:bucket/:objectKey`, enriched Multer error handling, routed frontend downloads through the proxy, introduced shared storage helpers, and updated README limits.
+- **Data Changes**: None; transport layer adjustments only.
+
+## 2025-09-18 – MinIO storage foundation (16b920c)
+- **General**: Introduced MinIO-backed storage with first-class setup guidance across the stack.
+- **Technical Changes**: Added `lib/storage` with automatic bucket provisioning, gated server startup on successful bootstrap, wired new MinIO environment variables, templated `.env`, and extended the installer and README.
+- **Data Changes**: None beyond new storage buckets created at runtime.
+
+## 2025-09-18 – Platform bootstrap (21ef5ed)
+- **General**: Established the initial VisionSuit platform spanning backend API, Prisma schema, and Vite frontend skeleton.
+- **Technical Changes**: Implemented Express routing, LoRA/image/gallery/statistics endpoints, Prisma schema with seeds, responsive dashboard components, API helpers, lint/build automation, and comprehensive README guidance.
+- **Data Changes**: Introduced the baseline SQLite schema and seed content for users, assets, galleries, and tags.
+
+## 2025-09-18 – Express wildcard regression (37ed12b)
+- **General**: Repaired storage downloads after Express 5 rejected wildcard parameters.
+- **Technical Changes**: Replaced the proxy route with `/api/storage/:bucket/:objectKey(*)`, updated handler lookups, and aligned README documentation.
+- **Data Changes**: None.
+
+## 2025-09-18 – Unified dev starter (5957426)
+- **General**: Simplified local development with a combined launcher for backend and frontend.
+- **Technical Changes**: Added `dev-start.sh`, hardened Vite host/port parsing for 0.0.0.0 access, synchronized backend package metadata, and refreshed README workflow notes.
+- **Data Changes**: None.
+
+## 2025-09-18 – Node 18 crypto polyfill (620b2ab)
+- **General**: Ensured the frontend works on Node 18.19 by polyfilling missing WebCrypto hashing APIs.
+- **Technical Changes**: Added a reusable polyfill script, required it via npm scripts, typed the Vite config, and documented Node compatibility guidance.
+- **Data Changes**: None.
+
+## 2025-09-18 – Guided installer (78dbd3b)
+- **General**: Reduced onboarding friction with an interactive installation script for both services.
+- **Technical Changes**: Introduced `install.sh` to install dependencies, scaffold `.env` files, and optionally run Prisma tasks while documenting the workflow in the README.
+- **Data Changes**: None.
+
+## 2025-09-18 – Extended rollback tooling (805a7d9)
+- **General**: Expanded the rollback utility to fully clean local toolchains when requested.
+- **Technical Changes**: Taught `rollback.sh` to purge npm caches, global prefixes, and popular Node version managers while clearly documenting the destructive steps.
+- **Data Changes**: None.
+
+## 2025-09-18 – Dockerized install flow (a1b2c3d)
+- **General**: Automated Docker, Portainer, and MinIO provisioning during installation.
+- **Technical Changes**: Added Docker/Compose checks, optional Portainer setup, persistent MinIO container orchestration, and README updates covering prerequisites and persistence paths.
+- **Data Changes**: None; infrastructure only.
+
+## 2025-09-18 – Prisma configuration cleanup (b29726e)
+- **General**: Unblocked Prisma CLI usage by removing conflicting environment overrides.
+- **Technical Changes**: Deleted `prisma/.env`, updated ignores and rollback script references, and clarified README setup notes.
+- **Data Changes**: None.
+
+## 2025-09-18 – Repository reset (d09d717)
+- **General**: Cleared the repository to prepare for the new VisionSuit codebase.
+- **Technical Changes**: Removed legacy application files and reset README content.
+- **Data Changes**: Purged prior project artifacts to start from a clean slate.
+
+## 2025-09-18 – Inline Vite polyfill (d5003cf)
+- **General**: Delivered a built-in hash polyfill so the dev starter no longer crashes on missing `crypto.hash`.
+- **Technical Changes**: Embedded compatibility logic inside `vite.config.ts`, expanded TypeScript settings, and documented the change.
+- **Data Changes**: None.
+
+## 2025-09-18 – Rollback utility (d7034e7)
+- **General**: Added a dedicated rollback script to restore local environments quickly.
+- **Technical Changes**: Implemented artifact and dependency cleanup for both services and described usage in the README.
+- **Data Changes**: None; cleans up generated files only.
+
+## 2025-09-18 – Storage proxy compatibility (eedd315)
+- **General**: Fixed another Express wildcard incompatibility impacting storage downloads.
+- **Technical Changes**: Switched the proxy to `:objectKey(.*)` to accept nested paths and validated linting (pending type fixes).
+- **Data Changes**: None.
+
+## 2025-09-18 – Frontend production pass (f80f7df)
+- **General**: Elevated the landing experience with a hero flow and three-step upload wizard.
+- **Technical Changes**: Built the UploadWizard component, toast system, hero CTA, API client hooks, and extensive styling updates while aligning README highlights.
+- **Data Changes**: None.
+
+## 2025-09-18 – Prisma environment standardization (fa46387)
+- **General**: Normalized Prisma configuration so migrations run without manual variables.
+- **Technical Changes**: Added a shared SQLite URL, updated ignore rules, removed legacy package settings, and refreshed README guidance.
+- **Data Changes**: None; configuration only.
+
+## 2025-09-18 – Explorer expansion (pending)
+- **General**: Delivered data-driven explorers for LoRA assets and curated galleries.
+- **Technical Changes**: Implemented advanced filtering, lazy loading, new card layouts, reusable chips, and README updates for the frontend workflow.
+- **Data Changes**: None; UI consuming existing APIs.
+
+## 2025-09-18 – Workflow plan
+- **General**: Published the VisionSuit workflow roadmap covering components, phases, and risks.
+- **Technical Changes**: Added planning documentation and referenced it from the README.
+- **Data Changes**: None.
+
+## 2025-09-19 – Gallery overhaul (0941b39)
+- **General**: Replaced the legacy image gallery with a richer collection explorer and lightbox.
+- **Technical Changes**: Added random preview tiles, five-column grids, scroll pagination, detailed lightbox metadata, supporting styles, and README updates.
+- **Data Changes**: None.
+
+## 2025-09-19 – Upload pipeline foundation (1bdf211)
+- **General**: Transitioned uploads from a mock to a production-ready flow with governance messaging.
+- **Technical Changes**: Implemented `POST /api/uploads`, added `UploadDraft` schema and validation, enhanced hero layout, enriched wizard error handling, refreshed styles, and documented the API.
+- **Data Changes**: Added the `UploadDraft` table and related migration to persist draft sessions and file metadata.
+
+## 2025-09-19 – Model detail refresh (3396953)
+- **General**: Streamlined the model detail view for clearer information hierarchy.
+- **Technical Changes**: Reworked layout into summary table plus preview, elevated download CTA styling, and synchronized README highlights.
+- **Data Changes**: None.
+
+## 2025-09-19 – Metadata table redesign (4b59727)
+- **General**: Made model metadata easier to scan by normalizing nested payloads.
+- **Technical Changes**: Added recursive normalization in the asset explorer, replaced definition lists with accessible tables, and refined table styling.
+- **Data Changes**: None.
+
+## 2025-09-19 – Focused model uploads (4fd2b2b)
+- **General**: Tightened the model upload experience to prevent extraneous files.
+- **Technical Changes**: Limited uploads to one model plus optional preview, hid gallery/type controls, updated review copy, and refreshed README guidance.
+- **Data Changes**: None.
+
+## 2025-09-19 – Model versioning (5b1e08a)
+- **General**: Enabled versioned model management across backend and frontend.
+- **Technical Changes**: Added `ModelVersion` schema and API endpoint, expanded storage cleanup, built the ModelVersion dialog, wired API client calls, and styled version chips.
+- **Data Changes**: Added the `ModelVersion` table and relations for persisted Safetensor revisions.
+
+## 2025-09-19 – Explorer layout polish (7c08273)
+- **General**: Improved model explorer navigation with consistent grids and cross-links.
+- **Technical Changes**: Locked the explorer to five-column lazy-loaded grids, added metadata sidebars, linked related galleries and models, and updated styles plus README highlights.
+- **Data Changes**: None.
+
+## 2025-09-19 – Gallery albums (9225ba6)
+- **General**: Introduced album-centric gallery browsing with immersive previews.
+- **Technical Changes**: Added `GalleryAlbum` components, hero tiles, keyboard-aware lightbox, skeleton states, and removed outdated cards while updating documentation.
+- **Data Changes**: None.
+
+## 2025-09-19 – Admin control center (commit TBD)
+- **General**: Reimagined the admin panel for large-scale moderation workloads.
+- **Technical Changes**: Added bulk filters and actions across users, models, and images; extended gallery editors; implemented backend batch endpoints; refreshed styling; and aligned README highlights.
+- **Data Changes**: None; operates on existing records.
+
+## 2025-09-19 – Explorer copy cleanup (commit TBD)
+- **General**: Completed the English localization of remaining asset explorer strings.
+- **Technical Changes**: Translated residual German labels and logs and verified linting.
+- **Data Changes**: None.
+
+## 2025-09-19 – Authentication and admin suite (commit TBD)
+- **General**: Secured VisionSuit with full JWT authentication and admin tooling.
+- **Technical Changes**: Added login/me endpoints, password hashing, auth middleware, role-aware upload/asset routes, admin CRUD APIs, provisioning script, frontend auth context and dashboards, and updated styling plus README docs.
+- **Data Changes**: Stores hashed credentials and role assignments within existing user tables.
+
+## 2025-09-19 – Dialog-based explorers (commit TBD)
+- **General**: Shifted model and gallery detail views into reusable dialogs for better focus on small screens.
+- **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
+- **Data Changes**: None.
+
+## 2025-09-19 – Resilient gallery metadata (commit TBD)
+- **General**: Prevented gallery crashes when metadata is missing or incomplete.
+- **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
+- **Data Changes**: None.
+
+## 2025-09-19 – Home dashboard alignment (commit TBD)
+- **General**: Brought the home view in line with the explorer layout for consistent discovery.
+- **Technical Changes**: Implemented modular home cards, responsive two-section grid, tagged CTA buttons, explorer tag filtering, and README updates.
+- **Data Changes**: None.
+
+## 2025-09-19 – Metadata extraction pipeline (commit TBD)
+- **General**: Added automated metadata parsing for uploads to power richer search.
+- **Technical Changes**: Built a backend metadata helper for PNG/JPEG/Safetensors, integrated results into upload processing and API payloads, wired frontend filters and admin dashboards to the new fields, and documented the automation.
+- **Data Changes**: Persisted extracted metadata JSON on model/image assets and upload drafts.
+
+## 2025-09-19 – Metadata dialog enhancements (commit TBD)
+- **General**: Clarified safetensor metadata presentation and separated tag analysis.
+- **Technical Changes**: Added recursive JSON detection for model aliases, filtered frequency stats, introduced a dedicated tag dialog, refined buttons/tables, and updated highlights.
+- **Data Changes**: None.
+
+## 2025-09-19 – UI streamline (commit TBD)
+- **General**: Simplified dashboard chrome and clarified key call-to-actions.
+- **Technical Changes**: Removed redundant header buttons, unified explorer labels, added role-aware gallery dropdown in the wizard with error messaging, and updated README notes.
+- **Data Changes**: None.
+
+## 2025-09-19 – Upload wizard translation (commit TBD)
+- **General**: Completed the English-language UX for the upload wizard.
+- **Technical Changes**: Translated all visible strings, added category mapping, refined copy in success/review states, ensured supporting components match, and noted the change in the README.
+- **Data Changes**: None.
+
+## 2025-09-19 – Storage route consolidation (commit TBD)
+- **General**: Finalized Express storage routing compatible with Express 5 across GET and HEAD.
+- **Technical Changes**: Migrated to `/:bucket/*`, shared handler logic, and explained the fix while awaiting final commit ID.
+- **Data Changes**: None.
+
+## 2025-09-19 – Streamlined installer (da2500c)
+- **General**: Tuned the installer for production hosts with automatic IP detection.
+- **Technical Changes**: Added smart IP/port prompts, synchronized `.env` files, injected MinIO defaults, and refreshed README installation guidance.
+- **Data Changes**: None.
+
+## 2025-09-19 – Storage wildcard fix (e59b9b2)
+- **General**: Ensured storage endpoints load under Express 5 after wildcard parsing changes.
+- **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
+- **Data Changes**: None.
+
+## 2025-09-19 – Storage object IDs (e78ced6)
+- **General**: Moved storage downloads to stable object IDs resolved from the database.
+- **Technical Changes**: Added the `StorageObject` table and migration, updated the proxy to look up metadata by ID, adjusted upload pipelines to create records, and refreshed README docs.
+- **Data Changes**: Introduced `StorageObject` records referencing each stored asset.
+
+## 2025-09-19 – Gallery upload wizard (ecb521e)
+- **General**: Launched a gallery-specific upload wizard with backend support and documentation.
+- **Technical Changes**: Added multi-image upload handling with validation, created gallery entries per file, linked explorer actions, adjusted toast handling, and updated README guidance.
+- **Data Changes**: Persisted gallery draft assets and cover updates during uploads.
+
+## 2025-09-19 – README refresh
+- **General**: Modernized and translated the README into clear English.
+- **Technical Changes**: Reorganized highlights, architecture overview, installation, workflow, upload pipeline, and troubleshooting content for clarity.
+- **Data Changes**: None.
+
+## 2025-09-19 – Product shell refresh (bb636b9)
+- **General**: Updated the frontend shell with persistent navigation and service health indicators.
+- **Technical Changes**: Added a permanent sidebar, surface status API `/api/meta/status`, refreshed home tiles, introduced a standalone image explorer, and aligned README docs.
+- **Data Changes**: None.
+
+## 2025-09-20 – Launch day polish (bcd8f72)
+- **General**: Elevated the landing page into a production control panel with trust cues and CTAs.
+- **Technical Changes**: Added sticky topbar, hero, trust metrics, CTA panels, wizard auto-refresh callbacks, extensive styling, README updates, and corrected prior changelog references.
+- **Data Changes**: None.
+
+## 2025-09-20 – Direct MinIO pipeline (pending)
+- **General**: Connected uploads directly to MinIO with immediate asset availability.
+- **Technical Changes**: Updated upload endpoints to stream to MinIO with checksums, created assets/galleries in one pass, exposed storage metadata in APIs, refreshed frontend cards/wizard messaging, and documented the flow.
+- **Data Changes**: Assets and galleries now persist MinIO bucket/object names alongside existing metadata.
+
+## 2025-09-20 – Community roadmap documentation
 - **General**: Documented the planned community engagement features and surfaced the roadmap in public docs.
 - **Technical Changes**: Added a dedicated community features plan detailing reactions, comments, follows, collections, and the supporting architecture; linked the plan from the README via a new Community Roadmap section.
 - **Data Changes**: None; documentation-only update outlining future schema additions.
+
+## 2025-09-20 – Historical changelog migration
+- **General**: Consolidated all legacy changelog entries into the unified format and cleaned up redundant files.
+- **Technical Changes**: Transcribed prior per-commit notes into the new changelog layout and removed superseded markdown entries.
+- **Data Changes**: None.
