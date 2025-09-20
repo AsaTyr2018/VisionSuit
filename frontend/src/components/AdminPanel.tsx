@@ -675,7 +675,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <input
                     type="search"
                     value={userFilter.query}
-                    onChange={(event) => setUserFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setUserFilter((previous) => ({ ...previous, query: value }));
+                    }}
                     placeholder="Name, email, or bio"
                     disabled={isBusy}
                   />
@@ -684,9 +687,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <span>Role</span>
                   <select
                     value={userFilter.role}
-                    onChange={(event) =>
-                      setUserFilter((previous) => ({ ...previous, role: event.currentTarget.value as FilterValue<User['role']> }))
-                    }
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setUserFilter((previous) => ({ ...previous, role: value as FilterValue<User['role']> }));
+                    }}
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
@@ -698,12 +702,13 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <span>Status</span>
                   <select
                     value={userFilter.status}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
                       setUserFilter((previous) => ({
                         ...previous,
-                        status: event.currentTarget.value as FilterValue<UserStatusFilter>,
-                      }))
-                    }
+                        status: value as FilterValue<UserStatusFilter>,
+                      }));
+                    }}
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
@@ -825,7 +830,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <input
                     type="search"
                     value={modelFilter.query}
-                    onChange={(event) => setModelFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setModelFilter((previous) => ({ ...previous, query: value }));
+                    }}
                     placeholder="Title, description, or owner"
                     disabled={isBusy}
                   />
@@ -834,9 +842,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <span>Owner</span>
                   <select
                     value={modelFilter.owner}
-                    onChange={(event) =>
-                      setModelFilter((previous) => ({ ...previous, owner: event.currentTarget.value as FilterValue<string> }))
-                    }
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setModelFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
+                    }}
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
@@ -852,7 +861,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <input
                     type="search"
                     value={modelFilter.tag}
-                    onChange={(event) => setModelFilter((previous) => ({ ...previous, tag: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setModelFilter((previous) => ({ ...previous, tag: value }));
+                    }}
                     placeholder="Tag filter"
                     disabled={isBusy}
                   />
@@ -987,7 +999,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <input
                     type="search"
                     value={imageFilter.query}
-                    onChange={(event) => setImageFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setImageFilter((previous) => ({ ...previous, query: value }));
+                    }}
                     placeholder="Title, prompt, or tags"
                     disabled={isBusy}
                   />
@@ -996,9 +1011,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <span>Owner</span>
                   <select
                     value={imageFilter.owner}
-                    onChange={(event) =>
-                      setImageFilter((previous) => ({ ...previous, owner: event.currentTarget.value as FilterValue<string> }))
-                    }
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setImageFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
+                    }}
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
@@ -1254,7 +1270,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <input
                     type="search"
                     value={galleryFilter.query}
-                    onChange={(event) => setGalleryFilter((previous) => ({ ...previous, query: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setGalleryFilter((previous) => ({ ...previous, query: value }));
+                    }}
                     placeholder="Title or slug"
                     disabled={isBusy}
                   />
@@ -1263,9 +1282,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <span>Owner</span>
                   <select
                     value={galleryFilter.owner}
-                    onChange={(event) =>
-                      setGalleryFilter((previous) => ({ ...previous, owner: event.currentTarget.value as FilterValue<string> }))
-                    }
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setGalleryFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
+                    }}
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
@@ -1280,12 +1300,13 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                   <span>Visibility</span>
                   <select
                     value={galleryFilter.visibility}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
                       setGalleryFilter((previous) => ({
                         ...previous,
-                        visibility: event.currentTarget.value as FilterValue<VisibilityFilter>,
-                      }))
-                    }
+                        visibility: value as FilterValue<VisibilityFilter>,
+                      }));
+                    }}
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
