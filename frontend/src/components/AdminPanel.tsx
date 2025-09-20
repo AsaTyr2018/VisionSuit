@@ -482,6 +482,54 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
     await withStatus(() => api.updateModelAsset(token, model.id, payload), 'Model updated.');
   };
 
+  const handlePromoteModelVersion = async (model: ModelAsset, version: ModelAsset['versions'][number]) => {
+    const label = version.version.trim() || 'this version';
+    if (!window.confirm(`Make ${label} the primary version for ${model.title}?`)) {
+      return;
+    }
+
+    await withStatus(
+      () => api.promoteModelVersion(token, model.id, version.id).then(() => undefined),
+      'Primary version updated.',
+    );
+  };
+
+  const handleRenameModelVersion = async (model: ModelAsset, version: ModelAsset['versions'][number]) => {
+    const original = version.version.trim();
+    const nextLabel = window.prompt('Enter a new label for this version', original);
+
+    if (nextLabel === null) {
+      return;
+    }
+
+    const trimmed = nextLabel.trim();
+    if (trimmed.length === 0) {
+      setStatus({ type: 'error', message: 'Version label cannot be empty.' });
+      return;
+    }
+
+    if (trimmed === original) {
+      return;
+    }
+
+    await withStatus(
+      () => api.updateModelVersion(token, model.id, version.id, { version: trimmed }).then(() => undefined),
+      'Version label updated.',
+    );
+  };
+
+  const handleDeleteModelVersion = async (model: ModelAsset, version: ModelAsset['versions'][number]) => {
+    const label = version.version.trim() || 'this version';
+    if (!window.confirm(`Delete ${label} from ${model.title}?`)) {
+      return;
+    }
+
+    await withStatus(
+      () => api.deleteModelVersion(token, model.id, version.id).then(() => undefined),
+      'Version deleted.',
+    );
+  };
+
   const handleDeleteModel = async (model: ModelAsset) => {
     if (!window.confirm(`Delete model "${model.title}"?`)) {
       return;
@@ -1194,6 +1242,34 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                                       >
                                         Download
                                       </a>
+                                      {version.id !== model.primaryVersionId ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="button button--subtle"
+                                            onClick={() => handlePromoteModelVersion(model, version)}
+                                            disabled={isBusy}
+                                          >
+                                            Make primary
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="button button--subtle"
+                                            onClick={() => handleRenameModelVersion(model, version)}
+                                            disabled={isBusy}
+                                          >
+                                            Rename
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="button button--danger"
+                                            onClick={() => handleDeleteModelVersion(model, version)}
+                                            disabled={isBusy}
+                                          >
+                                            Delete
+                                          </button>
+                                        </>
+                                      ) : null}
                                     </div>
                                   </li>
                                 );

@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 
-import type { Prisma } from '@prisma/client';
-import { ImageAsset, ModelAsset, ModelVersion, Tag, User } from '@prisma/client';
+import { Prisma, ImageAsset, ModelAsset, ModelVersion, Tag, User } from '@prisma/client';
 import type { Express } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
@@ -112,10 +111,19 @@ const sortVersionsForDisplay = (a: MappedModelVersion, b: MappedModelVersion) =>
   return compareVersionLabels(a.version, b.version);
 };
 
+const getVersionRecency = (entry: MappedModelVersion) => {
+  const created = new Date(entry.createdAt).getTime();
+  const updated = new Date(entry.updatedAt).getTime();
+  return Math.max(created, updated);
+};
+
 const sortVersionsByCreatedAtDesc = (a: MappedModelVersion, b: MappedModelVersion) =>
-  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  getVersionRecency(b) - getVersionRecency(a);
 
 const mapModelAsset = (asset: HydratedModelAsset) => {
+  const primaryVersionSource = asset.versions.find((entry) => entry.storagePath === asset.storagePath);
+  const additionalVersionSources = asset.versions.filter((entry) => entry.storagePath !== asset.storagePath);
+
   const primaryVersion = mapModelVersion(
     {
       id: asset.id,
@@ -125,13 +133,13 @@ const mapModelAsset = (asset: HydratedModelAsset) => {
       fileSize: asset.fileSize,
       checksum: asset.checksum,
       metadata: asset.metadata,
-      createdAt: asset.createdAt,
-      updatedAt: asset.updatedAt,
+      createdAt: primaryVersionSource?.createdAt ?? asset.createdAt,
+      updatedAt: primaryVersionSource?.updatedAt ?? asset.updatedAt,
     },
     { isPrimary: true },
   );
 
-  const mappedAdditionalVersions = asset.versions.map((entry) =>
+  const mappedAdditionalVersions = additionalVersionSources.map((entry) =>
     mapModelVersion(
       {
         id: entry.id,
@@ -787,6 +795,173 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, async (req
         },
       });
     });
+
+    res.json(mapModelAsset(updatedAsset));
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { modelId, versionId } = req.params;
+    if (!modelId || !versionId) {
+      res.status(400).json({ message: 'Model-ID oder Versions-ID fehlt.' });
+      return;
+    }
+
+    const asset = await prisma.modelAsset.findUnique({
+      where: { id: modelId },
+      include: {
+        owner: { select: { id: true, displayName: true, email: true } },
+        tags: { include: { tag: true } },
+        versions: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    if (!asset) {
+      res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+      res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieses Modells.' });
+      return;
+    }
+
+    if (versionId === asset.id) {
+      res.status(400).json({ message: 'Diese Version ist bereits als Primärversion hinterlegt.' });
+      return;
+    }
+
+    const targetVersion = asset.versions.find((entry) => entry.id === versionId);
+    if (!targetVersion) {
+      res.status(404).json({ message: 'Die gewünschte Version gehört nicht zu diesem Modell.' });
+      return;
+    }
+
+    const updatedAsset = await prisma.$transaction(async (tx) => {
+      await tx.modelVersion.update({
+        where: { id: targetVersion.id },
+        data: {
+          version: asset.version,
+          storagePath: asset.storagePath,
+          previewImage: asset.previewImage ?? null,
+          fileSize: asset.fileSize ?? null,
+          checksum: asset.checksum ?? null,
+          metadata: asset.metadata ?? Prisma.JsonNull,
+          createdAt: asset.createdAt,
+        },
+      });
+
+      return tx.modelAsset.update({
+        where: { id: asset.id },
+        data: {
+          version: targetVersion.version,
+          storagePath: targetVersion.storagePath,
+          previewImage: targetVersion.previewImage ?? null,
+          fileSize: targetVersion.fileSize ?? null,
+          checksum: targetVersion.checksum ?? null,
+          metadata: targetVersion.metadata ?? Prisma.JsonNull,
+        },
+        include: {
+          owner: { select: { id: true, displayName: true, email: true } },
+          tags: { include: { tag: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+    });
+
+    res.json(mapModelAsset(updatedAsset));
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { modelId, versionId } = req.params;
+    if (!modelId || !versionId) {
+      res.status(400).json({ message: 'Model-ID oder Versions-ID fehlt.' });
+      return;
+    }
+
+    const asset = await prisma.modelAsset.findUnique({
+      where: { id: modelId },
+      include: {
+        owner: { select: { id: true, displayName: true, email: true } },
+        tags: { include: { tag: true } },
+        versions: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    if (!asset) {
+      res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+      res.status(403).json({ message: 'Keine Berechtigung zum Löschen dieser Version.' });
+      return;
+    }
+
+    if (versionId === asset.id) {
+      res.status(400).json({ message: 'Die Primärversion kann nicht gelöscht werden.' });
+      return;
+    }
+
+    const targetVersion = asset.versions.find((entry) => entry.id === versionId);
+    if (!targetVersion) {
+      res.status(404).json({ message: 'Die gewünschte Version gehört nicht zu diesem Modell.' });
+      return;
+    }
+
+    const versionStorage = resolveStorageLocation(targetVersion.storagePath);
+    const versionPreview = resolveStorageLocation(targetVersion.previewImage);
+
+    const updatedAsset = await prisma.$transaction(async (tx) => {
+      await tx.modelVersion.delete({ where: { id: targetVersion.id } });
+
+      if (versionStorage.objectName) {
+        await tx.storageObject.deleteMany({ where: { id: versionStorage.objectName } });
+      }
+
+      if (versionPreview.objectName) {
+        await tx.storageObject.deleteMany({ where: { id: versionPreview.objectName } });
+      }
+
+      if (targetVersion.previewImage) {
+        await tx.gallery.updateMany({
+          where: { coverImage: targetVersion.previewImage },
+          data: { coverImage: null },
+        });
+      }
+
+      return tx.modelAsset.update({
+        where: { id: asset.id },
+        data: { updatedAt: new Date() },
+        include: {
+          owner: { select: { id: true, displayName: true, email: true } },
+          tags: { include: { tag: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+    });
+
+    await Promise.all([
+      removeStorageObject(versionStorage.bucket, versionStorage.objectName),
+      removeStorageObject(versionPreview.bucket, versionPreview.objectName),
+    ]);
 
     res.json(mapModelAsset(updatedAsset));
   } catch (error) {

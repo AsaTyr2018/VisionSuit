@@ -198,6 +198,11 @@
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
+## 2025-09-19 – Model version hierarchy controls (commit TBD)
+- **General**: Enabled full lifecycle management of secondary model revisions directly from the admin console.
+- **Technical Changes**: Added backend promotion and deletion endpoints, refined primary-version mapping to preserve chronology, exposed new API client helpers, and wired admin UI actions for promoting, renaming, and removing versions with refreshed README guidance.
+- **Data Changes**: None.
+
 ## 2025-09-19 – Model card layout polish (commit TBD)
 - **General**: Smoothed the model card experience by aligning primary actions and tightening the dataset tags table.
 - **Technical Changes**: Converted the preview action stack to a full-width flex column, equalized button typography, and padded the tag frequency table with a fixed layout so headers and rows stay inside the dialog.
