@@ -6,6 +6,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 - **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus glassy health cards with color-coded LED beacons for the front end, API, and MinIO services.
 - **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, and protected upload flows.
+- **Self-service account management** – Sidebar account settings let curators update their display name, bio, avatar, and password without waiting for admin intervention.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
 - **Curator spotlight profiles** – Dedicated profile view with avatars, rank progression, bios, and live listings of every model and collection uploaded by the curator, reachable from any curator name across the interface.
@@ -17,6 +18,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Curators can edit their own models, collections, and images directly from the explorers, while administrators continue to see edit controls for every entry.
+- Signed-in users can open the **Account settings** dialog from the sidebar to adjust profile details or rotate their password in a single modal workflow.
 - Administration workspace now offers a compact moderation grid across models and images with lazy thumbnails, inline version histories, collapsible edit drawers, persistent bulk tools tuned for six-figure libraries, multi-step user onboarding with permission previews, and one-click actions to promote, rename, or remove secondary model versions.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
@@ -195,7 +197,9 @@ Batch uploads validate up to 12 files per request and enforce the 2 GB size ce
 - `GET /api/storage/:bucket/:objectId` – Secure file proxy resolving anonymized IDs to originals.
 - `GET /api/users` – Admin-only listing of accounts.
 - `POST /api/users` – Admin-only account provisioning.
-- `PUT /api/users/:id` – Admin-only account maintenance, deactivation, and password resets.
+- `PUT /api/users/:id` – Admin-only account maintenance, deactivation, and role changes.
+- `PUT /api/users/:id/profile` – Update a curator’s display name, bio, or avatar (self-service or admin override).
+- `PUT /api/users/:id/password` – Change a password after verifying the current credential (self-service or admin override).
 - `DELETE /api/users/:id` – Admin-only user removal (no self-delete).
 - `POST /api/users/bulk-delete` – Bulk account deletion (admin only).
 - `POST /api/assets/models/bulk-delete` – Bulk removal of models including storage cleanup.

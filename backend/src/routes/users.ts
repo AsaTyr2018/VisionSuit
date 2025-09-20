@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { hashPassword, toAuthUser } from '../lib/auth';
-import { requireAdmin, requireAuth } from '../lib/middleware/auth';
+import { hashPassword, toAuthUser, verifyPassword } from '../lib/auth';
+import { requireAdmin, requireAuth, requireSelfOrAdmin } from '../lib/middleware/auth';
 import { resolveStorageLocation } from '../lib/storage';
 
 const createUserSchema = z.object({
@@ -24,6 +24,27 @@ const updateUserSchema = z.object({
   avatarUrl: z.string().url().nullable().optional(),
   isActive: z.boolean().optional(),
 });
+
+const updateProfileSchema = z
+  .object({
+    displayName: z.string().min(2).max(160).optional(),
+    bio: z.string().max(600).nullable().optional(),
+    avatarUrl: z.string().url().nullable().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'No profile changes provided.',
+  });
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(8),
+    newPassword: z.string().min(8),
+    confirmPassword: z.string().min(8),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'New passwords do not match.',
+    path: ['confirmPassword'],
+  });
 
 const bulkDeleteSchema = z.object({
   ids: z.array(z.string().trim().min(1)).min(1),
@@ -194,6 +215,120 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         galleries: mappedGalleries,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ message: 'User ID missing.' });
+      return;
+    }
+
+    const parseResult = updateProfileSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res
+        .status(400)
+        .json({ message: 'Profile update failed.', errors: parseResult.error.flatten() });
+      return;
+    }
+
+    const payload = parseResult.data;
+    const updates: Record<string, unknown> = {};
+
+    if (payload.displayName) {
+      const trimmed = payload.displayName.trim();
+      if (trimmed.length < 2) {
+        res.status(400).json({ message: 'Display name must be at least 2 characters.' });
+        return;
+      }
+      updates.displayName = trimmed;
+    }
+
+    if (payload.bio !== undefined) {
+      if (payload.bio === null) {
+        updates.bio = null;
+      } else {
+        const trimmedBio = payload.bio.trim();
+        updates.bio = trimmedBio.length === 0 ? null : trimmedBio;
+      }
+    }
+
+    if (payload.avatarUrl !== undefined) {
+      updates.avatarUrl = payload.avatarUrl;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ message: 'No profile changes provided.' });
+      return;
+    }
+
+    const user = await prisma.user.update({
+      where: { id },
+      data: updates,
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        role: true,
+        bio: true,
+        avatarUrl: true,
+      },
+    });
+
+    res.json({ user: toAuthUser(user) });
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2025') {
+      res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+      return;
+    }
+
+    next(error);
+  }
+});
+
+usersRouter.put('/:id/password', requireAuth, requireSelfOrAdmin, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ message: 'User ID missing.' });
+      return;
+    }
+
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Password update failed.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const { currentPassword, newPassword } = parsed.data;
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, passwordHash: true },
+    });
+
+    if (!user) {
+      res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+      return;
+    }
+
+    const isValid = await verifyPassword(currentPassword, user.passwordHash);
+    if (!isValid) {
+      res.status(400).json({ message: 'Current password is incorrect.' });
+      return;
+    }
+
+    const newHash = await hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: newHash },
+    });
+
+    res.json({ message: 'Password updated successfully.' });
   } catch (error) {
     next(error);
   }
