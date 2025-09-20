@@ -293,3 +293,8 @@
 - **General**: Modernized the admin console with a lighter visual rhythm and clearer hierarchy for moderation workflows.
 - **Technical Changes**: Reworked administration CSS with glassmorphism cards, pill navigation, refined forms/tables, enhanced focus states, and refreshed README guidance.
 - **Data Changes**: None.
+
+## 2025-09-21 – Compact moderation grid (commit TBD)
+- **General**: Reimagined the admin image moderation space as a dense grid with inline previews and quick actions to keep hundreds of thousands of assets scannable.
+- **Technical Changes**: Introduced thumbnail resolution helpers, expandable edit sections, condensed metadata badges, subtle action buttons, and refreshed README guidance to describe the new workflow.
+- **Data Changes**: None; presentation-only adjustments.
