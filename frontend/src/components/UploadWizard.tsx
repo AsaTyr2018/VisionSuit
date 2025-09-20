@@ -48,14 +48,14 @@ const stepDefinitions = [
 
 type StepId = (typeof stepDefinitions)[number]['id'];
 
-type AssetTypee = 'lora' | 'image';
+type AssetType = 'lora' | 'image';
 
 type Visibility = 'private' | 'public';
 
 type GalleryMode = 'existing' | 'new';
 
 interface UploadFormState {
-  assetTypee: AssetTypee;
+  assetType: AssetType;
   title: string;
   description: string;
   visibility: Visibility;
@@ -67,7 +67,7 @@ interface UploadFormState {
 }
 
 const buildInitialState = (mode: UploadWizardMode): UploadFormState => ({
-  assetTypee: mode === 'gallery' ? 'image' : 'lora',
+  assetType: mode === 'gallery' ? 'image' : 'lora',
   title: '',
   description: '',
   visibility: 'private',
@@ -391,7 +391,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
         setStepError('Please specify an existing gallery or choose "New gallery".');
         return false;
       }
-      if (!isGalleryMode && formState.assetTypee === 'lora' && !formState.trigger.trim()) {
+      if (!isGalleryMode && formState.assetType === 'lora' && !formState.trigger.trim()) {
         setStepError('Please provide a trigger or activator phrase for the model.');
         return false;
       }
@@ -492,7 +492,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
     if (!isGalleryMode) {
       base.splice(2, 0, {
         label: 'Type',
-        value: formState.assetTypee === 'lora' ? 'LoRA / safetensor' : 'Image / render',
+        value: formState.assetType === 'lora' ? 'LoRA / safetensor' : 'Image / render',
       });
       base.splice(4, 0, {
         label: 'Category',
@@ -510,18 +510,18 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       });
     }
 
-    if (files.length > 0 && formState.assetTypee === 'lora') {
+    if (files.length > 0 && formState.assetType === 'lora') {
       base.push({ label: 'Checksum preview', value: 'Calculated by backend after upload' });
     }
 
-    if (files.length > 0 && formState.assetTypee === 'image' && !isGalleryMode) {
+    if (files.length > 0 && formState.assetType === 'image' && !isGalleryMode) {
       base.push({ label: 'EXIF/prompt', value: 'Extraction queued after upload' });
     }
 
     return base;
   }, [
     files.length,
-    formState.assetTypee,
+    formState.assetType,
     formState.category,
     formState.description,
     formState.galleryMode,
@@ -556,7 +556,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
     try {
       await simulateProgress((value) => setProgressValue(Math.min(95, Math.round(value))));
 
-      const assetTypee = isGalleryMode ? 'image' : formState.assetTypee;
+      const assetType = isGalleryMode ? 'image' : formState.assetType;
       const title = formState.title.trim();
       const description = formState.description.trim();
       const targetGallery = formState.targetGallery.trim();
@@ -564,13 +564,13 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
 
       const response = await api.createUploadDraft(
         {
-          assetTypee,
+          assetType,
           context: isGalleryMode ? 'gallery' : 'asset',
           title,
           description: description.length > 0 ? description : undefined,
           visibility: formState.visibility,
           category: !isGalleryMode ? formState.category : undefined,
-          trigger: !isGalleryMode && assetTypee === 'lora' && trigger.length > 0 ? trigger : undefined,
+          trigger: !isGalleryMode && assetType === 'lora' && trigger.length > 0 ? trigger : undefined,
           tags: formState.tags,
           galleryMode: formState.galleryMode,
           targetGallery,
