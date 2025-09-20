@@ -1147,21 +1147,54 @@ export const AssetExplorer = ({
                       <span>No preview available.</span>
                     </div>
                   )}
-                  {modelDownloadUrl ? (
-                    <a
-                      className="asset-detail__download"
-                      href={modelDownloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      download
-                    >
-                      Download model
-                    </a>
-                  ) : (
-                    <span className="asset-detail__download asset-detail__download--disabled">
-                      Download not available
-                    </span>
-                  )}
+                  <div className="asset-detail__preview-actions">
+                    {modelDownloadUrl ? (
+                      <a
+                        className="asset-detail__download asset-detail__action"
+                        href={modelDownloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download
+                      >
+                        Download model
+                      </a>
+                    ) : (
+                      <span className="asset-detail__download asset-detail__download--disabled asset-detail__action">
+                        Download not available
+                      </span>
+                    )}
+                    {relatedGalleries.length > 0 ? (
+                      relatedGalleries.map((gallery) => {
+                        const label = `Open collection: ${gallery.title}`;
+
+                        if (onNavigateToGallery) {
+                          return (
+                            <button
+                              key={gallery.id}
+                              type="button"
+                              onClick={() => handleNavigateFromDetail(gallery.id)}
+                              className="asset-detail__gallery-link asset-detail__action"
+                            >
+                              {label}
+                            </button>
+                          );
+                        }
+
+                        return (
+                          <span
+                            key={gallery.id}
+                            className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action"
+                          >
+                            {label}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <span className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action">
+                        No linked image collections
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1215,32 +1248,6 @@ export const AssetExplorer = ({
                 )}
               </section>
 
-              <section className="asset-detail__section">
-                <h4>Linked image collections</h4>
-                {relatedGalleries.length > 0 ? (
-                  <ul className="asset-detail__gallery-links">
-                    {relatedGalleries.map((gallery) => (
-                      <li key={gallery.id}>
-                        {onNavigateToGallery ? (
-                          <button
-                            type="button"
-                            onClick={() => handleNavigateFromDetail(gallery.id)}
-                            className="asset-detail__gallery-button"
-                          >
-                            {gallery.title}
-                          </button>
-                        ) : (
-                          <span>{gallery.title}</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="asset-detail__description asset-detail__description--muted">
-                    This LoRA is not linked to any image collection yet.
-                  </p>
-                )}
-              </section>
             </div>
             {isTagDialogOpen && tagFrequencyGroups.length > 0 ? (
               <div className="tag-frequency-dialog" role="dialog" aria-modal="true" aria-labelledby="tag-frequency-title">
