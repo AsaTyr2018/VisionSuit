@@ -100,6 +100,14 @@ export const App = () => {
     return views;
   }, [authUser?.role]);
 
+  const openPrimaryView = useCallback((view: PrimaryViewKey) => {
+    setReturnView(view);
+    setActiveProfileId(null);
+    setActiveProfile(null);
+    setProfileError(null);
+    setActiveView(view);
+  }, []);
+
   const fetchServiceStatus = useCallback(async () => {
     try {
       const status = await api.getServiceStatus();
@@ -312,14 +320,6 @@ export const App = () => {
     }
     setIsGalleryUploadOpen(true);
   };
-
-  const openPrimaryView = useCallback((view: PrimaryViewKey) => {
-    setReturnView(view);
-    setActiveProfileId(null);
-    setActiveProfile(null);
-    setProfileError(null);
-    setActiveView(view);
-  }, []);
 
   const handleNavigateToGallery = (galleryId: string) => {
     setFocusedGalleryId(galleryId);

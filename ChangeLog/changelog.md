@@ -395,3 +395,8 @@
 - **General**: Restored both model and gallery uploads by ensuring each wizard mode automatically supplies the correct asset type to the API.
 - **Technical Changes**: Renamed the upload wizard form state to `assetType`, adjusted validations, review summaries, and submission payloads to use the field, and forwarded the computed type to `createUploadDraft` so the backend receives `lora` or `image` as expected.
 - **Data Changes**: None; fixes adjust client-side form wiring only.
+
+## 2025-09-24 – Primary view initialization guard
+- **General**: Fixed the blank screen on startup by ensuring the primary view navigation helper initializes before any effects run.
+- **Technical Changes**: Moved the `openPrimaryView` callback above dependent effects in `frontend/src/App.tsx` so React doesn’t hit the temporal dead zone when guarding the admin view.
+- **Data Changes**: None; state management only.
