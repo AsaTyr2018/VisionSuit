@@ -8,7 +8,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, and protected upload flows.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
-- **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, in-place editing for curators/admins, and an integrated flow for uploading new revisions including preview handling.
+- **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, in-place editing for curators/admins, an integrated flow for uploading new revisions including preview handling, and admin tooling to promote or retire revisions.
 - **Governed storage pipeline** – Direct MinIO ingestion with automatic tagging, secure download proxying via the backend, audit trails, and guardrails for file size (≤ 2 GB) and batch limits (≤ 12 files).
 
 ## Good to Know
@@ -16,7 +16,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Curators can edit their own models, collections, and images directly from the explorers, while administrators continue to see edit controls for every entry.
-- Administration workspace now offers a compact moderation grid across models and images with lazy thumbnails, inline version histories, collapsible edit drawers, persistent bulk tools tuned for six-figure libraries, and a multi-step user onboarding dialog with permission previews.
+- Administration workspace now offers a compact moderation grid across models and images with lazy thumbnails, inline version histories, collapsible edit drawers, persistent bulk tools tuned for six-figure libraries, multi-step user onboarding with permission previews, and one-click actions to promote, rename, or remove secondary model versions.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
 - Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
@@ -198,6 +198,9 @@ Batch uploads validate up to 12 files per request and enforce the 2 GB size ce
 - `POST /api/users/bulk-delete` – Bulk account deletion (admin only).
 - `POST /api/assets/models/bulk-delete` – Bulk removal of models including storage cleanup.
 - `POST /api/assets/models/:id/versions` – Adds safetensor revisions with previews to an existing modelcard.
+- `PUT /api/assets/models/:modelId/versions/:versionId` – Renames an existing model revision.
+- `POST /api/assets/models/:modelId/versions/:versionId/promote` – Promotes a revision to become the primary profile.
+- `DELETE /api/assets/models/:modelId/versions/:versionId` – Removes a secondary revision and associated storage objects.
 - `POST /api/assets/images/bulk-delete` – Bulk removal of gallery images and cover cleanup.
 - `PUT /api/galleries/:id` – Edit gallery metadata, visibility, and ordering.
 - `DELETE /api/galleries/:id` – Delete a gallery (admin or owner permissions).

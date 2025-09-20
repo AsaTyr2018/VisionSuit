@@ -219,6 +219,24 @@ const putModelVersion = async (
   }
 };
 
+const promoteModelVersion = async (token: string, modelId: string, versionId: string) =>
+  request<ModelAsset>(
+    `/api/assets/models/${modelId}/versions/${versionId}/promote`,
+    {
+      method: 'POST',
+    },
+    token,
+  );
+
+const deleteModelVersion = async (token: string, modelId: string, versionId: string) =>
+  request<ModelAsset>(
+    `/api/assets/models/${modelId}/versions/${versionId}`,
+    {
+      method: 'DELETE',
+    },
+    token,
+  );
+
 export const api = {
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: () => request<ModelAsset[]>('/api/assets/models'),
@@ -228,6 +246,8 @@ export const api = {
   createUploadDraft: postUploadDraft,
   createModelVersion: postModelVersion,
   updateModelVersion: putModelVersion,
+  promoteModelVersion,
+  deleteModelVersion,
   login: (email: string, password: string) =>
     request<AuthResponse>('/api/auth/login', {
       method: 'POST',
