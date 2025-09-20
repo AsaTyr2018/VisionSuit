@@ -27,7 +27,6 @@ export const AccountSettingsDialog = ({
 }: AccountSettingsDialogProps) => {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
   const [profileStatus, setProfileStatus] = useState<StatusMessage>(null);
   const [avatarUploadStatus, setAvatarUploadStatus] = useState<StatusMessage>(null);
   const [passwordStatus, setPasswordStatus] = useState<StatusMessage>(null);
@@ -75,7 +74,6 @@ export const AccountSettingsDialog = ({
 
     setDisplayName(user.displayName);
     setBio(user.bio ?? '');
-    setAvatarUrl(user.avatarUrl ?? '');
     setProfileStatus(null);
     setAvatarUploadStatus(null);
     setPasswordStatus(null);
@@ -114,8 +112,7 @@ export const AccountSettingsDialog = ({
     setIsUploadingAvatar(true);
 
     try {
-      const response = await api.uploadAvatar(token, user.id, file);
-      setAvatarUrl(response.user.avatarUrl ?? '');
+      await api.uploadAvatar(token, user.id, file);
       setAvatarUploadStatus({ type: 'success', message: 'Avatar updated successfully.' });
 
       if (onRefreshUser) {
@@ -150,13 +147,9 @@ export const AccountSettingsDialog = ({
 
     const normalizedBio = bio.trim();
     const nextBio = normalizedBio.length === 0 ? null : normalizedBio;
-    const normalizedAvatar = avatarUrl.trim();
-    const nextAvatar = normalizedAvatar.length === 0 ? null : normalizedAvatar;
 
     const currentBio = (user.bio ?? '').trim();
-    const currentAvatar = user.avatarUrl ?? null;
-
-    const payload: { displayName?: string; bio?: string | null; avatarUrl?: string | null } = {};
+    const payload: { displayName?: string; bio?: string | null } = {};
 
     if (trimmedName !== user.displayName) {
       payload.displayName = trimmedName;
@@ -164,10 +157,6 @@ export const AccountSettingsDialog = ({
 
     if (nextBio !== (currentBio.length === 0 ? null : currentBio)) {
       payload.bio = nextBio;
-    }
-
-    if (nextAvatar !== currentAvatar) {
-      payload.avatarUrl = nextAvatar;
     }
 
     if (Object.keys(payload).length === 0) {
@@ -273,16 +262,6 @@ export const AccountSettingsDialog = ({
                   maxLength={600}
                   rows={4}
                   placeholder="Share your focus, specialties, or curator notes."
-                />
-              </label>
-              <label className="form-field">
-                <span>Avatar URL</span>
-                <input
-                  type="url"
-                  value={avatarUrl}
-                  onChange={(event) => setAvatarUrl(event.target.value)}
-                  autoComplete="url"
-                  placeholder="https://example.com/avatar.png"
                 />
               </label>
               <div className="form-field">

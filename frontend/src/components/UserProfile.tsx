@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 
+import { resolveAvatarUrl } from '../lib/avatar';
 import { resolveStorageUrl } from '../lib/storage';
 import type {
   UserProfile as UserProfileResponse,
@@ -204,7 +205,7 @@ export const UserProfile = ({
   onOpenModel,
   onOpenGallery,
 }: UserProfileProps) => {
-  const avatarUrl = profile?.avatarUrl ?? null;
+  const avatarUrl = profile ? resolveAvatarUrl(profile.avatarUrl, profile.id) : null;
   const initials = profile ? getInitials(profile.displayName) : '?';
   const nextRankDescription = useMemo(() => {
     if (!profile) return null;

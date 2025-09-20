@@ -3,7 +3,7 @@ import jwt, { type Secret, type SignOptions } from 'jsonwebtoken';
 import type { User, UserRole } from '@prisma/client';
 
 import { appConfig } from '../config';
-import { resolveStorageLocation } from './storage';
+import { resolveAvatarUrl } from './avatar';
 
 export interface AuthTokenPayload {
   sub: string;
@@ -50,14 +50,12 @@ export const verifyAccessToken = (token: string): AuthTokenPayload => {
 };
 
 export const toAuthUser = (user: Pick<User, 'id' | 'email' | 'displayName' | 'role' | 'bio' | 'avatarUrl'>): AuthenticatedUser => {
-  const avatar = resolveStorageLocation(user.avatarUrl ?? undefined);
-
   return {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
     role: user.role,
     bio: user.bio,
-    avatarUrl: avatar.url ?? user.avatarUrl ?? null,
+    avatarUrl: resolveAvatarUrl(user.id, user.avatarUrl ?? null),
   };
 };
