@@ -14,6 +14,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 ## Good to Know
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
+- Administration workspace now uses glassmorphism-inspired cards, pill-based filters, and softer status chips for faster scanning during moderation.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
 - Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.

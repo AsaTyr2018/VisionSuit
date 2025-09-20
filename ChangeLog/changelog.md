@@ -288,3 +288,8 @@
 - **General**: Extended the gallery detail view to surface six thumbnails per row on wide screens without distorting the layout.
 - **Technical Changes**: Updated `.gallery-detail__grid` breakpoints and thumbnail sizing in `frontend/src/index.css` to provide a six-column base with responsive fallbacks and square previews.
 - **Data Changes**: None; visual styling only.
+
+## 2025-09-20 – Administration workspace restyle
+- **General**: Modernized the admin console with a lighter visual rhythm and clearer hierarchy for moderation workflows.
+- **Technical Changes**: Reworked administration CSS with glassmorphism cards, pill navigation, refined forms/tables, enhanced focus states, and refreshed README guidance.
+- **Data Changes**: None.
