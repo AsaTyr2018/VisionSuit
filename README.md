@@ -19,6 +19,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
 - Interface remains resilient even when the backend delivers entries without populated metadata.
 - Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
+- Modelcards include a dedicated Trigger/Activator field that is required during uploads or edits and ships with a click-to-copy shortcut for quick prompting.
 
 ## Community Roadmap
 

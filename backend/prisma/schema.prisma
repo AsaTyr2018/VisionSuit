@@ -49,6 +49,7 @@ model ModelAsset {
   slug         String       @unique
   title        String
   description  String?
+  trigger      String?
   version      String
   fileSize     Int?
   checksum     String?

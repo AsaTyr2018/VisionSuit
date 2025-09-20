@@ -120,6 +120,7 @@ const mapModelAsset = (asset: HydratedModelAsset) => {
     slug: asset.slug,
     title: asset.title,
     description: asset.description,
+    trigger: asset.trigger,
     version: latestVersion.version,
     fileSize: latestVersion.fileSize,
     checksum: latestVersion.checksum,
@@ -213,6 +214,19 @@ const updateModelSchema = z.object({
     .string()
     .trim()
     .max(1500)
+    .nullable()
+    .optional()
+    .transform((value) => {
+      if (value == null) {
+        return null;
+      }
+
+      return value.length > 0 ? value : null;
+    }),
+  trigger: z
+    .string()
+    .trim()
+    .max(180)
     .nullable()
     .optional()
     .transform((value) => {
@@ -749,6 +763,10 @@ assetsRouter.put('/models/:id', requireAuth, async (req, res, next) => {
 
       if (parsed.data.version) {
         data.version = parsed.data.version;
+      }
+
+      if (parsed.data.trigger !== undefined) {
+        data.trigger = parsed.data.trigger;
       }
 
       if (parsed.data.ownerId && parsed.data.ownerId !== asset.ownerId) {

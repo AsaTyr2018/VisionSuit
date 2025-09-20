@@ -171,6 +171,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
         matchText(model.description ?? '', modelFilter.query) ||
         matchText(model.version, modelFilter.query) ||
         matchText(model.owner.displayName, modelFilter.query) ||
+        matchText(model.trigger ?? '', modelFilter.query) ||
         metadataMatches;
 
       if (!matchesQuery) {
@@ -375,6 +376,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
     const formData = new FormData(event.currentTarget);
     const title = (formData.get('title') as string | null)?.trim();
     const version = (formData.get('version') as string | null)?.trim();
+    const trigger = (formData.get('trigger') as string | null)?.trim();
     const description = (formData.get('description') as string | null)?.trim();
     const tagsValue = (formData.get('tags') as string | null) ?? '';
     const ownerId = (formData.get('ownerId') as string | null) ?? model.owner.id;
@@ -382,6 +384,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
     const payload = {
       title: title ?? undefined,
       version: version ?? undefined,
+      trigger: trigger && trigger.length > 0 ? trigger : null,
       description: description && description.length > 0 ? description : null,
       tags: parseCommaList(tagsValue),
       ownerId,
@@ -892,6 +895,16 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh 
                         <label>
                           <span>Version</span>
                           <input name="version" defaultValue={model.version} disabled={isBusy} />
+                        </label>
+                        <label>
+                          <span>Trigger / Activator</span>
+                          <input
+                            name="trigger"
+                            defaultValue={model.trigger ?? ''}
+                            placeholder="Primary activation phrase"
+                            disabled={isBusy}
+                            required
+                          />
                         </label>
                         <label>
                           <span>Description</span>

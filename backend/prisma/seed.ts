@@ -108,6 +108,7 @@ const main = async () => {
       checksum: 'sha256-demo-checksum',
       storagePath: toS3(modelsBucket, demoModelObjectId),
       previewImage: toS3(imagesBucket, demoModelPreviewId),
+      trigger: 'neosynth',
       metadata: {
         baseModel: 'SDXL 1.0',
         trainingImages: 120,
