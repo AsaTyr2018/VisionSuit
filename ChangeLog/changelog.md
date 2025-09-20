@@ -390,3 +390,8 @@
 - **General**: Introduced curator profile pages with contribution stats, ranks, and full listings of each curator’s models and collections.
 - **Technical Changes**: Added a public `/api/users/:id/profile` endpoint, new profile view state management, reusable curator link styling, `UserProfile` component, and expanded explorers/admin panels to open profiles.
 - **Data Changes**: None; profile data is derived from existing users, models, galleries, and images.
+
+## 2025-09-24 – Upload wizard asset type wiring fix
+- **General**: Restored both model and gallery uploads by ensuring each wizard mode automatically supplies the correct asset type to the API.
+- **Technical Changes**: Renamed the upload wizard form state to `assetType`, adjusted validations, review summaries, and submission payloads to use the field, and forwarded the computed type to `createUploadDraft` so the backend receives `lora` or `image` as expected.
+- **Data Changes**: None; fixes adjust client-side form wiring only.
