@@ -396,6 +396,7 @@ const matchesSearch = (asset: ModelAsset, query: string) => {
     asset.title,
     asset.slug,
     asset.description ?? '',
+    asset.trigger ?? '',
     asset.owner.displayName,
     ...asset.tags.map((tag) => tag.label),
     ...versionValues,
@@ -453,6 +454,7 @@ export const AssetExplorer = ({
   const [isTagDialogOpen, setTagDialogOpen] = useState(false);
   const [isVersionDialogOpen, setVersionDialogOpen] = useState(false);
   const [versionFeedback, setVersionFeedback] = useState<string | null>(null);
+  const [triggerCopyStatus, setTriggerCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -468,6 +470,56 @@ export const AssetExplorer = ({
     setSelectedTags([]);
     onExternalSearchApplied?.();
   }, [externalSearchQuery, onExternalSearchApplied]);
+
+  useEffect(() => {
+    setTriggerCopyStatus('idle');
+  }, [activeAssetId, activeVersionId]);
+
+  useEffect(() => {
+    if (triggerCopyStatus === 'idle') {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setTriggerCopyStatus('idle'), 1800);
+    return () => window.clearTimeout(timer);
+  }, [triggerCopyStatus]);
+
+  const handleCopyTrigger = useCallback(async (value: string) => {
+    const text = value.trim();
+    if (!text) {
+      return;
+    }
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (!successful) {
+          throw new Error('Copy command was rejected');
+        }
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
+
+      setTriggerCopyStatus('copied');
+    } catch (error) {
+      console.warn('Failed to copy trigger value', error);
+      setTriggerCopyStatus('error');
+    }
+  }, []);
 
   const { ownerOptions, tagOptions, typeOptions } = useMemo(() => {
     const ownersMap = new Map<string, OwnerOption>();
@@ -1031,6 +1083,31 @@ export const AssetExplorer = ({
                       <tr>
                         <th scope="row">Version</th>
                         <td>{activeVersion?.version ?? '–'}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Trigger / Activator</th>
+                        <td>
+                          {activeAsset.trigger ? (
+                            <div className="asset-detail__copy-field">
+                              <span className="asset-detail__copy-value">{activeAsset.trigger}</span>
+                              <button
+                                type="button"
+                                className={`asset-detail__copy-button${
+                                  triggerCopyStatus === 'copied' ? ' asset-detail__copy-button--success' : ''
+                                }${triggerCopyStatus === 'error' ? ' asset-detail__copy-button--error' : ''}`}
+                                onClick={() => handleCopyTrigger(activeAsset.trigger ?? '')}
+                              >
+                                {triggerCopyStatus === 'copied'
+                                  ? 'Copied!'
+                                  : triggerCopyStatus === 'error'
+                                    ? 'Copy failed'
+                                    : 'Click to copy'}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="asset-detail__copy-placeholder">Not provided</span>
+                          )}
+                        </td>
                       </tr>
                       <tr>
                         <th scope="row">Curator</th>

@@ -27,6 +27,7 @@ interface CreateUploadDraftPayload {
   description?: string;
   visibility: 'private' | 'public';
   category?: string;
+  trigger?: string;
   tags: string[];
   galleryMode: 'existing' | 'new';
   targetGallery?: string;
@@ -115,6 +116,10 @@ const postUploadDraft = async (payload: CreateUploadDraftPayload, token: string)
 
   if (payload.category) {
     formData.append('category', payload.category);
+  }
+
+  if (payload.trigger) {
+    formData.append('trigger', payload.trigger);
   }
 
   formData.append('galleryMode', payload.galleryMode);
@@ -234,7 +239,14 @@ export const api = {
   updateModelAsset: (
     token: string,
     id: string,
-    payload: Partial<{ title: string; description: string | null; version: string; tags: string[]; ownerId: string }>,
+    payload: Partial<{
+      title: string;
+      description: string | null;
+      version: string;
+      trigger: string | null;
+      tags: string[];
+      ownerId: string;
+    }>,
   ) =>
     request<ModelAsset>(
       `/api/assets/models/${id}`,

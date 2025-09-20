@@ -171,6 +171,12 @@ const createUploadSchema = z
       .max(80)
       .optional()
       .transform((value) => (value && value.length > 0 ? value : undefined)),
+    trigger: z
+      .string()
+      .trim()
+      .max(180)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
     galleryMode: z.enum(['existing', 'new']),
     targetGallery: z
       .string()
@@ -190,6 +196,14 @@ const createUploadSchema = z
         code: z.ZodIssueCode.custom,
         path: ['targetGallery'],
         message: 'Bitte gib eine bestehende Galerie an oder wähle "Neue Galerie".',
+      });
+    }
+
+    if (data.assetType === 'lora' && !data.trigger) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['trigger'],
+        message: 'Bitte gib einen Trigger oder Aktivator für das Modell an.',
       });
     }
   });
@@ -477,6 +491,7 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
             slug,
             title: payload.title,
             description: payload.description ?? null,
+            trigger: payload.trigger ?? null,
             version: '1.0.0',
             fileSize: primaryFile.size,
             checksum: checksum ?? null,

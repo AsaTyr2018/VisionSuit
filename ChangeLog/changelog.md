@@ -198,6 +198,11 @@
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
+## 2025-09-20 – Trigger activator modelcards
+- **General**: Added a dedicated Trigger/Activator field to modelcards with copy-to-clipboard handling during uploads and admin edits.
+- **Technical Changes**: Extended the Prisma schema, API validation, upload wizard, admin panel, and explorer UI to capture and display trigger phrases while equalizing modelcard summary column sizing and styling the copy action.
+- **Data Changes**: Introduced a nullable `trigger` column on `ModelAsset` records and seeded demo content with a default activator.
+
 ## 2025-09-19 – Storage object IDs (e78ced6)
 - **General**: Moved storage downloads to stable object IDs resolved from the database.
 - **Technical Changes**: Added the `StorageObject` table and migration, updated the proxy to look up metadata by ID, adjusted upload pipelines to create records, and refreshed README docs.

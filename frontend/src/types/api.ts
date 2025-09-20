@@ -41,6 +41,7 @@ export interface ModelAsset {
   slug: string;
   title: string;
   description?: string | null;
+  trigger?: string | null;
   version: string;
   fileSize?: number | null;
   checksum?: string | null;

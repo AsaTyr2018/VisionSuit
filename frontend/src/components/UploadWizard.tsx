@@ -60,6 +60,7 @@ interface UploadFormState {
   description: string;
   visibility: Visibility;
   category: string;
+  trigger: string;
   galleryMode: GalleryMode;
   targetGallery: string;
   tags: string[];
@@ -71,6 +72,7 @@ const buildInitialState = (mode: UploadWizardMode): UploadFormState => ({
   description: '',
   visibility: 'private',
   category: 'style',
+  trigger: '',
   galleryMode: mode === 'gallery' ? 'existing' : 'new',
   targetGallery: '',
   tags: [],
@@ -389,6 +391,10 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
         setStepError('Please specify an existing gallery or choose "New gallery".');
         return false;
       }
+      if (!isGalleryMode && formState.assetTypee === 'lora' && !formState.trigger.trim()) {
+        setStepError('Please provide a trigger or activator phrase for the model.');
+        return false;
+      }
       setStepError(null);
       return true;
     }
@@ -492,6 +498,10 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
         label: 'Category',
         value: CATEGORY_LABELS[formState.category] ?? 'General',
       });
+      base.splice(5, 0, {
+        label: 'Trigger / Activator',
+        value: formState.trigger ? formState.trigger : '–',
+      });
     } else {
       base.splice(2, 0, { label: 'Upload context', value: 'Gallery draft (images)' });
       base.push({
@@ -515,6 +525,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
     formState.category,
     formState.description,
     formState.galleryMode,
+    formState.trigger,
     formState.tags,
     formState.targetGallery,
     formState.title,
@@ -549,6 +560,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       const title = formState.title.trim();
       const description = formState.description.trim();
       const targetGallery = formState.targetGallery.trim();
+      const trigger = formState.trigger.trim();
 
       const response = await api.createUploadDraft(
         {
@@ -558,6 +570,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
           description: description.length > 0 ? description : undefined,
           visibility: formState.visibility,
           category: !isGalleryMode ? formState.category : undefined,
+          trigger: !isGalleryMode && assetTypee === 'lora' && trigger.length > 0 ? trigger : undefined,
           tags: formState.tags,
           galleryMode: formState.galleryMode,
           targetGallery,
@@ -719,6 +732,21 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
                       <option value="environment">Environment / setting</option>
                       <option value="workflow">Workflow / utility</option>
                     </select>
+                  </label>
+                </div>
+              ) : null}
+
+              {!isGalleryMode ? (
+                <div className="upload-wizard__field">
+                  <label>
+                    <span>Trigger / Activator*</span>
+                    <input
+                      type="text"
+                      value={formState.trigger}
+                      onChange={(event) => setFormState((prev) => ({ ...prev, trigger: event.target.value }))}
+                      placeholder="Primary activation phrase"
+                      required
+                    />
                   </label>
                 </div>
               ) : null}
