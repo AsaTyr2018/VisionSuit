@@ -342,3 +342,8 @@
 - **General**: Reworked the client import tooling to authenticate against VisionSuit and upload LoRAs through the official pipeline instead of SSH transfers.
 - **Technical Changes**: Replaced the staging/manifest workflow with direct `POST /api/uploads` calls in both scripts, added credential prompts and file-cap trimming, refreshed README guidance, and documented password handling.
 - **Data Changes**: None; ingestion now flows through existing upload drafts and storage objects.
+
+## 2025-09-22 – Frontend title alignment (commit TBD)
+- **General**: Updated the browser tab title to reflect the VisionSuit brand instead of the Vite starter text.
+- **Technical Changes**: Changed the HTML document title in `frontend/index.html` to "VisionSuit" for production readiness.
+- **Data Changes**: None.
