@@ -370,3 +370,8 @@
 - **General**: Restored the gallery explorer lightbox so collections open without crashing.
 - **Technical Changes**: Moved the active gallery memoization before dependent effects to prevent accessing uninitialized bindings.
 - **Data Changes**: None.
+
+## 2025-09-20 – Image edit dialog layering fix
+- **General**: Ensured the image edit dialog surfaces above the lightbox when curators edit a single gallery image.
+- **Technical Changes**: Raised the modal z-index styling in `frontend/src/index.css` so edit dialogs overlay the gallery image modal backdrop.
+- **Data Changes**: None; styling adjustment only.
