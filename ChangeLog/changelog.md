@@ -317,3 +317,8 @@
 - **General**: Published severity-grouped content update roadmaps to steer community feature rollout communications.
 - **Technical Changes**: Added dedicated plan documents for Projects Silverleaf, Ironquill, and Novashield plus updated the README to reference them.
 - **Data Changes**: None; documentation-only planning assets.
+
+## 2025-09-20 – Interactive home spotlights (commit TBD)
+- **General**: Elevated the home dashboard with clickable previews that jump directly into the explorers.
+- **Technical Changes**: Added media buttons on home tiles that focus the respective model or gallery, introduced gallery lookups for image cards, updated hover/focus styling, and refreshed README guidance.
+- **Data Changes**: None.

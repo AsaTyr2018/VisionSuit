@@ -238,6 +238,25 @@ export const App = () => {
     setActiveView('images');
   }, []);
 
+  const handleModelCardClick = useCallback((modelId: string) => {
+    setFocusedGalleryId(null);
+    setFocusedAssetId(modelId);
+    setActiveView('models');
+  }, []);
+
+  const handleImageCardClick = useCallback(
+    (imageId: string) => {
+      setFocusedAssetId(null);
+      const matchedGallery =
+        galleries.find((gallery) =>
+          gallery.entries.some((entry) => entry.imageAsset?.id === imageId),
+        ) ?? null;
+      setFocusedGalleryId(matchedGallery?.id ?? null);
+      setActiveView('images');
+    },
+    [galleries],
+  );
+
   const handleLoginSubmit = async (email: string, password: string) => {
     setIsLoggingIn(true);
     setLoginError(null);
@@ -276,11 +295,18 @@ export const App = () => {
     return (
       <article key={asset.id} className="home-card home-card--model">
         <div className="home-card__media">
-          {previewUrl ? (
-            <img src={previewUrl} alt={asset.title} loading="lazy" />
-          ) : (
-            <span className="home-card__placeholder">No preview available</span>
-          )}
+          <button
+            type="button"
+            className="home-card__media-button"
+            onClick={() => handleModelCardClick(asset.id)}
+            aria-label={`Open ${asset.title} in the model explorer`}
+          >
+            {previewUrl ? (
+              <img src={previewUrl} alt={asset.title} loading="lazy" />
+            ) : (
+              <span className="home-card__placeholder">No preview available</span>
+            )}
+          </button>
         </div>
         <div className="home-card__body">
           <h3 className="home-card__title">{asset.title}</h3>
@@ -322,15 +348,29 @@ export const App = () => {
       resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
     const visibleTags = image.tags.slice(0, 5);
     const remainingTagCount = image.tags.length - visibleTags.length;
+    const matchedGallery = galleries.find((gallery) =>
+      gallery.entries.some((entry) => entry.imageAsset?.id === image.id),
+    );
 
     return (
       <article key={image.id} className="home-card home-card--image">
         <div className="home-card__media">
-          {imageUrl ? (
-            <img src={imageUrl} alt={image.title} loading="lazy" />
-          ) : (
-            <span className="home-card__placeholder">No image available</span>
-          )}
+          <button
+            type="button"
+            className="home-card__media-button"
+            onClick={() => handleImageCardClick(image.id)}
+            aria-label={
+              matchedGallery
+                ? `Open ${matchedGallery.title} in the gallery explorer`
+                : `Open gallery explorer for ${image.title}`
+            }
+          >
+            {imageUrl ? (
+              <img src={imageUrl} alt={image.title} loading="lazy" />
+            ) : (
+              <span className="home-card__placeholder">No image available</span>
+            )}
+          </button>
         </div>
         <div className="home-card__body">
           <h3 className="home-card__title">{image.title}</h3>
