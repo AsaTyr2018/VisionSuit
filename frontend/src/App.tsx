@@ -6,12 +6,14 @@ import { UploadWizard } from './components/UploadWizard';
 import type { UploadWizardResult } from './components/UploadWizard';
 import { LoginDialog } from './components/LoginDialog';
 import { AdminPanel } from './components/AdminPanel';
+import { UserProfile as UserProfileView } from './components/UserProfile';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveStorageUrl } from './lib/storage';
-import type { Gallery, ImageAsset, ModelAsset, Tag, User } from './types/api';
+import type { Gallery, ImageAsset, ModelAsset, Tag, User, UserProfile as UserProfileData } from './types/api';
 
-type ViewKey = 'home' | 'models' | 'images' | 'admin';
+type ViewKey = 'home' | 'models' | 'images' | 'admin' | 'profile';
+type PrimaryViewKey = 'home' | 'models' | 'images' | 'admin';
 type ServiceStatusKey = 'frontend' | 'backend' | 'minio';
 type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
 
@@ -39,6 +41,10 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
     description:
       'Guided control center with filters and bulk tools for accounts, models, images, and galleries.',
   },
+  profile: {
+    title: 'Curator profile',
+    description: 'Contribution overview for a selected curator.',
+  },
 };
 
 const statusLabels: Record<ServiceState, string> = {
@@ -63,6 +69,7 @@ const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
 export const App = () => {
   const { user: authUser, token, isAuthenticated, login, logout } = useAuth();
   const [activeView, setActiveView] = useState<ViewKey>('home');
+  const [returnView, setReturnView] = useState<PrimaryViewKey>('home');
   const [assets, setAssets] = useState<ModelAsset[]>([]);
   const [images, setImages] = useState<ImageAsset[]>([]);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
@@ -80,8 +87,13 @@ export const App = () => {
   const [focusedGalleryId, setFocusedGalleryId] = useState<string | null>(null);
   const [modelTagQuery, setModelTagQuery] = useState<string | null>(null);
   const [imageTagQuery, setImageTagQuery] = useState<string | null>(null);
-  const availableViews = useMemo<ViewKey[]>(() => {
-    const views: ViewKey[] = ['home', 'models', 'images'];
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [activeProfile, setActiveProfile] = useState<UserProfileData | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileReloadKey, setProfileReloadKey] = useState(0);
+  const availableViews = useMemo<PrimaryViewKey[]>(() => {
+    const views: PrimaryViewKey[] = ['home', 'models', 'images'];
     if (authUser?.role === 'ADMIN') {
       views.push('admin');
     }
@@ -155,9 +167,47 @@ export const App = () => {
 
   useEffect(() => {
     if (activeView === 'admin' && authUser?.role !== 'ADMIN') {
-      setActiveView('home');
+      openPrimaryView('home');
     }
-  }, [activeView, authUser?.role]);
+  }, [activeView, authUser?.role, openPrimaryView]);
+
+  useEffect(() => {
+    if (!activeProfileId) {
+      setActiveProfile(null);
+      setProfileError(null);
+      setIsProfileLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    setIsProfileLoading(true);
+    setProfileError(null);
+
+    api
+      .getUserProfile(activeProfileId)
+      .then(({ profile }) => {
+        if (!isActive) {
+          return;
+        }
+        setActiveProfile(profile);
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+        console.error('Failed to load user profile', error);
+        setProfileError('Failed to load curator profile. Please try again.');
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsProfileLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeProfileId, profileReloadKey]);
 
   useEffect(() => {
     if (!toast) return;
@@ -263,35 +313,43 @@ export const App = () => {
     setIsGalleryUploadOpen(true);
   };
 
+  const openPrimaryView = useCallback((view: PrimaryViewKey) => {
+    setReturnView(view);
+    setActiveProfileId(null);
+    setActiveProfile(null);
+    setProfileError(null);
+    setActiveView(view);
+  }, []);
+
   const handleNavigateToGallery = (galleryId: string) => {
     setFocusedGalleryId(galleryId);
     setFocusedAssetId(null);
-    setActiveView('images');
+    openPrimaryView('images');
   };
 
   const handleNavigateToModel = (modelId: string) => {
     setFocusedAssetId(modelId);
     setFocusedGalleryId(null);
-    setActiveView('models');
+    openPrimaryView('models');
   };
 
   const handleModelTagClick = useCallback((tag: Tag) => {
     setFocusedAssetId(null);
     setModelTagQuery(tag.label);
-    setActiveView('models');
-  }, []);
+    openPrimaryView('models');
+  }, [openPrimaryView]);
 
   const handleImageTagClick = useCallback((tag: Tag) => {
     setFocusedGalleryId(null);
     setImageTagQuery(tag.label);
-    setActiveView('images');
-  }, []);
+    openPrimaryView('images');
+  }, [openPrimaryView]);
 
   const handleModelCardClick = useCallback((modelId: string) => {
     setFocusedGalleryId(null);
     setFocusedAssetId(modelId);
-    setActiveView('models');
-  }, []);
+    openPrimaryView('models');
+  }, [openPrimaryView]);
 
   const handleImageCardClick = useCallback(
     (imageId: string) => {
@@ -301,10 +359,35 @@ export const App = () => {
           gallery.entries.some((entry) => entry.imageAsset?.id === imageId),
         ) ?? null;
       setFocusedGalleryId(matchedGallery?.id ?? null);
-      setActiveView('images');
+      openPrimaryView('images');
     },
-    [galleries],
+    [galleries, openPrimaryView],
   );
+
+  const handleOpenUserProfile = useCallback(
+    (userId: string) => {
+      if (activeView !== 'profile') {
+        setReturnView(activeView);
+      }
+      setActiveProfileId(userId);
+      setActiveProfile((previous) => (previous?.id === userId ? previous : null));
+      setProfileError(null);
+      setActiveView('profile');
+    },
+    [activeView],
+  );
+
+  const handleCloseProfile = useCallback(() => {
+    openPrimaryView(returnView);
+    setActiveProfileId(null);
+  }, [openPrimaryView, returnView]);
+
+  const handleRefreshProfile = useCallback(() => {
+    if (!activeProfileId) {
+      return;
+    }
+    setProfileReloadKey((previous) => previous + 1);
+  }, [activeProfileId]);
 
   const handleLoginSubmit = async (email: string, password: string) => {
     setIsLoggingIn(true);
@@ -326,7 +409,11 @@ export const App = () => {
   const handleLogout = () => {
     logout();
     setUsers([]);
-    setActiveView('home');
+    setActiveProfileId(null);
+    setActiveProfile(null);
+    setProfileError(null);
+    setProfileReloadKey(0);
+    openPrimaryView('home');
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   };
 
@@ -366,7 +453,15 @@ export const App = () => {
             </div>
             <div>
               <dt>Curator</dt>
-              <dd>{asset.owner.displayName}</dd>
+              <dd>
+                <button
+                  type="button"
+                  className="curator-link"
+                  onClick={() => handleOpenUserProfile(asset.owner.id)}
+                >
+                  {asset.owner.displayName}
+                </button>
+              </dd>
             </div>
           </dl>
           {visibleTags.length > 0 ? (
@@ -430,7 +525,15 @@ export const App = () => {
             </div>
             <div>
               <dt>Curator</dt>
-              <dd>{image.owner.displayName}</dd>
+              <dd>
+                <button
+                  type="button"
+                  className="curator-link"
+                  onClick={() => handleOpenUserProfile(image.owner.id)}
+                >
+                  {image.owner.displayName}
+                </button>
+              </dd>
             </div>
           </dl>
           {visibleTags.length > 0 ? (
@@ -504,6 +607,7 @@ export const App = () => {
           galleries={galleries}
           token={token}
           onRefresh={refreshData}
+          onOpenProfile={handleOpenUserProfile}
         />
       );
     }
@@ -523,6 +627,7 @@ export const App = () => {
           onAssetUpdated={handleAssetUpdated}
           authToken={token}
           currentUser={authUser}
+          onOpenProfile={handleOpenUserProfile}
         />
       );
     }
@@ -542,12 +647,35 @@ export const App = () => {
           currentUser={authUser}
           onGalleryUpdated={handleGalleryUpdated}
           onImageUpdated={handleImageUpdated}
+          onOpenProfile={handleOpenUserProfile}
+        />
+      );
+    }
+
+    if (activeView === 'profile') {
+      return (
+        <UserProfileView
+          profile={activeProfile}
+          isLoading={isProfileLoading}
+          error={profileError}
+          onBack={handleCloseProfile}
+          onRetry={handleRefreshProfile}
+          onOpenModel={handleNavigateToModel}
+          onOpenGallery={handleNavigateToGallery}
         />
       );
     }
 
     return renderHome();
   };
+
+  const currentMeta = viewMeta[activeView];
+  const headerTitle =
+    activeView === 'profile' && activeProfile ? activeProfile.displayName : currentMeta.title;
+  const headerDescription =
+    activeView === 'profile' && activeProfile
+      ? `Featuring ${activeProfile.stats.modelCount} model${activeProfile.stats.modelCount === 1 ? '' : 's'} and ${activeProfile.stats.galleryCount} collection${activeProfile.stats.galleryCount === 1 ? '' : 's'}.`
+      : currentMeta.description;
 
   return (
     <div className="app">
@@ -563,7 +691,7 @@ export const App = () => {
                 key={view}
                 type="button"
                 className={`sidebar__nav-button${activeView === view ? ' sidebar__nav-button--active' : ''}`}
-                onClick={() => setActiveView(view)}
+                onClick={() => openPrimaryView(view)}
               >
                 {viewMeta[view].title}
               </button>
@@ -628,8 +756,8 @@ export const App = () => {
 
             <header className="content__header">
               <div>
-                <h1 className="content__title">{viewMeta[activeView].title}</h1>
-                <p className="content__subtitle">{viewMeta[activeView].description}</p>
+                <h1 className="content__title">{headerTitle}</h1>
+                <p className="content__subtitle">{headerDescription}</p>
               </div>
             </header>
 

@@ -21,6 +21,7 @@ interface AssetExplorerProps {
   onAssetUpdated?: (asset: ModelAsset) => void;
   authToken?: string | null;
   currentUser?: User | null;
+  onOpenProfile?: (userId: string) => void;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -463,6 +464,7 @@ export const AssetExplorer = ({
   onAssetUpdated,
   authToken,
   currentUser,
+  onOpenProfile,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -1048,14 +1050,21 @@ export const AssetExplorer = ({
               const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA';
               const isActive = activeAssetId === asset.id;
               return (
-                <button
+                <article
                   key={asset.id}
-                  type="button"
                   role="listitem"
+                  tabIndex={0}
                   className={`asset-tile${isActive ? ' asset-tile--active' : ''}`}
                   onClick={() => {
                     setActiveAssetId(asset.id);
                     setActiveVersionId(asset.latestVersionId ?? asset.versions[0]?.id ?? null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setActiveAssetId(asset.id);
+                      setActiveVersionId(asset.latestVersionId ?? asset.versions[0]?.id ?? null);
+                    }
                   }}
                 >
                   <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
@@ -1071,9 +1080,24 @@ export const AssetExplorer = ({
                       <span>{modelType}</span>
                     </div>
                     <p>Version {asset.version}</p>
-                    <p className="asset-tile__owner">{asset.owner.displayName}</p>
+                    <p className="asset-tile__owner">
+                      {onOpenProfile ? (
+                        <button
+                          type="button"
+                          className="curator-link"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenProfile(asset.owner.id);
+                          }}
+                        >
+                          {asset.owner.displayName}
+                        </button>
+                      ) : (
+                        asset.owner.displayName
+                      )}
+                    </p>
                   </div>
-                </button>
+                </article>
               );
             })}
       </div>
@@ -1204,7 +1228,19 @@ export const AssetExplorer = ({
                           </tr>
                           <tr>
                             <th scope="row">Curator</th>
-                            <td>{activeAsset.owner.displayName}</td>
+                            <td>
+                              {onOpenProfile ? (
+                                <button
+                                  type="button"
+                                  className="curator-link"
+                                  onClick={() => onOpenProfile(activeAsset.owner.id)}
+                                >
+                                  {activeAsset.owner.displayName}
+                                </button>
+                              ) : (
+                                activeAsset.owner.displayName
+                              )}
+                            </td>
                           </tr>
                           <tr>
                             <th scope="row">Uploaded on</th>

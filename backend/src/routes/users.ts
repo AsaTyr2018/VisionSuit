@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { hashPassword, toAuthUser } from '../lib/auth';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
+import { resolveStorageLocation } from '../lib/storage';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -29,6 +30,174 @@ const bulkDeleteSchema = z.object({
 });
 
 export const usersRouter = Router();
+
+const computeRank = (score: number) => {
+  if (score >= 40) {
+    return {
+      label: 'Master Curator',
+      description: 'Leads large-scale curation programs with sustained contributions.',
+      minimumScore: 40,
+      nextLabel: null,
+      nextScore: null,
+    };
+  }
+
+  if (score >= 18) {
+    return {
+      label: 'Senior Curator',
+      description: 'Regularly delivers polished LoRAs and collections for the community.',
+      minimumScore: 18,
+      nextLabel: 'Master Curator',
+      nextScore: 40,
+    };
+  }
+
+  if (score >= 6) {
+    return {
+      label: 'Curator',
+      description: 'Actively maintains a growing catalog of models and showcases.',
+      minimumScore: 6,
+      nextLabel: 'Senior Curator',
+      nextScore: 18,
+    };
+  }
+
+  return {
+    label: 'Newcomer',
+    description: 'Getting started with first uploads and curated collections.',
+    minimumScore: 0,
+    nextLabel: 'Curator',
+    nextScore: 6,
+  };
+};
+
+usersRouter.get('/:id/profile', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({ message: 'User ID missing.' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        displayName: true,
+        bio: true,
+        avatarUrl: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      res.status(404).json({ message: 'Profile not found.' });
+      return;
+    }
+
+    const [models, galleries, imageCount] = await Promise.all([
+      prisma.modelAsset.findMany({
+        where: { ownerId: id },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          tags: { include: { tag: true } },
+        },
+      }),
+      prisma.gallery.findMany({
+        where: { ownerId: id },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          entries: { select: { id: true, imageId: true, assetId: true } },
+        },
+      }),
+      prisma.imageAsset.count({ where: { ownerId: id } }),
+    ]);
+
+    const mappedModels = models.map((model) => {
+      const preview = resolveStorageLocation(model.previewImage);
+      return {
+        id: model.id,
+        title: model.title,
+        slug: model.slug,
+        version: model.version,
+        description: model.description,
+        previewImage: preview.url ?? model.previewImage ?? null,
+        previewImageBucket: preview.bucket,
+        previewImageObject: preview.objectName,
+        updatedAt: model.updatedAt,
+        createdAt: model.createdAt,
+        tags: model.tags.map(({ tag }) => tag),
+      };
+    });
+
+    const mappedGalleries = galleries.map((gallery) => {
+      const cover = resolveStorageLocation(gallery.coverImage);
+      const entryCount = gallery.entries.length;
+      let imageEntryCount = 0;
+      let modelEntryCount = 0;
+
+      gallery.entries.forEach((entry) => {
+        if (entry.imageId) {
+          imageEntryCount += 1;
+        }
+        if (entry.assetId) {
+          modelEntryCount += 1;
+        }
+      });
+
+      return {
+        id: gallery.id,
+        title: gallery.title,
+        slug: gallery.slug,
+        description: gallery.description,
+        isPublic: gallery.isPublic,
+        coverImage: cover.url ?? gallery.coverImage ?? null,
+        coverImageBucket: cover.bucket,
+        coverImageObject: cover.objectName,
+        updatedAt: gallery.updatedAt,
+        createdAt: gallery.createdAt,
+        stats: {
+          entryCount,
+          imageCount: imageEntryCount,
+          modelCount: modelEntryCount,
+        },
+      };
+    });
+
+    const modelCount = mappedModels.length;
+    const galleryCount = mappedGalleries.length;
+    const contributionScore = modelCount * 3 + galleryCount * 2 + imageCount;
+    const rank = computeRank(contributionScore);
+    const avatar = resolveStorageLocation(user.avatarUrl ?? undefined);
+
+    res.json({
+      profile: {
+        id: user.id,
+        displayName: user.displayName,
+        bio: user.bio ?? null,
+        avatarUrl: avatar.url ?? user.avatarUrl ?? null,
+        role: user.role,
+        joinedAt: user.createdAt,
+        rank: {
+          ...rank,
+          score: contributionScore,
+        },
+        stats: {
+          modelCount,
+          galleryCount,
+          imageCount,
+        },
+        models: mappedModels,
+        galleries: mappedGalleries,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 usersRouter.use(requireAuth, requireAdmin);
 
