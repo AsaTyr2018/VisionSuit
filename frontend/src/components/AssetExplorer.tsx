@@ -702,6 +702,9 @@ export const AssetExplorer = ({
     return activeAsset.versions.find((version) => version.id === targetId) ?? activeAsset.versions[0] ?? null;
   }, [activeAsset, activeVersionId]);
 
+  const tagsHeadingId = `asset-detail-tags-${activeAssetId ?? 'unknown'}`;
+  const metadataHeadingId = `asset-detail-metadata-${activeAssetId ?? 'unknown'}`;
+
   const handleNavigateFromDetail = useCallback(
     (galleryId: string) => {
       closeDetail();
@@ -1072,185 +1075,191 @@ export const AssetExplorer = ({
                 </button>
               </header>
 
-              <div className="asset-detail__summary">
-                <div className="asset-detail__info">
-                  <table className="asset-detail__info-table">
-                    <tbody>
-                      <tr>
-                        <th scope="row">Name</th>
-                        <td>{activeAsset.title}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Version</th>
-                        <td>{activeVersion?.version ?? '–'}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Trigger / Activator</th>
-                        <td>
-                          {activeAsset.trigger ? (
-                            <div className="asset-detail__copy-field">
-                              <span className="asset-detail__copy-value">{activeAsset.trigger}</span>
-                              <button
-                                type="button"
-                                className={`asset-detail__copy-button${
-                                  triggerCopyStatus === 'copied' ? ' asset-detail__copy-button--success' : ''
-                                }${triggerCopyStatus === 'error' ? ' asset-detail__copy-button--error' : ''}`}
-                                onClick={() => handleCopyTrigger(activeAsset.trigger ?? '')}
-                              >
-                                {triggerCopyStatus === 'copied'
-                                  ? 'Copied!'
-                                  : triggerCopyStatus === 'error'
-                                    ? 'Copy failed'
-                                    : 'Click to copy'}
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="asset-detail__copy-placeholder">Not provided</span>
-                          )}
-                        </td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Curator</th>
-                        <td>{activeAsset.owner.displayName}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Uploaded on</th>
-                        <td>{activeVersion ? formatDate(activeVersion.createdAt) : '–'}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">File size</th>
-                        <td>{formatFileSize(activeVersion?.fileSize)}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Checksum</th>
-                        <td>{activeVersion?.checksum ?? '–'}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div className="asset-detail__preview-card">
-                  {activeVersion?.previewImage ? (
-                    <div className="asset-detail__preview">
-                      <img
-                        src={
-                          resolveStorageUrl(
-                            activeVersion.previewImage,
-                            activeVersion.previewImageBucket,
-                            activeVersion.previewImageObject,
-                          ) ?? activeVersion.previewImage
-                        }
-                        alt={`Preview von ${activeAsset.title} – Version ${activeVersion?.version ?? ''}`}
-                      />
-                    </div>
-                  ) : (
-                    <div className="asset-detail__preview asset-detail__preview--empty">
-                      <span>No preview available.</span>
-                    </div>
-                  )}
-                  <div className="asset-detail__preview-actions">
-                    {modelDownloadUrl ? (
-                      <a
-                        className="asset-detail__download asset-detail__action"
-                        href={modelDownloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                      >
-                        Download model
-                      </a>
-                    ) : (
-                      <span className="asset-detail__download asset-detail__download--disabled asset-detail__action">
-                        Download not available
-                      </span>
-                    )}
-                    {relatedGalleries.length > 0 ? (
-                      relatedGalleries.map((gallery) => {
-                        const label = 'Open Collection';
-                        const ariaLabel = `Open collection: ${gallery.title}`;
 
-                        if (onNavigateToGallery) {
-                          return (
-                            <button
-                              key={gallery.id}
-                              type="button"
-                              onClick={() => handleNavigateFromDetail(gallery.id)}
-                              className="asset-detail__gallery-link asset-detail__action"
-                              aria-label={ariaLabel}
-                            >
-                              {label}
-                            </button>
-                          );
-                        }
+              <div className="asset-detail__layout">
+                <div className="asset-detail__main">
+                  <div className="asset-detail__summary">
+                    <div className="asset-detail__info">
+                      <table className="asset-detail__info-table">
+                        <tbody>
+                          <tr>
+                            <th scope="row">Name</th>
+                            <td>{activeAsset.title}</td>
+                          </tr>
+                          <tr>
+                            <th scope="row">Version</th>
+                            <td>{activeVersion?.version ?? '–'}</td>
+                          </tr>
+                          <tr>
+                            <th scope="row">Trigger / Activator</th>
+                            <td>
+                              {activeAsset.trigger ? (
+                                <div className="asset-detail__copy-field">
+                                  <span className="asset-detail__copy-value">{activeAsset.trigger}</span>
+                                  <button
+                                    type="button"
+                                    className={`asset-detail__copy-button${
+                                      triggerCopyStatus === 'copied' ? ' asset-detail__copy-button--success' : ''
+                                    }${triggerCopyStatus === 'error' ? ' asset-detail__copy-button--error' : ''}`}
+                                    onClick={() => handleCopyTrigger(activeAsset.trigger ?? '')}
+                                  >
+                                    {triggerCopyStatus === 'copied'
+                                      ? 'Copied!'
+                                      : triggerCopyStatus === 'error'
+                                        ? 'Copy failed'
+                                        : 'Click to copy'}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="asset-detail__copy-placeholder">Not provided</span>
+                              )}
+                            </td>
+                          </tr>
+                          <tr>
+                            <th scope="row">Curator</th>
+                            <td>{activeAsset.owner.displayName}</td>
+                          </tr>
+                          <tr>
+                            <th scope="row">Uploaded on</th>
+                            <td>{activeVersion ? formatDate(activeVersion.createdAt) : '–'}</td>
+                          </tr>
+                          <tr>
+                            <th scope="row">File size</th>
+                            <td>{formatFileSize(activeVersion?.fileSize)}</td>
+                          </tr>
+                          <tr>
+                            <th scope="row">Checksum</th>
+                            <td>{activeVersion?.checksum ?? '–'}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
 
-                        return (
-                          <span
-                            key={gallery.id}
-                            className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action"
-                            aria-label={ariaLabel}
+                    <div className="asset-detail__preview-card">
+                      {activeVersion?.previewImage ? (
+                        <div className="asset-detail__preview">
+                          <img
+                            src={
+                              resolveStorageUrl(
+                                activeVersion.previewImage,
+                                activeVersion.previewImageBucket,
+                                activeVersion.previewImageObject,
+                              ) ?? activeVersion.previewImage
+                            }
+                            alt={`Preview von ${activeAsset.title} – Version ${activeVersion?.version ?? ''}`}
+                          />
+                        </div>
+                      ) : (
+                        <div className="asset-detail__preview asset-detail__preview--empty">
+                          <span>No preview available.</span>
+                        </div>
+                      )}
+                      <div className="asset-detail__preview-actions">
+                        {modelDownloadUrl ? (
+                          <a
+                            className="asset-detail__download asset-detail__action"
+                            href={modelDownloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            download
                           >
-                            {label}
+                            Download model
+                          </a>
+                        ) : (
+                          <span className="asset-detail__download asset-detail__download--disabled asset-detail__action">
+                            Download not available
                           </span>
-                        );
-                      })
-                    ) : (
-                      <span className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action">
-                        No linked image collections
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+                        )}
+                        {relatedGalleries.length > 0 ? (
+                          relatedGalleries.map((gallery) => {
+                            const label = 'Open Collection';
+                            const ariaLabel = `Open collection: ${gallery.title}`;
 
-              <div className="asset-detail__details">
-                <section className="asset-detail__section asset-detail__section--tags">
-                  <h4>Tags</h4>
-                  {activeAsset.tags.length > 0 ? (
-                    <div className="asset-detail__tags">
-                      {activeAsset.tags.map((tag) => (
-                        <span key={tag.id}>{tag.label}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="asset-detail__description asset-detail__description--muted">No tags available.</p>
-                  )}
-                </section>
+                            if (onNavigateToGallery) {
+                              return (
+                                <button
+                                  key={gallery.id}
+                                  type="button"
+                                  onClick={() => handleNavigateFromDetail(gallery.id)}
+                                  className="asset-detail__gallery-link asset-detail__action"
+                                  aria-label={ariaLabel}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            }
 
-                <section className="asset-detail__section asset-detail__section--metadata">
-                  <div className="asset-detail__section-heading">
-                    <h4>Metadata</h4>
-                    {tagFrequencyGroups.length > 0 ? (
-                      <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
-                        Show dataset tags
-                      </button>
-                    ) : null}
-                  </div>
-                  {metadataEntries.length > 0 ? (
-                    <div className="asset-detail__metadata">
-                      <div className="asset-detail__metadata-scroll">
-                        <table className="asset-detail__metadata-table">
-                          <thead>
-                            <tr>
-                              <th scope="col">Key</th>
-                              <th scope="col">Value</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {metadataEntries.map((row) => (
-                              <tr key={row.key}>
-                                <th scope="row">{row.key}</th>
-                                <td>
-                                  <span className="asset-detail__metadata-value">{row.value}</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            return (
+                              <span
+                                key={gallery.id}
+                                className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action"
+                                aria-label={ariaLabel}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action">
+                            No linked image collections
+                          </span>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
-                  )}
-                </section>
+                  </div>
+
+                  <section className="asset-detail__section asset-detail__section--tags" aria-labelledby={tagsHeadingId}>
+                    <h4 id={tagsHeadingId}>Tags</h4>
+                    {activeAsset.tags.length > 0 ? (
+                      <div className="asset-detail__tags">
+                        {activeAsset.tags.map((tag) => (
+                          <span key={tag.id}>{tag.label}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="asset-detail__description asset-detail__description--muted">No tags available.</p>
+                    )}
+                  </section>
+                </div>
+
+                <aside className="asset-detail__sidebar" aria-labelledby={metadataHeadingId}>
+                  <section className="asset-detail__section asset-detail__section--metadata">
+                    <div className="asset-detail__section-heading">
+                      <h4 id={metadataHeadingId}>Metadata</h4>
+                      {tagFrequencyGroups.length > 0 ? (
+                        <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
+                          Show dataset tags
+                        </button>
+                      ) : null}
+                    </div>
+                    {metadataEntries.length > 0 ? (
+                      <div className="asset-detail__metadata">
+                        <div className="asset-detail__metadata-scroll">
+                          <table className="asset-detail__metadata-table">
+                            <thead>
+                              <tr>
+                                <th scope="col">Key</th>
+                                <th scope="col">Value</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {metadataEntries.map((row) => (
+                                <tr key={row.key}>
+                                  <th scope="row">{row.key}</th>
+                                  <td>
+                                    <span className="asset-detail__metadata-value">{row.value}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
+                    )}
+                  </section>
+                </aside>
               </div>
 
             </div>
