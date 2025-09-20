@@ -76,7 +76,43 @@ const mapModelVersion = (
   };
 };
 
-const sortVersions = (a: MappedModelVersion, b: MappedModelVersion) =>
+const parseNumericVersion = (value: string) => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const compareVersionLabels = (a: string, b: string) => {
+  const numericA = parseNumericVersion(a);
+  const numericB = parseNumericVersion(b);
+
+  if (numericA !== null && numericB !== null && numericA !== numericB) {
+    return numericA - numericB;
+  }
+
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+};
+
+const sortVersionsForDisplay = (a: MappedModelVersion, b: MappedModelVersion) => {
+  if (a.isPrimary && !b.isPrimary) {
+    return -1;
+  }
+  if (b.isPrimary && !a.isPrimary) {
+    return 1;
+  }
+
+  if (a.isPrimary && b.isPrimary) {
+    return 0;
+  }
+
+  return compareVersionLabels(a.version, b.version);
+};
+
+const sortVersionsByCreatedAtDesc = (a: MappedModelVersion, b: MappedModelVersion) =>
   new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
 const mapModelAsset = (asset: HydratedModelAsset) => {
@@ -112,8 +148,9 @@ const mapModelAsset = (asset: HydratedModelAsset) => {
     ),
   );
 
-  const orderedVersions = [primaryVersion, ...mappedAdditionalVersions].sort(sortVersions);
-  const latestVersion = orderedVersions[0] ?? primaryVersion;
+  const combinedVersions = [primaryVersion, ...mappedAdditionalVersions];
+  const orderedVersions = [...combinedVersions].sort(sortVersionsForDisplay);
+  const latestVersion = [...combinedVersions].sort(sortVersionsByCreatedAtDesc)[0] ?? primaryVersion;
 
   return {
     id: asset.id,
