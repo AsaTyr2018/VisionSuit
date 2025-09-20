@@ -361,3 +361,8 @@
 - **General**: Enabled curators to edit their own models, galleries, and images directly from the explorers without requiring admin access.
 - **Technical Changes**: Added role-aware edit dialogs for models, images, and collections, refreshed state management in the explorers, expanded styling for new action buttons, and updated README guidance.
 - **Data Changes**: None; updates operate on existing records only.
+
+## 2025-09-23 – Gallery explorer resilience (commit TBD)
+- **General**: Restored the gallery explorer so collections with missing owners or entry arrays render instead of crashing to an empty panel.
+- **Technical Changes**: Added defensive helpers for owner and entry access, updated filters/sorters to use the safe lookups, hardened the detail dialogs, and refreshed README guidance about handling incomplete payloads.
+- **Data Changes**: None; safeguards run entirely on the client.

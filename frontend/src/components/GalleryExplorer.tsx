@@ -87,14 +87,28 @@ const collectImageMetadataStrings = (metadata?: ImageAsset['metadata']) => {
   return Array.from(values);
 };
 
+const getGalleryEntries = (gallery: Gallery) => {
+  const entries = (gallery as Gallery & { entries?: Gallery['entries'] | null }).entries;
+  return Array.isArray(entries) ? entries : [];
+};
+
+const getGalleryOwner = (gallery: Gallery) => {
+  const owner = (gallery as Gallery & { owner?: Gallery['owner'] | null }).owner;
+  return owner ?? null;
+};
+
+const getGalleryOwnerName = (gallery: Gallery) => getGalleryOwner(gallery)?.displayName ?? 'Unknown curator';
+
 const matchesSearch = (gallery: Gallery, query: string) => {
   if (!query) return true;
+  const entries = getGalleryEntries(gallery);
+  const owner = getGalleryOwner(gallery);
   const haystack = [
     gallery.title,
     gallery.slug,
     gallery.description ?? '',
-    gallery.owner.displayName,
-    ...gallery.entries.flatMap((entry) => {
+    owner?.displayName ?? '',
+    ...entries.flatMap((entry) => {
       const texts: string[] = [];
       if (entry.modelAsset?.title) texts.push(entry.modelAsset.title);
       if (entry.imageAsset?.title) texts.push(entry.imageAsset.title);
@@ -117,11 +131,11 @@ const matchesSearch = (gallery: Gallery, query: string) => {
   return haystack.includes(query);
 };
 
-const galleryHasImage = (gallery: Gallery) => gallery.entries.some((entry) => Boolean(entry.imageAsset));
-const galleryHasModel = (gallery: Gallery) => gallery.entries.some((entry) => Boolean(entry.modelAsset));
+const galleryHasImage = (gallery: Gallery) => getGalleryEntries(gallery).some((entry) => Boolean(entry.imageAsset));
+const galleryHasModel = (gallery: Gallery) => getGalleryEntries(gallery).some((entry) => Boolean(entry.modelAsset));
 
 const getImageEntries = (gallery: Gallery): GalleryImageEntry[] =>
-  gallery.entries
+  getGalleryEntries(gallery)
     .filter((entry): entry is typeof entry & { imageAsset: ImageAsset } => Boolean(entry.imageAsset))
     .map((entry) => ({ entryId: entry.id, image: entry.imageAsset, note: entry.note ?? null }));
 
@@ -218,8 +232,9 @@ export const GalleryExplorer = ({
   const ownerOptions = useMemo(() => {
     const ownersMap = new Map<string, { id: string; label: string }>();
     galleries.forEach((gallery) => {
-      if (!ownersMap.has(gallery.owner.id)) {
-        ownersMap.set(gallery.owner.id, { id: gallery.owner.id, label: gallery.owner.displayName });
+      const owner = getGalleryOwner(gallery);
+      if (owner?.id && owner.displayName && !ownersMap.has(owner.id)) {
+        ownersMap.set(owner.id, { id: owner.id, label: owner.displayName });
       }
     });
     return Array.from(ownersMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'en'));
@@ -227,15 +242,17 @@ export const GalleryExplorer = ({
 
   const filteredGalleries = useMemo(() => {
     const filtered = galleries.filter((gallery) => {
+      const entries = getGalleryEntries(gallery);
       if (!matchesSearch(gallery, normalizedQuery)) return false;
 
       if (visibility !== 'all' && gallery.isPublic !== (visibility === 'public')) return false;
 
-      if (ownerId !== 'all' && gallery.owner.id !== ownerId) return false;
+      const owner = getGalleryOwner(gallery);
+      if (ownerId !== 'all' && owner?.id !== ownerId) return false;
 
       if (entryFilter === 'with-image' && !galleryHasImage(gallery)) return false;
       if (entryFilter === 'with-model' && !galleryHasModel(gallery)) return false;
-      if (entryFilter === 'empty' && gallery.entries.length !== 0) return false;
+      if (entryFilter === 'empty' && entries.length !== 0) return false;
 
       return true;
     });
@@ -243,8 +260,8 @@ export const GalleryExplorer = ({
     const sorters: Record<SortOption, (a: Gallery, b: Gallery) => number> = {
       recent: (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       alpha: (a, b) => a.title.localeCompare(b.title, 'en'),
-      'entries-desc': (a, b) => b.entries.length - a.entries.length,
-      'entries-asc': (a, b) => a.entries.length - b.entries.length,
+      'entries-desc': (a, b) => getGalleryEntries(b).length - getGalleryEntries(a).length,
+      'entries-asc': (a, b) => getGalleryEntries(a).length - getGalleryEntries(b).length,
     };
 
     return filtered.sort(sorters[sortOption]);
@@ -370,7 +387,7 @@ export const GalleryExplorer = ({
     }
 
     const map = new Map<string, ModelAsset>();
-    activeGallery.entries.forEach((entry) => {
+    getGalleryEntries(activeGallery).forEach((entry) => {
       if (entry.modelAsset) {
         map.set(entry.modelAsset.id, entry.modelAsset);
       }
@@ -378,15 +395,18 @@ export const GalleryExplorer = ({
     return Array.from(map.values());
   }, [activeGallery]);
 
+  const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
+
   const canManageActiveGallery = useMemo(
     () =>
       Boolean(
         authToken &&
           activeGallery &&
           currentUser &&
-          (currentUser.role === 'ADMIN' || currentUser.id === activeGallery.owner.id),
+          activeGalleryOwner &&
+          (currentUser.role === 'ADMIN' || currentUser.id === activeGalleryOwner.id),
       ),
-    [activeGallery, authToken, currentUser],
+    [activeGallery, activeGalleryOwner, authToken, currentUser],
   );
 
   const canManageActiveImage = useMemo(
@@ -506,9 +526,11 @@ export const GalleryExplorer = ({
         {isLoading && galleries.length === 0
           ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
           : visibleGalleries.map((gallery) => {
+              const entries = getGalleryEntries(gallery);
               const previewImage = selectPreviewImage(gallery);
-              const totalImages = gallery.entries.filter((entry) => Boolean(entry.imageAsset)).length;
-              const totalModels = gallery.entries.filter((entry) => Boolean(entry.modelAsset)).length;
+              const totalImages = entries.filter((entry) => Boolean(entry.imageAsset)).length;
+              const totalModels = entries.filter((entry) => Boolean(entry.modelAsset)).length;
+              const ownerName = getGalleryOwnerName(gallery);
               return (
                 <button
                   key={gallery.id}
@@ -536,11 +558,11 @@ export const GalleryExplorer = ({
                   </div>
                   <div className="gallery-card__body">
                     <h3 className="gallery-card__title">{gallery.title}</h3>
-                    <p className="gallery-card__meta">Curated by {gallery.owner.displayName}</p>
+                    <p className="gallery-card__meta">Curated by {ownerName}</p>
                     <dl className="gallery-card__stats">
                       <div>
                         <dt>Entries</dt>
-                        <dd>{gallery.entries.length}</dd>
+                        <dd>{entries.length}</dd>
                       </div>
                       <div>
                         <dt>Images</dt>
@@ -578,7 +600,8 @@ export const GalleryExplorer = ({
                   </span>
                   <h3 id="gallery-detail-title">{activeGallery.title}</h3>
                   <p>
-                    Curated by {activeGallery.owner.displayName} · Updated on {formatDate(activeGallery.updatedAt)}
+                    Curated by {activeGalleryOwner?.displayName ?? 'Unknown curator'} · Updated on{' '}
+                    {formatDate(activeGallery.updatedAt)}
                   </p>
                 </div>
                 <div className="gallery-detail__actions">
@@ -663,7 +686,7 @@ export const GalleryExplorer = ({
             <header className="gallery-image-modal__header">
               <div>
                 <h3>{activeImage.image.title}</h3>
-                <p>Curated by {activeGallery?.owner.displayName ?? 'Unknown'}</p>
+                <p>Curated by {activeGalleryOwner?.displayName ?? 'Unknown curator'}</p>
               </div>
               <div className="gallery-image-modal__actions">
                 {canManageActiveImage ? (
