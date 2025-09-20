@@ -5,7 +5,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 ## Core Highlights
 
 - **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus live health badges for the front end, API, and MinIO services.
-- **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, and protected upload flows.
+- **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, and protected upload flows.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
 - **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, in-place editing for curators/admins, and an integrated flow for uploading new revisions including preview handling.
@@ -15,7 +15,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
-- Administration workspace now offers a compact moderation grid across models and images with lazy thumbnails, inline version histories, collapsible edit drawers, and persistent bulk tools tuned for six-figure libraries.
+- Administration workspace now offers a compact moderation grid across models and images with lazy thumbnails, inline version histories, collapsible edit drawers, persistent bulk tools tuned for six-figure libraries, and a multi-step user onboarding dialog with permission previews.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
 - Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
