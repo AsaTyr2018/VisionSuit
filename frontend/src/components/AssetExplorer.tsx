@@ -1165,7 +1165,8 @@ export const AssetExplorer = ({
                     )}
                     {relatedGalleries.length > 0 ? (
                       relatedGalleries.map((gallery) => {
-                        const label = `Open collection: ${gallery.title}`;
+                        const label = 'Open Collection';
+                        const ariaLabel = `Open collection: ${gallery.title}`;
 
                         if (onNavigateToGallery) {
                           return (
@@ -1174,6 +1175,7 @@ export const AssetExplorer = ({
                               type="button"
                               onClick={() => handleNavigateFromDetail(gallery.id)}
                               className="asset-detail__gallery-link asset-detail__action"
+                              aria-label={ariaLabel}
                             >
                               {label}
                             </button>
@@ -1184,6 +1186,7 @@ export const AssetExplorer = ({
                           <span
                             key={gallery.id}
                             className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action"
+                            aria-label={ariaLabel}
                           >
                             {label}
                           </span>
@@ -1198,55 +1201,57 @@ export const AssetExplorer = ({
                 </div>
               </div>
 
-              <section className="asset-detail__section">
-                <h4>Tags</h4>
-                {activeAsset.tags.length > 0 ? (
-                  <div className="asset-detail__tags">
-                    {activeAsset.tags.map((tag) => (
-                      <span key={tag.id}>{tag.label}</span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="asset-detail__description asset-detail__description--muted">No tags available.</p>
-                )}
-              </section>
-
-              <section className="asset-detail__section">
-                <div className="asset-detail__section-heading">
-                  <h4>Metadata</h4>
-                  {tagFrequencyGroups.length > 0 ? (
-                    <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
-                      Show dataset tags
-                    </button>
-                  ) : null}
-                </div>
-                {metadataEntries.length > 0 ? (
-                  <div className="asset-detail__metadata">
-                    <div className="asset-detail__metadata-scroll">
-                      <table className="asset-detail__metadata-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">Key</th>
-                            <th scope="col">Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {metadataEntries.map((row) => (
-                            <tr key={row.key}>
-                              <th scope="row">{row.key}</th>
-                              <td>
-                                <span className="asset-detail__metadata-value">{row.value}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+              <div className="asset-detail__details">
+                <section className="asset-detail__section asset-detail__section--tags">
+                  <h4>Tags</h4>
+                  {activeAsset.tags.length > 0 ? (
+                    <div className="asset-detail__tags">
+                      {activeAsset.tags.map((tag) => (
+                        <span key={tag.id}>{tag.label}</span>
+                      ))}
                     </div>
+                  ) : (
+                    <p className="asset-detail__description asset-detail__description--muted">No tags available.</p>
+                  )}
+                </section>
+
+                <section className="asset-detail__section asset-detail__section--metadata">
+                  <div className="asset-detail__section-heading">
+                    <h4>Metadata</h4>
+                    {tagFrequencyGroups.length > 0 ? (
+                      <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
+                        Show dataset tags
+                      </button>
+                    ) : null}
                   </div>
-                ) : (
-                  <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
-                )}
-              </section>
+                  {metadataEntries.length > 0 ? (
+                    <div className="asset-detail__metadata">
+                      <div className="asset-detail__metadata-scroll">
+                        <table className="asset-detail__metadata-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Key</th>
+                              <th scope="col">Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {metadataEntries.map((row) => (
+                              <tr key={row.key}>
+                                <th scope="row">{row.key}</th>
+                                <td>
+                                  <span className="asset-detail__metadata-value">{row.value}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
+                  )}
+                </section>
+              </div>
 
             </div>
             {isTagDialogOpen && tagFrequencyGroups.length > 0 ? (
