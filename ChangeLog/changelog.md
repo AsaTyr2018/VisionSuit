@@ -313,3 +313,7 @@
 - **General**: Captured the community roadmap feasibility assessment in dedicated documentation and linked it from the main README.
 - **Technical Changes**: Added `docs/community-features-plan-analysis.md` mirroring the prior review tables and refreshed the README community roadmap section with a reference to the new analysis.
 - **Data Changes**: None; documentation-only addition for planning purposes.
+## 2025-09-19 – Severity-based community update plans
+- **General**: Published severity-grouped content update roadmaps to steer community feature rollout communications.
+- **Technical Changes**: Added dedicated plan documents for Projects Silverleaf, Ironquill, and Novashield plus updated the README to reference them.
+- **Data Changes**: None; documentation-only planning assets.
