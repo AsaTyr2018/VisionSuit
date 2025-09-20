@@ -303,3 +303,8 @@
 - **General**: Restored admin panel filters so typing in search fields no longer crashes the interface.
 - **Technical Changes**: Captured input and select values before enqueuing state updates throughout `AdminPanel.tsx` to avoid React's SyntheticEvent pooling from clearing `currentTarget`.
 - **Data Changes**: None; UI state handling only.
+
+## 2025-09-19 – Admin model grid parity (commit TBD)
+- **General**: Brought the models administration view in line with the image moderation cards, including clear version lineage per asset.
+- **Technical Changes**: Replaced the tabular model manager with card-based layouts, surfaced version metadata with storage links, added expansion controls, refreshed styling, and updated README guidance.
+- **Data Changes**: None; presentation layer only.
