@@ -356,3 +356,8 @@
 - **General**: Replaced the sidebar service text badges with compact LED indicators that stay visible within the card layout.
 - **Technical Changes**: Updated the service status header markup, introduced dedicated LED styling with accessibility helpers, and refreshed the README highlight to mention the beacons.
 - **Data Changes**: None.
+
+## 2025-09-19 – Curator edit controls (commit TBD)
+- **General**: Enabled curators to edit their own models, galleries, and images directly from the explorers without requiring admin access.
+- **Technical Changes**: Added role-aware edit dialogs for models, images, and collections, refreshed state management in the explorers, expanded styling for new action buttons, and updated README guidance.
+- **Data Changes**: None; updates operate on existing records only.

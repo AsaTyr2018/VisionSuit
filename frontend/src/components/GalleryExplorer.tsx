@@ -1,10 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
-import type { Gallery, ImageAsset, ModelAsset } from '../types/api';
+import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
 
 import { resolveStorageUrl } from '../lib/storage';
 
 import { FilterChip } from './FilterChip';
+import { GalleryEditDialog } from './GalleryEditDialog';
+import { ImageAssetEditDialog } from './ImageAssetEditDialog';
 
 interface GalleryExplorerProps {
   galleries: Gallery[];
@@ -15,6 +17,10 @@ interface GalleryExplorerProps {
   onCloseDetail?: () => void;
   externalSearchQuery?: string | null;
   onExternalSearchApplied?: () => void;
+  authToken?: string | null;
+  currentUser?: User | null;
+  onGalleryUpdated?: (gallery: Gallery) => void;
+  onImageUpdated?: (image: ImageAsset) => void;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -181,6 +187,10 @@ export const GalleryExplorer = ({
   onCloseDetail,
   externalSearchQuery,
   onExternalSearchApplied,
+  authToken,
+  currentUser,
+  onGalleryUpdated,
+  onImageUpdated,
 }: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
@@ -190,6 +200,8 @@ export const GalleryExplorer = ({
   const [visibleLimit, setVisibleLimit] = useState(GALLERY_BATCH_SIZE);
   const [activeGalleryId, setActiveGalleryId] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<GalleryImageEntry | null>(null);
+  const [galleryToEdit, setGalleryToEdit] = useState<Gallery | null>(null);
+  const [imageToEdit, setImageToEdit] = useState<ImageAsset | null>(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -280,6 +292,18 @@ export const GalleryExplorer = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeGalleryId, activeImage, closeDetail]);
 
+  useEffect(() => {
+    if (!activeGallery) {
+      setGalleryToEdit(null);
+    }
+  }, [activeGallery]);
+
+  useEffect(() => {
+    if (!activeImage) {
+      setImageToEdit(null);
+    }
+  }, [activeImage]);
+
   const visibleGalleries = useMemo(() => filteredGalleries.slice(0, visibleLimit), [filteredGalleries, visibleLimit]);
 
   const activeFilters = useMemo(() => {
@@ -353,6 +377,28 @@ export const GalleryExplorer = ({
     });
     return Array.from(map.values());
   }, [activeGallery]);
+
+  const canManageActiveGallery = useMemo(
+    () =>
+      Boolean(
+        authToken &&
+          activeGallery &&
+          currentUser &&
+          (currentUser.role === 'ADMIN' || currentUser.id === activeGallery.owner.id),
+      ),
+    [activeGallery, authToken, currentUser],
+  );
+
+  const canManageActiveImage = useMemo(
+    () =>
+      Boolean(
+        authToken &&
+          activeImage &&
+          currentUser &&
+          (currentUser.role === 'ADMIN' || currentUser.id === activeImage.image.owner.id),
+      ),
+    [activeImage, authToken, currentUser],
+  );
 
   useEffect(() => {
     if (!activeImage) {
@@ -535,9 +581,20 @@ export const GalleryExplorer = ({
                     Curated by {activeGallery.owner.displayName} · Updated on {formatDate(activeGallery.updatedAt)}
                   </p>
                 </div>
-                <button type="button" className="gallery-detail__close" onClick={closeDetail}>
-                  Back to galleries
-                </button>
+                <div className="gallery-detail__actions">
+                  {canManageActiveGallery ? (
+                    <button
+                      type="button"
+                      className="gallery-detail__edit"
+                      onClick={() => setGalleryToEdit(activeGallery)}
+                    >
+                      Edit collection
+                    </button>
+                  ) : null}
+                  <button type="button" className="gallery-detail__close" onClick={closeDetail}>
+                    Back to galleries
+                  </button>
+                </div>
               </header>
 
               {activeGallery.description ? (
@@ -608,9 +665,25 @@ export const GalleryExplorer = ({
                 <h3>{activeImage.image.title}</h3>
                 <p>Curated by {activeGallery?.owner.displayName ?? 'Unknown'}</p>
               </div>
-              <button type="button" className="gallery-image-modal__close" onClick={() => setActiveImage(null)} aria-label="Close image view">
-                ×
-              </button>
+              <div className="gallery-image-modal__actions">
+                {canManageActiveImage ? (
+                  <button
+                    type="button"
+                    className="gallery-image-modal__edit"
+                    onClick={() => setImageToEdit(activeImage.image)}
+                  >
+                    Edit image
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="gallery-image-modal__close"
+                  onClick={() => setActiveImage(null)}
+                  aria-label="Close image view"
+                >
+                  ×
+                </button>
+              </div>
             </header>
             <div className="gallery-image-modal__body">
               <div className="gallery-image-modal__media">
@@ -639,6 +712,35 @@ export const GalleryExplorer = ({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {galleryToEdit ? (
+        <GalleryEditDialog
+          isOpen={Boolean(galleryToEdit)}
+          onClose={() => setGalleryToEdit(null)}
+          gallery={galleryToEdit}
+          token={authToken ?? null}
+          onSuccess={(updated) => {
+            onGalleryUpdated?.(updated);
+            setGalleryToEdit(null);
+          }}
+        />
+      ) : null}
+
+      {imageToEdit ? (
+        <ImageAssetEditDialog
+          isOpen={Boolean(imageToEdit)}
+          onClose={() => setImageToEdit(null)}
+          image={imageToEdit}
+          token={authToken ?? null}
+          onSuccess={(updated) => {
+            onImageUpdated?.(updated);
+            setImageToEdit(null);
+            setActiveImage((previous) =>
+              previous && previous.image.id === updated.id ? { ...previous, image: updated } : previous,
+            );
+          }}
+        />
       ) : null}
     </section>
   );

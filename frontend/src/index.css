@@ -2848,7 +2848,8 @@ main {
   border-radius: 999px;
 }
 
-.model-version-dialog {
+.model-version-dialog,
+.edit-dialog {
   position: fixed;
   inset: 0;
   z-index: 70;
@@ -2859,7 +2860,8 @@ main {
   padding: 1.5rem;
 }
 
-.model-version-dialog__content {
+.model-version-dialog__content,
+.edit-dialog__content {
   width: min(420px, 100%);
   border-radius: 20px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -2868,7 +2870,8 @@ main {
   padding: 1.5rem;
 }
 
-.model-version-dialog__header {
+.model-version-dialog__header,
+.edit-dialog__header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -2876,13 +2879,15 @@ main {
   margin-bottom: 1.25rem;
 }
 
-.model-version-dialog__header h3 {
+.model-version-dialog__header h3,
+.edit-dialog__header h3 {
   margin: 0;
   font-size: 1.2rem;
   color: #f8fafc;
 }
 
-.model-version-dialog__close {
+.model-version-dialog__close,
+.edit-dialog__close {
   border: none;
   background: transparent;
   color: rgba(148, 163, 184, 0.75);
@@ -2891,29 +2896,38 @@ main {
 }
 
 .model-version-dialog__close:hover,
-.model-version-dialog__close:focus-visible {
+.model-version-dialog__close:focus-visible,
+.edit-dialog__close:hover,
+.edit-dialog__close:focus-visible {
   color: #f8fafc;
   outline: none;
 }
 
-.model-version-dialog__form {
+.model-version-dialog__form,
+.edit-dialog__form {
   display: grid;
   gap: 1rem;
 }
 
-.model-version-dialog__field {
+.model-version-dialog__field,
+.edit-dialog__field {
   display: grid;
   gap: 0.4rem;
   font-size: 0.9rem;
   color: rgba(226, 232, 240, 0.88);
 }
 
-.model-version-dialog__field span {
+.model-version-dialog__field span,
+.edit-dialog__field span {
   font-weight: 600;
 }
 
 .model-version-dialog__field input[type='text'],
-.model-version-dialog__field input[type='file'] {
+.model-version-dialog__field input[type='file'],
+.edit-dialog__field input[type='text'],
+.edit-dialog__field input[type='file'],
+.edit-dialog__field textarea,
+.edit-dialog__field select {
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.38);
   background: rgba(15, 23, 42, 0.58);
@@ -2922,21 +2936,49 @@ main {
   padding: 0.6rem 0.75rem;
 }
 
-.model-version-dialog__field input[type='file'] {
+.model-version-dialog__field input[type='file'],
+.edit-dialog__field input[type='file'] {
   padding: 0.45rem 0.65rem;
 }
 
-.model-version-dialog__field input:focus-visible {
+.model-version-dialog__field input:focus-visible,
+.edit-dialog__field input:focus-visible,
+.edit-dialog__field textarea:focus-visible,
+.edit-dialog__field select:focus-visible {
   outline: 2px solid rgba(59, 130, 246, 0.55);
   outline-offset: 2px;
 }
 
-.model-version-dialog__hint {
+.edit-dialog__field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.edit-dialog__fieldset {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  padding: 1rem;
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.edit-dialog__fieldset legend {
+  padding: 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.model-version-dialog__hint,
+.edit-dialog__hint {
   font-size: 0.75rem;
   color: rgba(148, 163, 184, 0.8);
 }
 
-.model-version-dialog__error {
+.model-version-dialog__error,
+.edit-dialog__error {
   border-radius: 14px;
   border: 1px solid rgba(248, 113, 113, 0.45);
   background: rgba(239, 68, 68, 0.1);
@@ -2945,19 +2987,23 @@ main {
   font-size: 0.85rem;
 }
 
-.model-version-dialog__error ul {
+.model-version-dialog__error ul,
+.edit-dialog__error ul {
   margin: 0.45rem 0 0;
   padding-left: 1.2rem;
 }
 
-.model-version-dialog__actions {
+.model-version-dialog__actions,
+.edit-dialog__actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
 }
 
 .model-version-dialog__secondary,
-.model-version-dialog__primary {
+.model-version-dialog__primary,
+.edit-dialog__secondary,
+.edit-dialog__primary {
   border-radius: 999px;
   border: none;
   padding: 0.55rem 1.35rem;
@@ -2966,33 +3012,41 @@ main {
   transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
-.model-version-dialog__secondary {
+.model-version-dialog__secondary,
+.edit-dialog__secondary {
   background: rgba(15, 23, 42, 0.4);
   color: rgba(226, 232, 240, 0.85);
   border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .model-version-dialog__secondary:hover,
-.model-version-dialog__secondary:focus-visible {
+.model-version-dialog__secondary:focus-visible,
+.edit-dialog__secondary:hover,
+.edit-dialog__secondary:focus-visible {
   color: #f8fafc;
   border-color: rgba(148, 163, 184, 0.6);
   outline: none;
 }
 
-.model-version-dialog__primary {
+.model-version-dialog__primary,
+.edit-dialog__primary {
   background: rgba(59, 130, 246, 0.65);
   color: #0b1120;
   font-weight: 600;
 }
 
 .model-version-dialog__primary:hover,
-.model-version-dialog__primary:focus-visible {
+.model-version-dialog__primary:focus-visible,
+.edit-dialog__primary:hover,
+.edit-dialog__primary:focus-visible {
   background: rgba(59, 130, 246, 0.78);
   outline: none;
 }
 
 .model-version-dialog__primary:disabled,
-.model-version-dialog__secondary:disabled {
+.model-version-dialog__secondary:disabled,
+.edit-dialog__primary:disabled,
+.edit-dialog__secondary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -3169,6 +3223,32 @@ main {
   margin: 0.6rem 0 0;
   font-size: 0.8rem;
   color: rgba(96, 165, 250, 0.95);
+}
+
+.asset-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.asset-detail__edit {
+  border: none;
+  background: rgba(59, 130, 246, 0.32);
+  color: rgba(226, 232, 240, 0.92);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.asset-detail__edit:hover,
+.asset-detail__edit:focus-visible {
+  background: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
+  outline: none;
 }
 
 .asset-detail__close {
@@ -5593,6 +5673,32 @@ button {
   align-items: flex-start;
 }
 
+.gallery-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.gallery-detail__edit {
+  border: none;
+  background: rgba(59, 130, 246, 0.28);
+  color: rgba(226, 232, 240, 0.92);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.gallery-detail__edit:hover,
+.gallery-detail__edit:focus-visible {
+  background: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
+  outline: none;
+}
+
 .gallery-detail__badge {
   display: inline-flex;
   align-items: center;
@@ -5782,6 +5888,32 @@ button {
   gap: 1rem;
   padding: 1.5rem 1.75rem 1.25rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.gallery-image-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.gallery-image-modal__edit {
+  border: none;
+  background: rgba(59, 130, 246, 0.28);
+  color: rgba(226, 232, 240, 0.92);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.gallery-image-modal__edit:hover,
+.gallery-image-modal__edit:focus-visible {
+  background: rgba(59, 130, 246, 0.5);
+  color: #ffffff;
+  outline: none;
 }
 
 .gallery-image-modal__header h3 {

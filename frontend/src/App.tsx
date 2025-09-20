@@ -204,6 +204,49 @@ export const App = () => {
     });
   }, []);
 
+  const handleGalleryUpdated = useCallback((updatedGallery: Gallery) => {
+    setGalleries((previous) => {
+      const index = previous.findIndex((gallery) => gallery.id === updatedGallery.id);
+      if (index === -1) {
+        return previous;
+      }
+      const next = [...previous];
+      next[index] = updatedGallery;
+      return next;
+    });
+  }, []);
+
+  const handleImageUpdated = useCallback((updatedImage: ImageAsset) => {
+    setImages((previous) => {
+      const index = previous.findIndex((image) => image.id === updatedImage.id);
+      if (index === -1) {
+        return previous;
+      }
+      const next = [...previous];
+      next[index] = updatedImage;
+      return next;
+    });
+    setGalleries((previous) => {
+      let hasChanges = false;
+      const next = previous.map((gallery) => {
+        let galleryChanged = false;
+        const entries = gallery.entries.map((entry) => {
+          if (entry.imageAsset && entry.imageAsset.id === updatedImage.id) {
+            galleryChanged = true;
+            return { ...entry, imageAsset: updatedImage };
+          }
+          return entry;
+        });
+        if (galleryChanged) {
+          hasChanges = true;
+          return { ...gallery, entries };
+        }
+        return gallery;
+      });
+      return hasChanges ? next : previous;
+    });
+  }, []);
+
   const handleOpenAssetUpload = () => {
     if (!isAuthenticated) {
       setIsLoginOpen(true);
@@ -495,6 +538,10 @@ export const App = () => {
           onCloseDetail={() => setFocusedGalleryId(null)}
           externalSearchQuery={imageTagQuery}
           onExternalSearchApplied={() => setImageTagQuery(null)}
+          authToken={token}
+          currentUser={authUser}
+          onGalleryUpdated={handleGalleryUpdated}
+          onImageUpdated={handleImageUpdated}
         />
       );
     }
