@@ -13,6 +13,8 @@ import { requireAdmin, requireAuth, requireSelfOrAdmin } from '../lib/middleware
 import { resolveAvatarUrl } from '../lib/avatar';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { MAX_AVATAR_SIZE_BYTES } from '../lib/uploadLimits';
+import type { ContributionCounts } from '../lib/ranking';
+import { resolveUserRank } from '../lib/ranking';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -115,45 +117,6 @@ const avatarMimeTypes: Record<'png' | 'jpeg' | 'webp', string> = {
   webp: 'image/webp',
 };
 
-const computeRank = (score: number) => {
-  if (score >= 40) {
-    return {
-      label: 'Master Curator',
-      description: 'Leads large-scale curation programs with sustained contributions.',
-      minimumScore: 40,
-      nextLabel: null,
-      nextScore: null,
-    };
-  }
-
-  if (score >= 18) {
-    return {
-      label: 'Senior Curator',
-      description: 'Regularly delivers polished LoRAs and collections for the community.',
-      minimumScore: 18,
-      nextLabel: 'Master Curator',
-      nextScore: 40,
-    };
-  }
-
-  if (score >= 6) {
-    return {
-      label: 'Curator',
-      description: 'Actively maintains a growing catalog of models and showcases.',
-      minimumScore: 6,
-      nextLabel: 'Senior Curator',
-      nextScore: 18,
-    };
-  }
-
-  return {
-    label: 'Newcomer',
-    description: 'Getting started with first uploads and curated collections.',
-    minimumScore: 0,
-    nextLabel: 'Curator',
-    nextScore: 6,
-  };
-};
 
 const pickFirstHeaderValue = (value?: string) => {
   if (!value) {
@@ -374,8 +337,12 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
 
     const modelCount = mappedModels.length;
     const galleryCount = mappedGalleries.length;
-    const contributionScore = modelCount * 3 + galleryCount * 2 + imageCount;
-    const rank = computeRank(contributionScore);
+    const contributionCounts: ContributionCounts = {
+      models: modelCount,
+      galleries: galleryCount,
+      images: imageCount,
+    };
+    const rank = await resolveUserRank(user.id, contributionCounts);
     const avatarLocation = resolveStorageLocation(user.avatarUrl ?? undefined);
     const origin = getRequestOrigin(req);
     const avatarUrl = resolveAvatarUrl(user.id, user.avatarUrl ?? null, {
@@ -391,10 +358,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         avatarUrl,
         role: user.role,
         joinedAt: user.createdAt,
-        rank: {
-          ...rank,
-          score: contributionScore,
-        },
+        rank,
         stats: {
           modelCount,
           galleryCount,

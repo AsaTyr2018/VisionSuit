@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 2025-09-20 – Ranking administration suite (commit TBD)
+- **General**: Empowered administrators to tune ranking math, expand the ladder, and moderate curator visibility.
+- **Technical Changes**: Added configurable ranking settings and tier management APIs, introduced user-specific ranking overrides, refreshed profile scoring with dynamic weights, and surfaced ranking blocks in the UI.
+- **Data Changes**: Added Prisma models and migrations for ranking settings, tiers, and per-user overrides.
+
 ## 2025-09-19 – Home dashboard alignment (commit TBD)
 - **General**: Brought the home view in line with the explorer layout for consistent discovery.
 - **Technical Changes**: Implemented modular home cards, responsive two-section grid, tagged CTA buttons, explorer tag filtering, and README updates.

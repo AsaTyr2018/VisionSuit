@@ -207,16 +207,34 @@ export const UserProfile = ({
 }: UserProfileProps) => {
   const avatarUrl = profile ? resolveAvatarUrl(profile.avatarUrl, profile.id) : null;
   const initials = profile ? getInitials(profile.displayName) : '?';
-  const nextRankDescription = useMemo(() => {
-    if (!profile) return null;
-    if (!profile.rank.nextLabel || profile.rank.nextScore == null) {
-      return null;
+  const { nextRankDescription, blockedNotice } = useMemo(() => {
+    if (!profile) {
+      return { nextRankDescription: null, blockedNotice: null };
     }
+
+    if (profile.rank.isBlocked) {
+      return {
+        nextRankDescription: null,
+        blockedNotice: 'Ranking for this curator has been disabled by an administrator.',
+      };
+    }
+
+    if (!profile.rank.nextLabel || profile.rank.nextScore == null) {
+      return { nextRankDescription: null, blockedNotice: null };
+    }
+
     const remaining = profile.rank.nextScore - profile.rank.score;
     if (remaining <= 0) {
-      return `Already eligible for ${profile.rank.nextLabel}.`;
+      return {
+        nextRankDescription: `Already eligible for ${profile.rank.nextLabel}.`,
+        blockedNotice: null,
+      };
     }
-    return `${remaining} contribution point${remaining === 1 ? '' : 's'} to reach ${profile.rank.nextLabel}.`;
+
+    return {
+      nextRankDescription: `${remaining} contribution point${remaining === 1 ? '' : 's'} to reach ${profile.rank.nextLabel}.`,
+      blockedNotice: null,
+    };
   }, [profile]);
 
   return (
@@ -246,7 +264,11 @@ export const UserProfile = ({
                 <dd>{profile ? profile.rank.score : '—'}</dd>
               </div>
             </dl>
-            {nextRankDescription ? <p className="profile-view__rank-progress">{nextRankDescription}</p> : null}
+            {blockedNotice ? (
+              <p className="profile-view__rank-progress">{blockedNotice}</p>
+            ) : nextRankDescription ? (
+              <p className="profile-view__rank-progress">{nextRankDescription}</p>
+            ) : null}
           </div>
         </div>
         <div className="profile-view__header-actions">
