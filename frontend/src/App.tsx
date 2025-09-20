@@ -433,6 +433,7 @@ export const App = () => {
           onExternalSearchApplied={() => setModelTagQuery(null)}
           onAssetUpdated={handleAssetUpdated}
           authToken={token}
+          currentUser={authUser}
         />
       );
     }

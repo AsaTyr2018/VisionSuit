@@ -1,10 +1,11 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { Gallery, ModelAsset } from '../types/api';
+import type { Gallery, ModelAsset, ModelVersion, User } from '../types/api';
 
 import { resolveStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
+import { ModelVersionEditDialog } from './ModelVersionEditDialog';
 
 interface AssetExplorerProps {
   assets: ModelAsset[];
@@ -18,6 +19,7 @@ interface AssetExplorerProps {
   onExternalSearchApplied?: () => void;
   onAssetUpdated?: (asset: ModelAsset) => void;
   authToken?: string | null;
+  currentUser?: User | null;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -429,6 +431,24 @@ const formatDate = (value: string) =>
     day: 'numeric',
   });
 
+const formatVersionChipLabel = (entry: ModelVersion, index: number) => {
+  const trimmed = entry.version?.trim() ?? '';
+  const baseLabel = trimmed.length > 0 ? trimmed : `Version ${index + 1}`;
+  return entry.isPrimary ? `${baseLabel} · Primary` : baseLabel;
+};
+
+const describeVersionChip = (entry: ModelVersion, index: number) => {
+  const label = formatVersionChipLabel(entry, index);
+  try {
+    return `${label} – ${formatDate(entry.createdAt)}`;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('Failed to format version date', error);
+    }
+    return label;
+  }
+};
+
 export const AssetExplorer = ({
   assets,
   galleries,
@@ -441,6 +461,7 @@ export const AssetExplorer = ({
   onExternalSearchApplied,
   onAssetUpdated,
   authToken,
+  currentUser,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -453,6 +474,7 @@ export const AssetExplorer = ({
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [isTagDialogOpen, setTagDialogOpen] = useState(false);
   const [isVersionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [versionToEdit, setVersionToEdit] = useState<ModelVersion | null>(null);
   const [versionFeedback, setVersionFeedback] = useState<string | null>(null);
   const [triggerCopyStatus, setTriggerCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
 
@@ -487,6 +509,17 @@ export const AssetExplorer = ({
     const timer = window.setTimeout(() => setTriggerCopyStatus('idle'), 1800);
     return () => window.clearTimeout(timer);
   }, [triggerCopyStatus]);
+
+  useEffect(() => {
+    if (!activeAsset) {
+      setVersionToEdit(null);
+      return;
+    }
+
+    if (versionToEdit && !activeAsset.versions.some((entry) => entry.id === versionToEdit.id)) {
+      setVersionToEdit(null);
+    }
+  }, [activeAsset, versionToEdit]);
 
   const handleCopyTrigger = useCallback(async (value: string) => {
     const text = value.trim();
@@ -611,12 +644,14 @@ export const AssetExplorer = ({
     setVersionDialogOpen(true);
   }, [authToken]);
   const closeVersionDialog = useCallback(() => setVersionDialogOpen(false), []);
+  const closeVersionEditDialog = useCallback(() => setVersionToEdit(null), []);
 
   const closeDetail = useCallback(() => {
     closeTagDialog();
     setActiveAssetId(null);
     setActiveVersionId(null);
     setVersionDialogOpen(false);
+    setVersionToEdit(null);
     setVersionFeedback(null);
     onCloseDetail?.();
   }, [closeTagDialog, onCloseDetail]);
@@ -660,6 +695,17 @@ export const AssetExplorer = ({
   const activeAsset = useMemo(
     () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
     [activeAssetId, assets],
+  );
+
+  const canManageActiveAsset = useMemo(
+    () =>
+      Boolean(
+        authToken &&
+          activeAsset &&
+          currentUser &&
+          (currentUser.role === 'ADMIN' || currentUser.id === activeAsset.owner.id),
+      ),
+    [activeAsset, authToken, currentUser],
   );
 
   useEffect(() => {
@@ -1040,27 +1086,48 @@ export const AssetExplorer = ({
                     </p>
                   )}
                   <div className="asset-detail__version-switcher" role="group" aria-label="Model versions">
-                    {activeAsset.versions.map((version) => {
+                    {activeAsset.versions.map((version, index) => {
                       const isCurrent = activeVersion?.id === version.id;
+                      const chipLabel = formatVersionChipLabel(version, index);
+                      const chipTitle = describeVersionChip(version, index);
                       return (
-                        <button
-                          key={version.id}
-                          type="button"
-                          className={`asset-detail__version-chip${isCurrent ? ' asset-detail__version-chip--active' : ''}`}
-                          onClick={() => setActiveVersionId(version.id)}
-                          aria-pressed={isCurrent}
-                        >
-                          Version {version.version}
-                        </button>
+                        <div key={version.id} className="asset-detail__version-chip-wrapper">
+                          <button
+                            type="button"
+                            className={`asset-detail__version-chip${isCurrent ? ' asset-detail__version-chip--active' : ''}`}
+                            onClick={() => setActiveVersionId(version.id)}
+                            aria-pressed={isCurrent}
+                            title={chipTitle}
+                          >
+                            {chipLabel}
+                          </button>
+                          {canManageActiveAsset ? (
+                            <button
+                              type="button"
+                              className="asset-detail__version-edit"
+                              onClick={() => {
+                                setVersionToEdit(version);
+                                setVersionFeedback(null);
+                              }}
+                              title={`Edit ${chipLabel}`}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
                       );
                     })}
                     <button
                       type="button"
                       className="asset-detail__version-add"
                       onClick={openVersionDialog}
-                      disabled={!authToken}
+                      disabled={!canManageActiveAsset}
                       title={
-                        !authToken ? 'Only signed-in curators can upload new versions.' : undefined
+                        !authToken
+                          ? 'Only signed-in curators can upload new versions.'
+                          : !canManageActiveAsset
+                            ? 'Only the model curator or an admin can upload new versions.'
+                            : undefined
                       }
                     >
                       Add new version
@@ -1335,6 +1402,31 @@ export const AssetExplorer = ({
                 ? `Version ${createdVersion.version} was added.`
                 : 'Model updated.',
             );
+          }}
+        />
+      ) : null}
+
+      {activeAsset ? (
+        <ModelVersionEditDialog
+          isOpen={Boolean(versionToEdit)}
+          onClose={closeVersionEditDialog}
+          model={activeAsset}
+          version={versionToEdit}
+          token={authToken ?? null}
+          onSuccess={(updatedAsset, refreshedVersion) => {
+            onAssetUpdated?.(updatedAsset);
+            if (refreshedVersion) {
+              setActiveVersionId((current) => current ?? refreshedVersion.id);
+              const trimmedLabel = refreshedVersion.version.trim();
+              const feedbackLabel = trimmedLabel.length > 0 ? trimmedLabel : 'the selected version';
+              setVersionFeedback(
+                refreshedVersion.isPrimary
+                  ? `Primary version label updated to ${feedbackLabel}.`
+                  : `Version label updated to ${feedbackLabel}.`,
+              );
+            } else {
+              setVersionFeedback('Model updated.');
+            }
           }}
         />
       ) : null}

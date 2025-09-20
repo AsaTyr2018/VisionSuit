@@ -8,7 +8,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, and protected upload flows.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
-- **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, and an integrated flow for uploading new revisions including preview handling.
+- **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, in-place editing for curators/admins, and an integrated flow for uploading new revisions including preview handling.
 - **Governed storage pipeline** – Direct MinIO ingestion with automatic tagging, secure download proxying via the backend, audit trails, and guardrails for file size (≤ 2 GB) and batch limits (≤ 12 files).
 
 ## Good to Know
@@ -17,7 +17,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
 - Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
-- Interface remains resilient even when the backend delivers entries without populated metadata.
+- Interface remains resilient even when the backend delivers entries without populated metadata, and the metadata card now stretches across the dialog for easier scanning.
 - Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
 - Modelcards include a dedicated Trigger/Activator field that is required during uploads or edits and ships with a click-to-copy shortcut for quick prompting.
 

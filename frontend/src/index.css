@@ -2083,6 +2083,12 @@ main {
   align-items: center;
 }
 
+.asset-detail__version-chip-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .asset-detail__version-chip {
   border-radius: 999px;
   border: 1px solid rgba(96, 165, 250, 0.35);
@@ -2090,6 +2096,7 @@ main {
   color: rgba(191, 219, 254, 0.92);
   padding: 0.35rem 0.85rem;
   font-size: 0.75rem;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
@@ -2106,6 +2113,32 @@ main {
   background: rgba(59, 130, 246, 0.38);
   border-color: rgba(96, 165, 250, 0.7);
   color: #f8fafc;
+}
+
+.asset-detail__version-edit {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.45);
+  color: rgba(226, 232, 240, 0.85);
+  padding: 0.3rem 0.65rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.asset-detail__version-edit:hover,
+.asset-detail__version-edit:focus-visible {
+  background: rgba(148, 163, 184, 0.24);
+  border-color: rgba(226, 232, 240, 0.45);
+  color: #f8fafc;
+  outline: none;
+}
+
+.asset-detail__version-edit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .asset-detail__version-add {
@@ -2229,9 +2262,10 @@ main {
 
 .asset-detail__metadata-card {
   grid-column: 1 / -1;
-  width: min(100%, 640px);
-  margin: 0 auto;
-  justify-self: center;
+  width: 100%;
+  margin: 0;
+  margin-top: 0.75rem;
+  justify-self: stretch;
 }
 
 .asset-detail__info-table {
