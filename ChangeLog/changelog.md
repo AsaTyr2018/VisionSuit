@@ -298,3 +298,8 @@
 - **General**: Reimagined the admin image moderation space as a dense grid with inline previews and quick actions to keep hundreds of thousands of assets scannable.
 - **Technical Changes**: Introduced thumbnail resolution helpers, expandable edit sections, condensed metadata badges, subtle action buttons, and refreshed README guidance to describe the new workflow.
 - **Data Changes**: None; presentation-only adjustments.
+
+## 2025-09-20 – Admin search event pooling fix
+- **General**: Restored admin panel filters so typing in search fields no longer crashes the interface.
+- **Technical Changes**: Captured input and select values before enqueuing state updates throughout `AdminPanel.tsx` to avoid React's SyntheticEvent pooling from clearing `currentTarget`.
+- **Data Changes**: None; UI state handling only.
