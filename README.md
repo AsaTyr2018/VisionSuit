@@ -24,7 +24,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 ## Community Roadmap
 
-VisionSuit is evolving toward a richer community layer featuring reactions, threaded discussions, collaborative collections, and creator recognition systems. The [Community Features Plan](docs/community-features-plan.md) outlines the phased rollout, technical architecture, and moderation safeguards that will guide this expansion while preserving the curated gallery experience.
+VisionSuit is evolving toward a richer community layer featuring reactions, threaded discussions, collaborative collections, and creator recognition systems. The [Community Features Plan](docs/community-features-plan.md) outlines the phased rollout, technical architecture, and moderation safeguards that will guide this expansion while preserving the curated gallery experience. A complementary [feasibility analysis](docs/community-features-plan-analysis.md) captures the current engineering effort required for each capability.
 
 ## Architecture Overview
 
