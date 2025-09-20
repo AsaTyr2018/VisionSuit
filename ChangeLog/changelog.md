@@ -425,3 +425,8 @@
 - **General**: Introduced a ranking administration tab so operators can adjust scoring weights, manage tiers, and moderate individual curators from one place.
 - **Technical Changes**: Extended the frontend API client with ranking helpers, wired App state to load settings and tiers, built ranking forms with validation/status feedback in the admin panel, and refreshed the README to highlight the feature.
 - **Data Changes**: None; interfaces call existing ranking endpoints without schema updates.
+
+## 087 – Ranking administration guardrails
+- **General**: Restored the ranking admin workspace so weights, tiers, and curator actions work reliably for administrators.
+- **Technical Changes**: Required authenticated admin access for `/api/rankings` endpoints, buffered ranking input handlers against React event reuse, and refreshed README guidance around the responsive admin panel.
+- **Data Changes**: None.

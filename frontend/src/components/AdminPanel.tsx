@@ -1899,9 +1899,10 @@ export const AdminPanel = ({
                   min={0}
                   step={1}
                   value={weightDraft.modelWeight}
-                  onChange={(event) =>
-                    setWeightDraft((previous) => ({ ...previous, modelWeight: event.currentTarget.value }))
-                  }
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setWeightDraft((previous) => ({ ...previous, modelWeight: value }));
+                  }}
                   disabled={isBusy}
                   required
                 />
@@ -1913,9 +1914,10 @@ export const AdminPanel = ({
                   min={0}
                   step={1}
                   value={weightDraft.galleryWeight}
-                  onChange={(event) =>
-                    setWeightDraft((previous) => ({ ...previous, galleryWeight: event.currentTarget.value }))
-                  }
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setWeightDraft((previous) => ({ ...previous, galleryWeight: value }));
+                  }}
                   disabled={isBusy}
                   required
                 />
@@ -1927,9 +1929,10 @@ export const AdminPanel = ({
                   min={0}
                   step={1}
                   value={weightDraft.imageWeight}
-                  onChange={(event) =>
-                    setWeightDraft((previous) => ({ ...previous, imageWeight: event.currentTarget.value }))
-                  }
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setWeightDraft((previous) => ({ ...previous, imageWeight: value }));
+                  }}
                   disabled={isBusy}
                   required
                 />
@@ -2067,7 +2070,10 @@ export const AdminPanel = ({
                   <input
                     type="text"
                     value={newTierDraft.label}
-                    onChange={(event) => setNewTierDraft((previous) => ({ ...previous, label: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setNewTierDraft((previous) => ({ ...previous, label: value }));
+                    }}
                     disabled={isBusy}
                     required
                   />
@@ -2079,9 +2085,10 @@ export const AdminPanel = ({
                     min={0}
                     step={1}
                     value={newTierDraft.minimumScore}
-                    onChange={(event) =>
-                      setNewTierDraft((previous) => ({ ...previous, minimumScore: event.currentTarget.value }))
-                    }
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setNewTierDraft((previous) => ({ ...previous, minimumScore: value }));
+                    }}
                     disabled={isBusy}
                     required
                   />
@@ -2093,7 +2100,10 @@ export const AdminPanel = ({
                     min={0}
                     step={1}
                     value={newTierDraft.position}
-                    onChange={(event) => setNewTierDraft((previous) => ({ ...previous, position: event.currentTarget.value }))}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setNewTierDraft((previous) => ({ ...previous, position: value }));
+                    }}
                     disabled={isBusy}
                     placeholder="Auto"
                   />
@@ -2103,7 +2113,10 @@ export const AdminPanel = ({
                   <input
                     type="checkbox"
                     checked={newTierDraft.isActive}
-                    onChange={(event) => setNewTierDraft((previous) => ({ ...previous, isActive: event.currentTarget.checked }))}
+                    onChange={(event) => {
+                      const { checked } = event.currentTarget;
+                      setNewTierDraft((previous) => ({ ...previous, isActive: checked }));
+                    }}
                     disabled={isBusy}
                   />
                 </label>
@@ -2111,9 +2124,10 @@ export const AdminPanel = ({
                   <span>Description</span>
                   <textarea
                     value={newTierDraft.description}
-                    onChange={(event) =>
-                      setNewTierDraft((previous) => ({ ...previous, description: event.currentTarget.value }))
-                    }
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setNewTierDraft((previous) => ({ ...previous, description: value }));
+                    }}
                     disabled={isBusy}
                     rows={3}
                     required

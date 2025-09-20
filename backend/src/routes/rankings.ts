@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAdmin } from '../lib/middleware/auth';
+import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import {
   getRankingSettings,
   getActiveRankTiers,
@@ -96,7 +96,7 @@ const computeContributionCounts = async (userId: string): Promise<ContributionCo
   };
 };
 
-rankingsRouter.use(requireAdmin);
+rankingsRouter.use(requireAuth, requireAdmin);
 
 rankingsRouter.get('/settings', async (_req, res, next) => {
   try {
