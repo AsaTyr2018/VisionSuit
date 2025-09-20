@@ -1,10 +1,10 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
-import { api } from '../lib/api';
+import { ApiError, api } from '../lib/api';
 import { resolveStorageUrl } from '../lib/storage';
-import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
+import type { Gallery, ImageAsset, ModelAsset, RankTier, RankingSettings, User } from '../types/api';
 import { UserCreationDialog, type AsyncActionResult } from './UserCreationDialog';
 
 const roleSummaries: Record<
@@ -74,15 +74,26 @@ interface AdminPanelProps {
   token: string;
   onRefresh: () => Promise<void>;
   onOpenProfile?: (userId: string) => void;
+  rankingSettings: RankingSettings | null;
+  rankingTiers: RankTier[];
+  rankingTiersFallback: boolean;
 }
 
-type AdminTab = 'users' | 'models' | 'images' | 'galleries';
+type AdminTab = 'users' | 'models' | 'images' | 'galleries' | 'ranking';
 
 type FilterValue<T extends string> = T | 'all';
 
 type UserStatusFilter = 'active' | 'inactive';
 
 type VisibilityFilter = 'public' | 'private';
+
+type TierDraft = {
+  label: string;
+  description: string;
+  minimumScore: string;
+  position: string;
+  isActive: boolean;
+};
 
 const parseCommaList = (value: string) =>
   value
@@ -170,7 +181,18 @@ const truncateText = (value: string, limit = 160) => {
   return `${value.slice(0, limit - 1).trimEnd()}…`;
 };
 
-export const AdminPanel = ({ users, models, images, galleries, token, onRefresh, onOpenProfile }: AdminPanelProps) => {
+export const AdminPanel = ({
+  users,
+  models,
+  images,
+  galleries,
+  token,
+  onRefresh,
+  onOpenProfile,
+  rankingSettings,
+  rankingTiers,
+  rankingTiersFallback,
+}: AdminPanelProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -198,8 +220,53 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
   const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
+  const [weightDraft, setWeightDraft] = useState<{ modelWeight: string; galleryWeight: string; imageWeight: string }>({
+    modelWeight: '',
+    galleryWeight: '',
+    imageWeight: '',
+  });
+  const [tierDrafts, setTierDrafts] = useState<Record<string, TierDraft>>({});
+  const [newTierDraft, setNewTierDraft] = useState<TierDraft>({
+    label: '',
+    description: '',
+    minimumScore: '0',
+    position: '',
+    isActive: true,
+  });
+  const [rankingUserId, setRankingUserId] = useState('');
 
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
+
+  useEffect(() => {
+    if (rankingSettings) {
+      setWeightDraft({
+        modelWeight: rankingSettings.modelWeight.toString(),
+        galleryWeight: rankingSettings.galleryWeight.toString(),
+        imageWeight: rankingSettings.imageWeight.toString(),
+      });
+    } else {
+      setWeightDraft({ modelWeight: '', galleryWeight: '', imageWeight: '' });
+    }
+  }, [rankingSettings]);
+
+  useEffect(() => {
+    const drafts: Record<string, TierDraft> = {};
+    rankingTiers.forEach((tier) => {
+      if (!tier.id) {
+        return;
+      }
+
+      drafts[tier.id] = {
+        label: tier.label,
+        description: tier.description,
+        minimumScore: tier.minimumScore.toString(),
+        position:
+          tier.position !== undefined && tier.position !== null ? String(tier.position) : '',
+        isActive: tier.isActive ?? true,
+      };
+    });
+    setTierDrafts(drafts);
+  }, [rankingTiers]);
 
   const resetStatus = () => setStatus(null);
 
@@ -215,7 +282,10 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
       await onRefresh();
       return { ok: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Action failed.';
+      let message = error instanceof Error ? error.message : 'Action failed.';
+      if (error instanceof ApiError && error.details?.length) {
+        message = `${message} ${error.details.join(' ')}`.trim();
+      }
       setStatus({ type: 'error', message });
       return { ok: false, message };
     } finally {
@@ -687,6 +757,168 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
     await withStatus(() => api.deleteGallery(token, gallery.id), 'Gallery deleted.');
   };
 
+  const handleRankingSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const modelWeight = Number.parseInt(weightDraft.modelWeight, 10);
+    const galleryWeight = Number.parseInt(weightDraft.galleryWeight, 10);
+    const imageWeight = Number.parseInt(weightDraft.imageWeight, 10);
+
+    if (
+      [modelWeight, galleryWeight, imageWeight].some(
+        (value) => Number.isNaN(value) || value < 0 || !Number.isFinite(value),
+      )
+    ) {
+      setStatus({ type: 'error', message: 'Ranking weights must be non-negative integers.' });
+      return;
+    }
+
+    await withStatus(
+      () => api.updateRankingSettings(token, { modelWeight, galleryWeight, imageWeight }),
+      'Ranking weights updated.',
+    );
+  };
+
+  const updateTierDraft = (id: string, updates: Partial<TierDraft>) => {
+    setTierDrafts((current) => ({
+      ...current,
+      [id]: {
+        label: current[id]?.label ?? '',
+        description: current[id]?.description ?? '',
+        minimumScore: current[id]?.minimumScore ?? '0',
+        position: current[id]?.position ?? '',
+        isActive: current[id]?.isActive ?? true,
+        ...updates,
+      },
+    }));
+  };
+
+  const handleTierUpdate = async (event: FormEvent<HTMLFormElement>, tierId: string) => {
+    event.preventDefault();
+    const draft = tierDrafts[tierId];
+    if (!draft) {
+      setStatus({ type: 'error', message: 'Unable to locate tier draft for update.' });
+      return;
+    }
+
+    const label = draft.label.trim();
+    const description = draft.description.trim();
+    const minimumScore = Number.parseInt(draft.minimumScore, 10);
+    const positionValue = draft.position.trim();
+    const position = positionValue.length > 0 ? Number.parseInt(positionValue, 10) : undefined;
+
+    if (!label || !description) {
+      setStatus({ type: 'error', message: 'Tier label and description cannot be empty.' });
+      return;
+    }
+
+    if (Number.isNaN(minimumScore) || minimumScore < 0) {
+      setStatus({ type: 'error', message: 'Tier minimum score must be a non-negative integer.' });
+      return;
+    }
+
+    if (position !== undefined && (Number.isNaN(position) || position < 0)) {
+      setStatus({ type: 'error', message: 'Tier position must be a non-negative integer when provided.' });
+      return;
+    }
+
+    await withStatus(
+      () =>
+        api.updateRankTier(token, tierId, {
+          label,
+          description,
+          minimumScore,
+          position,
+          isActive: draft.isActive,
+        }),
+      'Rank tier updated.',
+    );
+  };
+
+  const handleTierDelete = async (tier: RankTier) => {
+    if (!tier.id) {
+      return;
+    }
+
+    if (!window.confirm(`Delete the "${tier.label}" tier? This cannot be undone.`)) {
+      return;
+    }
+
+    const tierId = tier.id;
+    await withStatus(() => api.deleteRankTier(token, tierId), 'Rank tier deleted.');
+  };
+
+  const handleCreateTier = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const label = newTierDraft.label.trim();
+    const description = newTierDraft.description.trim();
+    const minimumScore = Number.parseInt(newTierDraft.minimumScore, 10);
+    const positionValue = newTierDraft.position.trim();
+    const position = positionValue.length > 0 ? Number.parseInt(positionValue, 10) : undefined;
+
+    if (!label || !description) {
+      setStatus({ type: 'error', message: 'Tier label and description cannot be empty.' });
+      return;
+    }
+
+    if (Number.isNaN(minimumScore) || minimumScore < 0) {
+      setStatus({ type: 'error', message: 'Tier minimum score must be a non-negative integer.' });
+      return;
+    }
+
+    if (position !== undefined && (Number.isNaN(position) || position < 0)) {
+      setStatus({ type: 'error', message: 'Tier position must be a non-negative integer when provided.' });
+      return;
+    }
+
+    const result = await withStatus(
+      () =>
+        api.createRankTier(token, {
+          label,
+          description,
+          minimumScore,
+          position,
+          isActive: newTierDraft.isActive,
+        }),
+      'New rank tier added.',
+    );
+
+    if (result.ok) {
+      setNewTierDraft({ label: '', description: '', minimumScore: '0', position: '', isActive: true });
+    }
+  };
+
+  const handleRankingUserAction = async (action: 'reset' | 'block' | 'unblock') => {
+    const trimmedId = rankingUserId.trim();
+    if (!trimmedId) {
+      setStatus({ type: 'error', message: 'Select a user before running ranking actions.' });
+      return;
+    }
+
+    const friendlyName = users.find((user) => user.id === trimmedId)?.displayName ?? trimmedId;
+    const successMessage =
+      action === 'reset'
+        ? `Ranking progress reset for ${friendlyName}.`
+        : action === 'block'
+        ? `${friendlyName} has been blocked from the ranking.`
+        : `${friendlyName} has been restored to the ranking.`;
+
+    const result = await withStatus(() => {
+      if (action === 'reset') {
+        return api.resetRankingUser(token, trimmedId);
+      }
+
+      if (action === 'block') {
+        return api.blockRankingUser(token, trimmedId);
+      }
+
+      return api.unblockRankingUser(token, trimmedId);
+    }, successMessage);
+
+    if (result.ok) {
+      setRankingUserId('');
+    }
+  };
+
   const renderSelectionToolbar = (
     total: number,
     selected: number,
@@ -721,6 +953,8 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
     </div>
   );
 
+  const hasRankingUserSelection = rankingUserId.trim().length > 0;
+
   return (
     <section className="admin">
       <header className="admin__header">
@@ -730,6 +964,7 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
               { id: 'users', label: 'User' },
               { id: 'models', label: 'Models' },
               { id: 'images', label: 'Images' },
+              { id: 'ranking', label: 'Ranking' },
               { id: 'galleries', label: 'Galleries' },
             ] as { id: AdminTab; label: string }[]
           ).map((tab) => (
@@ -1642,6 +1877,308 @@ export const AdminPanel = ({ users, models, images, galleries, token, onRefresh,
                 })}
               </div>
             )}
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === 'ranking' ? (
+        <div className="admin__panel">
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Score weighting</h3>
+              <p>Adjust how models, galleries, and images contribute to curator rankings.</p>
+              {rankingSettings?.isFallback ? (
+                <p className="admin__note">Currently using fallback weights until custom values are saved.</p>
+              ) : null}
+            </div>
+            <form className="admin__form admin__form-grid admin-ranking__weights" onSubmit={handleRankingSettingsSubmit}>
+              <label>
+                <span>Model weight</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={weightDraft.modelWeight}
+                  onChange={(event) =>
+                    setWeightDraft((previous) => ({ ...previous, modelWeight: event.currentTarget.value }))
+                  }
+                  disabled={isBusy}
+                  required
+                />
+              </label>
+              <label>
+                <span>Gallery weight</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={weightDraft.galleryWeight}
+                  onChange={(event) =>
+                    setWeightDraft((previous) => ({ ...previous, galleryWeight: event.currentTarget.value }))
+                  }
+                  disabled={isBusy}
+                  required
+                />
+              </label>
+              <label>
+                <span>Image weight</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={weightDraft.imageWeight}
+                  onChange={(event) =>
+                    setWeightDraft((previous) => ({ ...previous, imageWeight: event.currentTarget.value }))
+                  }
+                  disabled={isBusy}
+                  required
+                />
+              </label>
+              <div className="admin__form-actions">
+                <button type="submit" className="button button--primary" disabled={isBusy}>
+                  Save weights
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Rank tiers</h3>
+              <p>Maintain the ladder of recognition tiers and their score thresholds.</p>
+              {rankingTiersFallback ? (
+                <p className="admin__note">Showing fallback tiers. Create a tier to persist custom rankings.</p>
+              ) : null}
+            </div>
+            <div className="admin-ranking__tier-list">
+              {rankingTiers.length === 0 ? (
+                <p className="admin__empty">No tiers configured yet.</p>
+              ) : (
+                rankingTiers.map((tier) => {
+                  const tierId = tier.id;
+                  if (!tierId) {
+                    return (
+                      <article
+                        key={`fallback-${tier.label}-${tier.minimumScore}`}
+                        className="admin-ranking__tier admin-ranking__tier--readonly"
+                      >
+                        <header className="admin-ranking__tier-header">
+                          <h4>{tier.label}</h4>
+                          <span className="admin-badge admin-badge--muted">Min score {tier.minimumScore}</span>
+                        </header>
+                        <p>{tier.description}</p>
+                        <p className="admin__note">Fallback tier—create a custom tier to edit.</p>
+                      </article>
+                    );
+                  }
+
+                  const draft =
+                    tierDrafts[tierId] ?? {
+                      label: tier.label,
+                      description: tier.description,
+                      minimumScore: tier.minimumScore.toString(),
+                      position:
+                        tier.position !== undefined && tier.position !== null ? String(tier.position) : '',
+                      isActive: tier.isActive ?? true,
+                    };
+
+                  return (
+                    <form key={tierId} className="admin-ranking__tier admin__form" onSubmit={(event) => handleTierUpdate(event, tierId)}>
+                      <div className="admin__form-grid admin-ranking__tier-grid">
+                        <label>
+                          <span>Label</span>
+                          <input
+                            type="text"
+                            value={draft.label}
+                            onChange={(event) => updateTierDraft(tierId, { label: event.currentTarget.value })}
+                            disabled={isBusy}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Minimum score</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={draft.minimumScore}
+                            onChange={(event) =>
+                              updateTierDraft(tierId, { minimumScore: event.currentTarget.value })
+                            }
+                            disabled={isBusy}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Position</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={draft.position}
+                            onChange={(event) => updateTierDraft(tierId, { position: event.currentTarget.value })}
+                            disabled={isBusy}
+                            placeholder="Auto"
+                          />
+                        </label>
+                        <label className="admin-ranking__checkbox">
+                          <span>Active</span>
+                          <input
+                            type="checkbox"
+                            checked={draft.isActive}
+                            onChange={(event) => updateTierDraft(tierId, { isActive: event.currentTarget.checked })}
+                            disabled={isBusy}
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        <span>Description</span>
+                        <textarea
+                          value={draft.description}
+                          onChange={(event) => updateTierDraft(tierId, { description: event.currentTarget.value })}
+                          disabled={isBusy}
+                          rows={3}
+                          required
+                        />
+                      </label>
+                      <div className="admin__form-actions">
+                        <button type="submit" className="button button--primary" disabled={isBusy}>
+                          Save tier
+                        </button>
+                        <button
+                          type="button"
+                          className="button button--danger"
+                          onClick={() => handleTierDelete(tier)}
+                          disabled={isBusy}
+                        >
+                          Delete tier
+                        </button>
+                      </div>
+                    </form>
+                  );
+                })
+              )}
+            </div>
+            <div className="admin-ranking__create">
+              <h4>Add new tier</h4>
+              <form className="admin__form admin__form-grid" onSubmit={handleCreateTier}>
+                <label>
+                  <span>Label</span>
+                  <input
+                    type="text"
+                    value={newTierDraft.label}
+                    onChange={(event) => setNewTierDraft((previous) => ({ ...previous, label: event.currentTarget.value }))}
+                    disabled={isBusy}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Minimum score</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={newTierDraft.minimumScore}
+                    onChange={(event) =>
+                      setNewTierDraft((previous) => ({ ...previous, minimumScore: event.currentTarget.value }))
+                    }
+                    disabled={isBusy}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Position</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={newTierDraft.position}
+                    onChange={(event) => setNewTierDraft((previous) => ({ ...previous, position: event.currentTarget.value }))}
+                    disabled={isBusy}
+                    placeholder="Auto"
+                  />
+                </label>
+                <label className="admin-ranking__checkbox">
+                  <span>Active</span>
+                  <input
+                    type="checkbox"
+                    checked={newTierDraft.isActive}
+                    onChange={(event) => setNewTierDraft((previous) => ({ ...previous, isActive: event.currentTarget.checked }))}
+                    disabled={isBusy}
+                  />
+                </label>
+                <label className="admin-ranking__textarea">
+                  <span>Description</span>
+                  <textarea
+                    value={newTierDraft.description}
+                    onChange={(event) =>
+                      setNewTierDraft((previous) => ({ ...previous, description: event.currentTarget.value }))
+                    }
+                    disabled={isBusy}
+                    rows={3}
+                    required
+                  />
+                </label>
+                <div className="admin__form-actions">
+                  <button type="submit" className="button button--primary" disabled={isBusy}>
+                    Create tier
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Curator ranking actions</h3>
+              <p>Reset scores or toggle blocks for individual curators without impacting their uploads.</p>
+            </div>
+            <div className="admin__form admin-ranking__user-controls">
+              <label>
+                <span>Curator</span>
+                <input
+                  type="text"
+                  list="admin-ranking-users"
+                  placeholder="Select a user or paste their ID"
+                  value={rankingUserId}
+                  onChange={(event) => setRankingUserId(event.currentTarget.value)}
+                  disabled={isBusy}
+                />
+                {userOptions.length > 0 ? (
+                  <datalist id="admin-ranking-users">
+                    {userOptions.map((option) => (
+                      <option key={option.id} value={option.id} label={`${option.label} (${option.id})`} />
+                    ))}
+                  </datalist>
+                ) : null}
+              </label>
+              <div className="admin__form-actions admin-ranking__user-buttons">
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => handleRankingUserAction('reset')}
+                  disabled={isBusy || !hasRankingUserSelection}
+                >
+                  Reset score
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => handleRankingUserAction('block')}
+                  disabled={isBusy || !hasRankingUserSelection}
+                >
+                  Block ranking
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => handleRankingUserAction('unblock')}
+                  disabled={isBusy || !hasRankingUserSelection}
+                >
+                  Unblock ranking
+                </button>
+              </div>
+            </div>
           </section>
         </div>
       ) : null}

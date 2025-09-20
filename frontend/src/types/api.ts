@@ -29,6 +29,25 @@ export interface UserProfileRank {
   isBlocked: boolean;
 }
 
+export interface RankingSettings {
+  id?: string;
+  modelWeight: number;
+  galleryWeight: number;
+  imageWeight: number;
+  isFallback?: boolean;
+}
+
+export interface RankTier {
+  id?: string;
+  label: string;
+  description: string;
+  minimumScore: number;
+  position?: number;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface UserProfileModelSummary {
   id: string;
   title: string;

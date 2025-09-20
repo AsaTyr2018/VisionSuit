@@ -4,8 +4,11 @@ import type {
   ImageAsset,
   MetaStats,
   ModelAsset,
+  RankTier,
+  RankingSettings,
   ServiceStatusResponse,
   UserProfile,
+  UserProfileRank,
   User,
 } from '../types/api';
 
@@ -72,8 +75,27 @@ const request = async <T>(path: string, options: RequestInit = {}, token?: strin
   const response = await fetch(buildApiUrl(path), { ...options, headers });
 
   if (!response.ok) {
+    const contentType = response.headers.get('content-type') ?? '';
+
+    if (contentType.includes('application/json')) {
+      const body = (await response.json().catch(() => null)) as
+        | {
+            message?: string;
+            errors?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] };
+          }
+        | null;
+      const message = typeof body?.message === 'string' ? body.message : `API request failed: ${response.status}`;
+      const fieldErrors = body?.errors?.fieldErrors ?? {};
+      const formErrors = body?.errors?.formErrors ?? [];
+      const details = [
+        ...formErrors.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0),
+        ...Object.values(fieldErrors).flatMap((entries) => entries ?? []).filter((entry) => entry && entry.length > 0),
+      ];
+      throw new ApiError(message, details.length > 0 ? details : undefined);
+    }
+
     const message = await response.text().catch(() => null);
-    throw new Error(message || `API request failed: ${response.status}`);
+    throw new ApiError(message || `API request failed: ${response.status}`);
   }
 
   if (response.status === 204) {
@@ -397,4 +419,56 @@ export const api = {
       token,
     ),
   deleteGallery: (token: string, id: string) => request(`/api/galleries/${id}`, { method: 'DELETE' }, token),
+  getRankingSettings: (token: string) => request<{ settings: RankingSettings }>(`/api/rankings/settings`, {}, token),
+  updateRankingSettings: (
+    token: string,
+    payload: { modelWeight: number; galleryWeight: number; imageWeight: number },
+  ) =>
+    request<{ settings: RankingSettings }>(
+      `/api/rankings/settings`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  getRankTiers: (token: string) => request<{ tiers: RankTier[]; isFallback: boolean }>(`/api/rankings/tiers`, {}, token),
+  createRankTier: (
+    token: string,
+    payload: { label: string; description: string; minimumScore: number; position?: number; isActive?: boolean },
+  ) =>
+    request<{ tier: RankTier }>(
+      `/api/rankings/tiers`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  updateRankTier: (
+    token: string,
+    id: string,
+    payload: Partial<{
+      label: string;
+      description: string;
+      minimumScore: number;
+      position?: number;
+      isActive?: boolean;
+    }>,
+  ) =>
+    request<{ tier: RankTier }>(
+      `/api/rankings/tiers/${id}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+  deleteRankTier: (token: string, id: string) => request(`/api/rankings/tiers/${id}`, { method: 'DELETE' }, token),
+  resetRankingUser: (token: string, id: string) =>
+    request<{ userId: string; rank: UserProfileRank }>(`/api/rankings/users/${id}/reset`, { method: 'POST' }, token),
+  blockRankingUser: (token: string, id: string) =>
+    request<{ userId: string; rank: UserProfileRank }>(`/api/rankings/users/${id}/block`, { method: 'POST' }, token),
+  unblockRankingUser: (token: string, id: string) =>
+    request<{ userId: string; rank: UserProfileRank }>(`/api/rankings/users/${id}/unblock`, { method: 'POST' }, token),
 };

@@ -420,3 +420,8 @@
 - **General**: Ensured curator avatars remain visible regardless of MinIO hostname settings by proxying them through the API and removing the manual URL field from account settings.
 - **Technical Changes**: Added a `/api/users/:id/avatar` stream endpoint, centralized avatar URL resolution with request-aware helpers, updated user serializers to emit proxied links, refreshed the React profile view to normalize avatar sources, and simplified the account settings dialog plus docs.
 - **Data Changes**: None; avatars continue to upload into the existing image bucket with unchanged storage paths.
+
+## 086 – Admin ranking controls UI
+- **General**: Introduced a ranking administration tab so operators can adjust scoring weights, manage tiers, and moderate individual curators from one place.
+- **Technical Changes**: Extended the frontend API client with ranking helpers, wired App state to load settings and tiers, built ranking forms with validation/status feedback in the admin panel, and refreshed the README to highlight the feature.
+- **Data Changes**: None; interfaces call existing ranking endpoints without schema updates.
