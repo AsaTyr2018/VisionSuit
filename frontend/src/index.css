@@ -4707,7 +4707,7 @@ button {
 .gallery-detail__grid {
   display: grid;
   gap: 1.1rem;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .gallery-detail__thumb {
@@ -4716,7 +4716,7 @@ button {
   overflow: hidden;
   border: 1px solid rgba(59, 130, 246, 0.35);
   background: rgba(15, 23, 42, 0.7);
-  height: 140px;
+  aspect-ratio: 1 / 1;
   padding: 0;
   cursor: pointer;
 }
@@ -4897,10 +4897,20 @@ button {
   }
 }
 
+@media (max-width: 1200px) {
+  .gallery-detail__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 860px) {
   .gallery-explorer__grid,
   .asset-explorer__grid {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+
+  .gallery-detail__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .gallery-image-modal__body {
