@@ -1037,6 +1037,12 @@ body {
   color: rgba(248, 113, 113, 0.9);
 }
 
+.account-settings__hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.75);
+}
+
 .account-settings__actions {
   margin-top: 0.5rem;
 }

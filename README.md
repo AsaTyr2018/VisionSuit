@@ -6,7 +6,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 - **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus glassy health cards with color-coded LED beacons for the front end, API, and MinIO services.
 - **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, and protected upload flows.
-- **Self-service account management** – Sidebar account settings let curators update their display name, bio, avatar, and password without waiting for admin intervention.
+- **Self-service account management** – Sidebar account settings let curators update their display name, bio, and password and now support direct avatar uploads (PNG/JPG/WebP ≤ 5 MB) alongside external image links.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
 - **Curator spotlight profiles** – Dedicated profile view with avatars, rank progression, bios, and live listings of every model and collection uploaded by the curator, reachable from any curator name across the interface.
@@ -198,6 +198,7 @@ Batch uploads validate up to 12 files per request and enforce the 2 GB size ce
 - `GET /api/users` – Admin-only listing of accounts.
 - `POST /api/users` – Admin-only account provisioning.
 - `PUT /api/users/:id` – Admin-only account maintenance, deactivation, and role changes.
+- `POST /api/users/:id/avatar` – Uploads a curator avatar (PNG/JPG/WebP up to 5 MB, GIFs rejected) and returns the refreshed profile payload.
 - `PUT /api/users/:id/profile` – Update a curator’s display name, bio, or avatar (self-service or admin override).
 - `PUT /api/users/:id/password` – Change a password after verifying the current credential (self-service or admin override).
 - `DELETE /api/users/:id` – Admin-only user removal (no self-delete).

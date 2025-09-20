@@ -198,6 +198,11 @@
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
+## 2025-09-20 – Avatar upload pipeline (commit TBD)
+- **General**: Enabled secure on-platform avatar uploads with built-in validation and MinIO-backed delivery.
+- **Technical Changes**: Added the `/api/users/:id/avatar` endpoint with strict MIME checks and size guards, updated auth user serialization, wired the React account settings dialog and API client for file uploads, and refreshed styles plus documentation.
+- **Data Changes**: Stores uploaded avatars in the image bucket under user-specific prefixes; database schema unchanged.
+
 ## 2025-09-19 – Model version hierarchy controls (commit TBD)
 - **General**: Enabled full lifecycle management of secondary model revisions directly from the admin console.
 - **Technical Changes**: Added backend promotion and deletion endpoints, refined primary-version mapping to preserve chronology, exposed new API client helpers, and wired admin UI actions for promoting, renaming, and removing versions with refreshed README guidance.

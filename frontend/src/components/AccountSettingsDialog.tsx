@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 
 import { api } from '../lib/api';
 import type { User } from '../types/api';
@@ -29,12 +29,17 @@ export const AccountSettingsDialog = ({
   const [bio, setBio] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [profileStatus, setProfileStatus] = useState<StatusMessage>(null);
+  const [avatarUploadStatus, setAvatarUploadStatus] = useState<StatusMessage>(null);
   const [passwordStatus, setPasswordStatus] = useState<StatusMessage>(null);
   const [isProfileSubmitting, setIsProfileSubmitting] = useState(false);
   const [isPasswordSubmitting, setIsPasswordSubmitting] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
   const extractMessage = (error: unknown, fallback: string) => {
     if (error instanceof Error) {
@@ -54,12 +59,17 @@ export const AccountSettingsDialog = ({
   useEffect(() => {
     if (!isOpen) {
       setProfileStatus(null);
+      setAvatarUploadStatus(null);
       setPasswordStatus(null);
       setIsProfileSubmitting(false);
       setIsPasswordSubmitting(false);
+      setIsUploadingAvatar(false);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = '';
+      }
       return;
     }
 
@@ -67,12 +77,66 @@ export const AccountSettingsDialog = ({
     setBio(user.bio ?? '');
     setAvatarUrl(user.avatarUrl ?? '');
     setProfileStatus(null);
+    setAvatarUploadStatus(null);
     setPasswordStatus(null);
+    setIsUploadingAvatar(false);
+    if (avatarInputRef.current) {
+      avatarInputRef.current.value = '';
+    }
   }, [isOpen, user]);
 
   if (!isOpen) {
     return null;
   }
+
+  const handleAvatarFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setAvatarUploadStatus(null);
+    setProfileStatus(null);
+
+    if (file.size > AVATAR_MAX_BYTES) {
+      setAvatarUploadStatus({ type: 'error', message: 'Avatar must be 5 MB or smaller.' });
+      event.target.value = '';
+      return;
+    }
+
+    const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
+    if (!allowedTypes.has(file.type)) {
+      setAvatarUploadStatus({ type: 'error', message: 'Avatar must be a PNG, JPG, or WebP image.' });
+      event.target.value = '';
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+
+    try {
+      const response = await api.uploadAvatar(token, user.id, file);
+      setAvatarUrl(response.user.avatarUrl ?? '');
+      setAvatarUploadStatus({ type: 'success', message: 'Avatar updated successfully.' });
+
+      if (onRefreshUser) {
+        try {
+          await onRefreshUser();
+        } catch (refreshError) {
+          console.error('Failed to refresh user after avatar upload', refreshError);
+        }
+      }
+    } catch (error) {
+      const message = extractMessage(error, 'Failed to upload avatar.');
+      setAvatarUploadStatus({ type: 'error', message });
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) {
+        avatarInputRef.current.value = '';
+      } else {
+        event.target.value = '';
+      }
+    }
+  };
 
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -221,6 +285,29 @@ export const AccountSettingsDialog = ({
                   placeholder="https://example.com/avatar.png"
                 />
               </label>
+              <div className="form-field">
+                <span>Upload avatar</span>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleAvatarFileChange}
+                  disabled={isUploadingAvatar}
+                />
+                <p className="account-settings__hint">PNG, JPG, or WebP up to 5&nbsp;MB.</p>
+              </div>
+              {isUploadingAvatar ? (
+                <p className="account-settings__status" role="status">
+                  Uploading…
+                </p>
+              ) : avatarUploadStatus ? (
+                <p
+                  className={`account-settings__status account-settings__status--${avatarUploadStatus.type}`}
+                  role={avatarUploadStatus.type === 'error' ? 'alert' : 'status'}
+                >
+                  {avatarUploadStatus.message}
+                </p>
+              ) : null}
               {profileStatus ? (
                 <p
                   className={`account-settings__status account-settings__status--${profileStatus.type}`}
