@@ -11,7 +11,16 @@ import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveStorageUrl } from './lib/storage';
-import type { Gallery, ImageAsset, ModelAsset, Tag, User, UserProfile as UserProfileData } from './types/api';
+import type {
+  Gallery,
+  ImageAsset,
+  ModelAsset,
+  RankTier,
+  RankingSettings,
+  Tag,
+  User,
+  UserProfile as UserProfileData,
+} from './types/api';
 
 type ViewKey = 'home' | 'models' | 'images' | 'admin' | 'profile';
 type PrimaryViewKey = 'home' | 'models' | 'images' | 'admin';
@@ -40,7 +49,7 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   admin: {
     title: 'Administration',
     description:
-      'Guided control center with filters and bulk tools for accounts, models, images, and galleries.',
+      'Guided control center with filters and bulk tools for accounts, models, images, galleries, and rankings.',
   },
   profile: {
     title: 'Curator profile',
@@ -75,6 +84,9 @@ export const App = () => {
   const [images, setImages] = useState<ImageAsset[]>([]);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [rankingSettings, setRankingSettings] = useState<RankingSettings | null>(null);
+  const [rankingTiers, setRankingTiers] = useState<RankTier[]>([]);
+  const [rankingTiersFallback, setRankingTiersFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isAssetUploadOpen, setIsAssetUploadOpen] = useState(false);
@@ -156,8 +168,29 @@ export const App = () => {
           console.error('Failed to load users', userError);
           setUsers([]);
         }
+
+        try {
+          const { settings } = await api.getRankingSettings(token);
+          setRankingSettings(settings);
+        } catch (settingsError) {
+          console.error('Failed to load ranking settings', settingsError);
+          setRankingSettings(null);
+        }
+
+        try {
+          const { tiers, isFallback } = await api.getRankTiers(token);
+          setRankingTiers(tiers);
+          setRankingTiersFallback(isFallback);
+        } catch (tierError) {
+          console.error('Failed to load rank tiers', tierError);
+          setRankingTiers([]);
+          setRankingTiersFallback(false);
+        }
       } else {
         setUsers([]);
+        setRankingSettings(null);
+        setRankingTiers([]);
+        setRankingTiersFallback(false);
       }
       setErrorMessage(null);
     } catch (error) {
@@ -612,6 +645,9 @@ export const App = () => {
           token={token}
           onRefresh={refreshData}
           onOpenProfile={handleOpenUserProfile}
+          rankingSettings={rankingSettings}
+          rankingTiers={rankingTiers}
+          rankingTiersFallback={rankingTiersFallback}
         />
       );
     }

@@ -19,7 +19,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Curators can edit their own models, collections, and images directly from the explorers, while administrators continue to see edit controls for every entry.
 - Signed-in users can open the **Account settings** dialog from the sidebar to adjust profile details or rotate their password in a single modal workflow.
-- Administration workspace now offers a compact moderation grid across models and images with lazy thumbnails, inline version histories, collapsible edit drawers, persistent bulk tools tuned for six-figure libraries, multi-step user onboarding with permission previews, and one-click actions to promote, rename, or remove secondary model versions.
+- Administration workspace now offers moderation grids for models and images, ranking controls (weights, tiers, and user resets), collapsible edit drawers, persistent bulk tools tuned for six-figure libraries, multi-step onboarding with permission previews, and one-click actions to promote, rename, or remove secondary model versions.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
 - Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
@@ -27,7 +27,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
 - Modelcards include a dedicated Trigger/Activator field that is required during uploads or edits and ships with a click-to-copy shortcut for quick prompting.
 - Click any curator name—from home cards to explorer panels and admin lists—to jump straight into the curator’s profile with contribution stats and navigation back to their models or collections.
-- Administrators can fine-tune rank weights, curate new tiers, reset individual curator ladders, or temporarily block a curator from ranking via the dedicated `/api/rankings` controls.
+- Administrators can fine-tune rank weights, curate new tiers, reset individual curator ladders, or temporarily block a curator from ranking directly inside the admin **Ranking** tab or via the dedicated `/api/rankings` controls.
 
 ## Community Roadmap
 
