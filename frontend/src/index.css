@@ -2173,18 +2173,7 @@ main {
   flex-direction: column;
   gap: 1.6rem;
 }
-
-@media (min-width: 960px) {
-  .asset-detail__layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.75fr) minmax(0, 1.25fr);
-    gap: 1.85rem;
-    align-items: start;
-  }
-}
-
-.asset-detail__main,
-.asset-detail__sidebar {
+.asset-detail__main {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -2236,6 +2225,13 @@ main {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
+}
+
+.asset-detail__metadata-card {
+  grid-column: 1 / -1;
+  width: min(100%, 640px);
+  margin: 0 auto;
+  justify-self: center;
 }
 
 .asset-detail__info-table {
@@ -2466,7 +2462,6 @@ main {
   flex-direction: column;
   gap: 0.9rem;
   min-width: 0;
-  flex: 1;
 }
 
 .asset-detail__section--metadata .asset-detail__section-heading {

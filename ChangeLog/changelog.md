@@ -267,3 +267,8 @@
 - **General**: Enlarged the model detail dialog so metadata columns remain readable on wide screens.
 - **Technical Changes**: Adjusted the dialog container to span 80% of the viewport (capped at 1400px) and loosened the tablet breakpoint width to retain proportional spacing.
 - **Data Changes**: None.
+
+## 2025-09-20 – Model card metadata centering
+- **General**: Realigned the model card so the metadata panel sits beneath the preview and regains breathing room.
+- **Technical Changes**: Repositioned the metadata section inside the summary grid, removed the squeezing flex growth, and added styling to center the metadata card below the preview.
+- **Data Changes**: None.

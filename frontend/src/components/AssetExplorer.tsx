@@ -1206,6 +1206,46 @@ export const AssetExplorer = ({
                         )}
                       </div>
                     </div>
+
+                    <section
+                      className="asset-detail__section asset-detail__section--metadata asset-detail__metadata-card"
+                      aria-labelledby={metadataHeadingId}
+                    >
+                      <div className="asset-detail__section-heading">
+                        <h4 id={metadataHeadingId}>Metadata</h4>
+                        {tagFrequencyGroups.length > 0 ? (
+                          <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
+                            Show dataset tags
+                          </button>
+                        ) : null}
+                      </div>
+                      {metadataEntries.length > 0 ? (
+                        <div className="asset-detail__metadata">
+                          <div className="asset-detail__metadata-scroll">
+                            <table className="asset-detail__metadata-table">
+                              <thead>
+                                <tr>
+                                  <th scope="col">Key</th>
+                                  <th scope="col">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {metadataEntries.map((row) => (
+                                  <tr key={row.key}>
+                                    <th scope="row">{row.key}</th>
+                                    <td>
+                                      <span className="asset-detail__metadata-value">{row.value}</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
+                      )}
+                    </section>
                   </div>
 
                   <section className="asset-detail__section asset-detail__section--tags" aria-labelledby={tagsHeadingId}>
@@ -1222,44 +1262,6 @@ export const AssetExplorer = ({
                   </section>
                 </div>
 
-                <aside className="asset-detail__sidebar" aria-labelledby={metadataHeadingId}>
-                  <section className="asset-detail__section asset-detail__section--metadata">
-                    <div className="asset-detail__section-heading">
-                      <h4 id={metadataHeadingId}>Metadata</h4>
-                      {tagFrequencyGroups.length > 0 ? (
-                        <button type="button" className="asset-detail__tag-button" onClick={openTagDialog}>
-                          Show dataset tags
-                        </button>
-                      ) : null}
-                    </div>
-                    {metadataEntries.length > 0 ? (
-                      <div className="asset-detail__metadata">
-                        <div className="asset-detail__metadata-scroll">
-                          <table className="asset-detail__metadata-table">
-                            <thead>
-                              <tr>
-                                <th scope="col">Key</th>
-                                <th scope="col">Value</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {metadataEntries.map((row) => (
-                                <tr key={row.key}>
-                                  <th scope="row">{row.key}</th>
-                                  <td>
-                                    <span className="asset-detail__metadata-value">{row.value}</span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="asset-detail__description asset-detail__description--muted">No metadata available.</p>
-                    )}
-                  </section>
-                </aside>
               </div>
 
             </div>
