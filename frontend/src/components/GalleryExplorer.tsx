@@ -283,6 +283,29 @@ export const GalleryExplorer = ({
     onCloseDetail?.();
   }, [onCloseDetail]);
 
+  const activeGallery = useMemo(
+    () => (activeGalleryId ? galleries.find((gallery) => gallery.id === activeGalleryId) ?? null : null),
+    [activeGalleryId, galleries],
+  );
+
+  const activeGalleryImages = useMemo(() => (activeGallery ? getImageEntries(activeGallery) : []), [activeGallery]);
+
+  const activeGalleryModels = useMemo(() => {
+    if (!activeGallery) {
+      return [] as ModelAsset[];
+    }
+
+    const map = new Map<string, ModelAsset>();
+    getGalleryEntries(activeGallery).forEach((entry) => {
+      if (entry.modelAsset) {
+        map.set(entry.modelAsset.id, entry.modelAsset);
+      }
+    });
+    return Array.from(map.values());
+  }, [activeGallery]);
+
+  const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
+
   useEffect(() => {
     if (activeGalleryId && !galleries.some((gallery) => gallery.id === activeGalleryId)) {
       closeDetail();
@@ -373,29 +396,6 @@ export const GalleryExplorer = ({
   const loadMore = () => {
     setVisibleLimit((current) => Math.min(filteredGalleries.length, current + GALLERY_BATCH_SIZE));
   };
-
-  const activeGallery = useMemo(
-    () => (activeGalleryId ? galleries.find((gallery) => gallery.id === activeGalleryId) ?? null : null),
-    [activeGalleryId, galleries],
-  );
-
-  const activeGalleryImages = useMemo(() => (activeGallery ? getImageEntries(activeGallery) : []), [activeGallery]);
-
-  const activeGalleryModels = useMemo(() => {
-    if (!activeGallery) {
-      return [] as ModelAsset[];
-    }
-
-    const map = new Map<string, ModelAsset>();
-    getGalleryEntries(activeGallery).forEach((entry) => {
-      if (entry.modelAsset) {
-        map.set(entry.modelAsset.id, entry.modelAsset);
-      }
-    });
-    return Array.from(map.values());
-  }, [activeGallery]);
-
-  const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
 
   const canManageActiveGallery = useMemo(
     () =>

@@ -198,7 +198,6 @@
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
-
 ## 2025-09-19 – Model card layout polish (commit TBD)
 - **General**: Smoothed the model card experience by aligning primary actions and tightening the dataset tags table.
 - **Technical Changes**: Converted the preview action stack to a full-width flex column, equalized button typography, and padded the tag frequency table with a fixed layout so headers and rows stay inside the dialog.
@@ -366,3 +365,8 @@
 - **General**: Restored the gallery explorer so collections with missing owners or entry arrays render instead of crashing to an empty panel.
 - **Technical Changes**: Added defensive helpers for owner and entry access, updated filters/sorters to use the safe lookups, hardened the detail dialogs, and refreshed README guidance about handling incomplete payloads.
 - **Data Changes**: None; safeguards run entirely on the client.
+
+## 2025-09-23 – Gallery explorer initialization fix (commit TBD)
+- **General**: Restored the gallery explorer lightbox so collections open without crashing.
+- **Technical Changes**: Moved the active gallery memoization before dependent effects to prevent accessing uninitialized bindings.
+- **Data Changes**: None.
