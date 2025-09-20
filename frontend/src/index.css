@@ -2870,6 +2870,10 @@ main {
   padding: 1.5rem;
 }
 
+.edit-dialog__content--wide {
+  width: min(820px, 95vw);
+}
+
 .model-version-dialog__header,
 .edit-dialog__header {
   display: flex;
@@ -2962,6 +2966,15 @@ main {
   display: grid;
   gap: 0.75rem;
   background: rgba(15, 23, 42, 0.45);
+}
+
+.edit-dialog__fieldset--columns {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  align-items: start;
+}
+
+.edit-dialog__fieldset--columns legend {
+  grid-column: 1 / -1;
 }
 
 .edit-dialog__fieldset legend {
