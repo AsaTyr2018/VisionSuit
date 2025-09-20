@@ -332,3 +332,13 @@
 - **General**: Reimagined account creation with preset-driven dialogs and clearer role guidance for administrators.
 - **Technical Changes**: Added a multi-step `UserCreationDialog` with validation and password generation, introduced role summary popups, revamped the admin onboarding panel styling, extended status handling, and refreshed README highlights.
 - **Data Changes**: None; interface and workflow updates only.
+
+## 2025-09-21 – Client bulk import scripts
+- **General**: Equipped curators with turnkey client importers so LoRA weights and previews can be staged locally and pushed to the VisionSuit server in bulk.
+- **Technical Changes**: Added dedicated Linux/macOS and Windows scripts that validate matching preview folders, pick a random cover image, generate a manifest, and upload packages over SSH; refreshed the README with setup and execution guidance.
+- **Data Changes**: None; tooling additions only.
+
+## 2025-09-20 – API-driven bulk import helpers
+- **General**: Reworked the client import tooling to authenticate against VisionSuit and upload LoRAs through the official pipeline instead of SSH transfers.
+- **Technical Changes**: Replaced the staging/manifest workflow with direct `POST /api/uploads` calls in both scripts, added credential prompts and file-cap trimming, refreshed README guidance, and documented password handling.
+- **Data Changes**: None; ingestion now flows through existing upload drafts and storage objects.

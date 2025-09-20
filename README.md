@@ -103,6 +103,40 @@ Default ports:
 
 > Tip: Always point `HOST` to a reachable address (e.g., `HOST=192.168.1.50 ./dev-start.sh`) when accessing services from other devices or containers.
 
+## Bulk Import Utilities
+
+Client-side helpers streamline batched LoRA transfers when curating existing libraries offline. Both scripts expect two sibling directories on the client machine:
+
+- `loras/` – contains `.safetensors` weights.
+- `images/` – contains folders named after each safetensor (without the extension) populated with preview renders.
+
+Each importer refuses to upload a model unless a matching image folder exists. After authentication the scripts pick a random preview render, keep up to ten additional images (VisionSuit accepts a maximum of twelve files per upload, including the LoRA), and stream the batch to `POST /api/uploads` so the backend can push artifacts into MinIO.
+
+### Linux and macOS
+
+1. Review and adjust `server_ip`, `server_username`, and `server_port` at the top of `scripts/bulk_import_linux.sh`.
+2. Ensure `curl` and `python3` are installed on the client.
+3. Provide the VisionSuit password either via the `VISIONSUIT_PASSWORD` environment variable or interactively when prompted.
+4. Run the script from the root of your asset stash (or pass custom directories):
+
+   ```bash
+   ./scripts/bulk_import_linux.sh ./loras ./images
+   ```
+
+The script authenticates with `POST /api/auth/login`, then uploads the LoRA and curated previews straight to the VisionSuit API. Models without imagery are skipped automatically.
+
+### Windows (PowerShell)
+
+1. Edit `$ServerIp`, `$ServerUsername`, and `$ServerPort` at the head of `scripts/bulk_import_windows.ps1`.
+2. Launch the script from PowerShell 7+ (pwsh). Enter your VisionSuit password when prompted or expose it via `VISIONSUIT_PASSWORD`.
+3. Run the importer with optional overrides for the source folders:
+
+   ```powershell
+   pwsh -File .\scripts\bulk_import_windows.ps1 -LorasDirectory .\loras -ImagesDirectory .\images
+   ```
+
+The PowerShell helper mirrors the Linux workflow: it logs in once, picks a random preview, trims excessive renders, and posts the bundle directly to the VisionSuit API for processing.
+
 ### Backend service
 
 1. `cd backend`
