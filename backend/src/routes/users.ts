@@ -1,10 +1,14 @@
+import { randomUUID } from 'node:crypto';
+
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { hashPassword, toAuthUser, verifyPassword } from '../lib/auth';
 import { requireAdmin, requireAuth, requireSelfOrAdmin } from '../lib/middleware/auth';
-import { resolveStorageLocation } from '../lib/storage';
+import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
+import { MAX_AVATAR_SIZE_BYTES } from '../lib/uploadLimits';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -51,6 +55,64 @@ const bulkDeleteSchema = z.object({
 });
 
 export const usersRouter = Router();
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fileSize: MAX_AVATAR_SIZE_BYTES,
+  },
+});
+
+const isPng = (buffer: Buffer) =>
+  buffer.length >= 8 &&
+  buffer[0] === 0x89 &&
+  buffer[1] === 0x50 &&
+  buffer[2] === 0x4e &&
+  buffer[3] === 0x47 &&
+  buffer[4] === 0x0d &&
+  buffer[5] === 0x0a &&
+  buffer[6] === 0x1a &&
+  buffer[7] === 0x0a;
+
+const isJpeg = (buffer: Buffer) =>
+  buffer.length >= 4 &&
+  buffer[0] === 0xff &&
+  buffer[1] === 0xd8 &&
+  buffer[buffer.length - 2] === 0xff &&
+  buffer[buffer.length - 1] === 0xd9;
+
+const isWebp = (buffer: Buffer) =>
+  buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+
+const isGif = (buffer: Buffer) =>
+  buffer.length >= 6 && (buffer.toString('ascii', 0, 6) === 'GIF87a' || buffer.toString('ascii', 0, 6) === 'GIF89a');
+
+const detectAvatarFormat = (buffer: Buffer): 'png' | 'jpeg' | 'webp' | 'gif' | null => {
+  if (isPng(buffer)) {
+    return 'png';
+  }
+
+  if (isJpeg(buffer)) {
+    return 'jpeg';
+  }
+
+  if (isWebp(buffer)) {
+    return 'webp';
+  }
+
+  if (isGif(buffer)) {
+    return 'gif';
+  }
+
+  return null;
+};
+
+const avatarMimeTypes: Record<'png' | 'jpeg' | 'webp', string> = {
+  png: 'image/png',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+};
 
 const computeRank = (score: number) => {
   if (score >= 40) {
@@ -218,6 +280,133 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+usersRouter.post('/:id/avatar', requireAuth, requireSelfOrAdmin, (req, res, next) => {
+  avatarUpload.single('avatar')(req, res, async (error: unknown) => {
+    if (error) {
+      if (error instanceof multer.MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ message: 'Avatar exceeds the 5 MB limit.' });
+          return;
+        }
+
+        res.status(400).json({ message: `Avatar upload failed: ${error.message}` });
+        return;
+      }
+
+      next(error instanceof Error ? error : new Error('Unexpected avatar upload error.'));
+      return;
+    }
+
+    const { id } = req.params;
+
+    if (!id) {
+      res.status(400).json({ message: 'User ID missing.' });
+      return;
+    }
+
+    const file = req.file as Express.Multer.File | undefined;
+    if (!file) {
+      res.status(400).json({ message: 'No avatar file provided.' });
+      return;
+    }
+
+    if (file.size === 0) {
+      res.status(400).json({ message: 'Avatar file is empty.' });
+      return;
+    }
+
+    const format = detectAvatarFormat(file.buffer);
+
+    if (format === 'gif') {
+      res.status(400).json({ message: 'Animated GIFs are not supported for avatars.' });
+      return;
+    }
+
+    if (!format) {
+      res.status(400).json({ message: 'Avatar must be a PNG, JPEG, or WebP image.' });
+      return;
+    }
+
+    const mimeType = avatarMimeTypes[format];
+    const extension = format === 'jpeg' ? 'jpg' : format;
+
+    try {
+      const existingUser = await prisma.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          role: true,
+          bio: true,
+          avatarUrl: true,
+        },
+      });
+
+      if (!existingUser) {
+        res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+        return;
+      }
+
+      const bucket = storageBuckets.images;
+      const objectName = `avatars/${id}/${Date.now()}-${randomUUID()}.${extension}`;
+
+      try {
+        await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
+          'Content-Type': mimeType,
+        });
+      } catch (storageError) {
+        console.error('Failed to upload avatar to storage', storageError);
+        res.status(500).json({ message: 'Failed to store avatar image.' });
+        return;
+      }
+
+      const storedUri = `s3://${bucket}/${objectName}`;
+
+      let updatedUser;
+
+      try {
+        updatedUser = await prisma.user.update({
+          where: { id },
+          data: { avatarUrl: storedUri },
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            role: true,
+            bio: true,
+            avatarUrl: true,
+          },
+        });
+      } catch (dbError) {
+        console.error('Failed to update user avatar', dbError);
+        try {
+          await storageClient.removeObject(bucket, objectName);
+        } catch (cleanupError) {
+          console.warn('Failed to cleanup orphaned avatar upload', cleanupError);
+        }
+        res.status(500).json({ message: 'Failed to persist avatar image.' });
+        return;
+      }
+
+      const previousAvatar = resolveStorageLocation(existingUser.avatarUrl ?? undefined);
+      if (
+        previousAvatar.bucket === bucket &&
+        typeof previousAvatar.objectName === 'string' &&
+        previousAvatar.objectName.startsWith(`avatars/${id}/`)
+      ) {
+        storageClient
+          .removeObject(bucket, previousAvatar.objectName)
+          .catch((cleanupError) => console.warn('Failed to remove previous avatar object', cleanupError));
+      }
+
+      res.json({ user: toAuthUser(updatedUser) });
+    } catch (handlerError) {
+      next(handlerError);
+    }
+  });
 });
 
 usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res, next) => {

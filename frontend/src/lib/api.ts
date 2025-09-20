@@ -288,6 +288,19 @@ export const api = {
       },
       token,
     ),
+  uploadAvatar: (token: string, id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file, file.name);
+
+    return request<{ user: User }>(
+      `/api/users/${id}/avatar`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      token,
+    );
+  },
   changePassword: (
     token: string,
     id: string,
