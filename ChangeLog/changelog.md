@@ -375,3 +375,8 @@
 - **General**: Ensured the image edit dialog surfaces above the lightbox when curators edit a single gallery image.
 - **Technical Changes**: Raised the modal z-index styling in `frontend/src/index.css` so edit dialogs overlay the gallery image modal backdrop.
 - **Data Changes**: None; styling adjustment only.
+
+## 2025-09-24 – Image metadata layout compaction
+- **General**: Shortened the image metadata edit experience by spreading controls into columns so the dialog stays within the viewport.
+- **Technical Changes**: Widened the image edit dialog container and introduced a responsive three-column grid for metadata fields in `frontend/src/components/ImageAssetEditDialog.tsx` and `frontend/src/index.css`.
+- **Data Changes**: None; purely presentational improvements to existing metadata inputs.

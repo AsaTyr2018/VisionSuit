@@ -187,7 +187,7 @@ export const ImageAssetEditDialog = ({
 
   return (
     <div className="edit-dialog" role="dialog" aria-modal="true" aria-labelledby="image-edit-title" onClick={handleBackdropClick}>
-      <div className="edit-dialog__content">
+      <div className="edit-dialog__content edit-dialog__content--wide">
         <header className="edit-dialog__header">
           <h3 id="image-edit-title">Edit image details</h3>
           <button type="button" className="edit-dialog__close" onClick={onClose} disabled={isSubmitting}>
@@ -221,7 +221,7 @@ export const ImageAssetEditDialog = ({
               placeholder="Comma-separated tags"
             />
           </label>
-          <fieldset className="edit-dialog__fieldset">
+          <fieldset className="edit-dialog__fieldset edit-dialog__fieldset--columns">
             <legend>Metadata</legend>
             <label className="edit-dialog__field">
               <span>Seed</span>
