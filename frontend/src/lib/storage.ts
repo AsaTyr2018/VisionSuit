@@ -1,5 +1,20 @@
 import { buildApiUrl } from '../config';
 
+const AUTH_STORAGE_KEY = 'visionsuit.auth.token';
+
+const readStoredToken = () => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const value = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    return value && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+};
+
 export const buildStorageProxyUrl = (bucket?: string | null, objectName?: string | null) => {
   if (!bucket || !objectName) {
     return null;
@@ -16,7 +31,15 @@ export const buildStorageProxyUrl = (bucket?: string | null, objectName?: string
     return null;
   }
 
-  return buildApiUrl(`/api/storage/${encodedBucket}/${encodedObject}`);
+  const baseUrl = buildApiUrl(`/api/storage/${encodedBucket}/${encodedObject}`);
+  const token = readStoredToken();
+
+  if (!token) {
+    return baseUrl;
+  }
+
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${separator}accessToken=${encodeURIComponent(token)}`;
 };
 
 export const resolveStorageUrl = (fallback?: string | null, bucket?: string | null, objectName?: string | null) => {

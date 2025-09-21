@@ -515,3 +515,8 @@
 - **General**: Restored public asset previews and downloads after the storage proxy started rejecting guest traffic.
 - **Technical Changes**: Replaced the blanket auth guard on `/api/storage` with role-aware access checks that map objects back to their owning models, images, galleries, or avatars, and refreshed README guidance about guest downloads.
 - **Data Changes**: None; access rules only.
+
+## 103 – Admin private preview access
+- **General**: Let administrators review private images inline without downloading files manually.
+- **Technical Changes**: Accepted access tokens supplied via query parameters in the storage proxy middleware and taught the front-end storage resolver to append the persisted auth token so `<img>` requests authenticate transparently.
+- **Data Changes**: None; authentication flow only.

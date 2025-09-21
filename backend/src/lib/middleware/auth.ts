@@ -3,18 +3,51 @@ import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../prisma';
 import { toAuthUser, verifyAccessToken } from '../auth';
 
+const extractTokenFromQuery = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry === 'string') {
+        const trimmed = entry.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
 const extractToken = (req: Request): string | null => {
   const header = req.headers.authorization;
-  if (typeof header !== 'string') {
-    return null;
+  if (typeof header === 'string') {
+    const trimmed = header.trim();
+    if (trimmed.toLowerCase().startsWith('bearer ')) {
+      const token = trimmed.slice(7).trim();
+      if (token.length > 0) {
+        return token;
+      }
+    }
+
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
   }
 
-  const trimmed = header.trim();
-  if (trimmed.toLowerCase().startsWith('bearer ')) {
-    return trimmed.slice(7).trim();
+  const query = req.query as Record<string, unknown>;
+  const queryToken =
+    extractTokenFromQuery(query['accessToken']) ?? extractTokenFromQuery(query['token']);
+
+  if (queryToken) {
+    return queryToken;
   }
 
-  return trimmed.length > 0 ? trimmed : null;
+  return null;
 };
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
