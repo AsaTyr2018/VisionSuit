@@ -12,6 +12,181 @@ const generatorRouter = Router();
 
 const generatorBaseModelBucket = appConfig.generator.baseModelBucket.trim();
 const normalizedGeneratorBaseBucket = generatorBaseModelBucket.toLowerCase();
+const manifestCandidateObjects = Array.from(
+  new Set(
+    [
+      appConfig.generator.baseModelManifestObject?.trim(),
+      'minio-model-manifest.json',
+      'model-manifest.json',
+    ].filter((entry): entry is string => Boolean(entry && entry.length > 0)),
+  ),
+);
+
+const readStreamToString = async (stream: NodeJS.ReadableStream): Promise<string> => {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    if (chunk instanceof Buffer) {
+      chunks.push(chunk);
+    } else if (typeof chunk === 'string') {
+      chunks.push(Buffer.from(chunk));
+    } else if (chunk) {
+      const view = chunk as ArrayBufferView;
+      const buffer = Buffer.from(view.buffer, view.byteOffset, view.byteLength);
+      chunks.push(buffer);
+    }
+  }
+
+  return Buffer.concat(chunks).toString('utf-8');
+};
+
+const collectManifestEntries = (payload: unknown): string[] => {
+  if (!payload) {
+    return [];
+  }
+
+  if (typeof payload === 'string') {
+    return [payload];
+  }
+
+  if (Array.isArray(payload)) {
+    return payload.flatMap((entry) => collectManifestEntries(entry));
+  }
+
+  if (typeof payload !== 'object') {
+    return [];
+  }
+
+  const record = payload as Record<string, unknown>;
+  const directKey =
+    record.key ??
+    record.Key ??
+    record.name ??
+    record.object ??
+    record.objectName ??
+    record.path ??
+    record.storageObject ??
+    record.storagePath ??
+    record.location ??
+    record.url ??
+    record.file ??
+    record.fileName ??
+    record.filename;
+
+  const results: string[] = [];
+
+  if (typeof directKey === 'string') {
+    results.push(directKey);
+  }
+
+  const nestedKeys = [
+    'contents',
+    'Contents',
+    'objects',
+    'Objects',
+    'entries',
+    'Entries',
+    'items',
+    'Items',
+    'files',
+    'Files',
+    'data',
+    'Data',
+    'children',
+    'Children',
+  ];
+
+  for (const key of nestedKeys) {
+    const value = record[key];
+    if (value) {
+      results.push(...collectManifestEntries(value));
+    }
+  }
+
+  return results;
+};
+
+const normalizeManifestObjectName = (value: string): string | null => {
+  let trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (trimmed.startsWith('s3://')) {
+    const withoutScheme = trimmed.slice('s3://'.length);
+    const slashIndex = withoutScheme.indexOf('/');
+    if (slashIndex === -1) {
+      return null;
+    }
+
+    const possibleObject = withoutScheme.slice(slashIndex + 1);
+    trimmed = possibleObject;
+  }
+
+  if (trimmed.startsWith(generatorBaseModelBucket + '/')) {
+    trimmed = trimmed.slice(generatorBaseModelBucket.length + 1);
+  }
+
+  trimmed = trimmed.replace(/^\/+/, '');
+
+  if (trimmed.length === 0 || trimmed.endsWith('/')) {
+    return null;
+  }
+
+  return trimmed;
+};
+
+const loadObjectNamesFromManifest = async (): Promise<Set<string>> => {
+  const manifestNames = new Set<string>();
+
+  for (const objectName of manifestCandidateObjects) {
+    try {
+      const stream = await storageClient.getObject(generatorBaseModelBucket, objectName);
+      const raw = await readStreamToString(stream);
+
+      if (!raw || raw.trim().length === 0) {
+        continue;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (error) {
+        console.warn('Failed to parse generator base-model manifest JSON', error);
+        continue;
+      }
+
+      const entries = collectManifestEntries(parsed);
+      for (const entry of entries) {
+        const normalized = typeof entry === 'string' ? normalizeManifestObjectName(entry) : null;
+        if (normalized) {
+          manifestNames.add(normalized);
+        }
+      }
+
+      if (manifestNames.size > 0) {
+        break;
+      }
+    } catch (error) {
+      const code = (error as Error & { code?: string }).code;
+      if (code === 'NoSuchKey' || code === 'NotFound') {
+        continue;
+      }
+
+      console.warn('Failed to load generator base-model manifest from storage', error);
+    }
+  }
+
+  manifestCandidateObjects.forEach((candidate) => {
+    if (candidate) {
+      const normalized = normalizeManifestObjectName(candidate);
+      if (normalized) {
+        manifestNames.delete(normalized);
+      }
+    }
+  });
+
+  return manifestNames;
+};
 
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: {
@@ -105,19 +280,21 @@ generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const objectNames = new Set<string>();
+    const objectNames = await loadObjectNamesFromManifest();
 
-    try {
-      const stream = storageClient.listObjects(generatorBaseModelBucket, '', true);
-      for await (const item of stream) {
-        if (item.name) {
-          objectNames.add(item.name);
+    if (objectNames.size === 0) {
+      try {
+        const stream = storageClient.listObjects(generatorBaseModelBucket, '', true);
+        for await (const item of stream) {
+          if (item.name) {
+            objectNames.add(item.name);
+          }
         }
+      } catch (error) {
+        console.error('Failed to enumerate generator base-model bucket', error);
+        res.status(502).json({ message: 'Could not list base models from storage.' });
+        return;
       }
-    } catch (error) {
-      console.error('Failed to enumerate generator base-model bucket', error);
-      res.status(502).json({ message: 'Could not list base models from storage.' });
-      return;
     }
 
     const viewer = req.user!;
