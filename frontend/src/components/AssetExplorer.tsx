@@ -4,7 +4,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import type { Gallery, ModelAsset, ModelVersion, User } from '../types/api';
 
 import { api, ApiError } from '../lib/api';
-import { resolveStorageUrl } from '../lib/storage';
+import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
 import { ModelVersionEditDialog } from './ModelVersionEditDialog';
@@ -1230,8 +1230,10 @@ export const AssetExplorer = ({
           ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
           : visibleAssets.map((asset) => {
               const previewUrl =
-                resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ??
-                asset.previewImage ?? undefined;
+                resolveCachedStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject, {
+                  updatedAt: asset.updatedAt,
+                  cacheKey: asset.id,
+                }) ?? asset.previewImage ?? undefined;
               const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA';
               const isActive = activeAssetId === asset.id;
               return (
@@ -1458,10 +1460,11 @@ export const AssetExplorer = ({
                         <div className="asset-detail__preview">
                           <img
                             src={
-                              resolveStorageUrl(
+                              resolveCachedStorageUrl(
                                 activeVersion.previewImage,
                                 activeVersion.previewImageBucket,
                                 activeVersion.previewImageObject,
+                                { updatedAt: activeVersion.updatedAt, cacheKey: activeVersion.id },
                               ) ?? activeVersion.previewImage
                             }
                             alt={`Preview von ${activeAsset.title} – Version ${activeVersion?.version ?? ''}`}

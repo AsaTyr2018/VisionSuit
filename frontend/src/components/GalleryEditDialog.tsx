@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent, MouseEvent } from 'react';
 
 import { api, ApiError } from '../lib/api';
-import { resolveStorageUrl } from '../lib/storage';
+import { resolveCachedStorageUrl } from '../lib/storage';
 import type { Gallery } from '../types/api';
 
 type CoverStatus = { type: 'success' | 'error'; message: string };
@@ -15,14 +15,21 @@ const buildGalleryCoverValue = (gallery: Gallery) =>
   buildStorageUri(gallery.coverImageBucket, gallery.coverImageObject) ?? gallery.coverImage ?? '';
 
 const buildGalleryCoverPreview = (gallery: Gallery) =>
-  resolveStorageUrl(gallery.coverImage, gallery.coverImageBucket, gallery.coverImageObject) ??
-  (gallery.coverImage ?? null);
+  resolveCachedStorageUrl(
+    gallery.coverImage,
+    gallery.coverImageBucket,
+    gallery.coverImageObject,
+    { updatedAt: gallery.updatedAt, cacheKey: gallery.id },
+  ) ?? (gallery.coverImage ?? null);
 
 const buildImageCoverValue = (image: GalleryImage) =>
   buildStorageUri(image.storageBucket, image.storageObject) ?? image.storagePath;
 
 const buildImagePreviewUrl = (image: GalleryImage) =>
-  resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+  resolveCachedStorageUrl(image.storagePath, image.storageBucket, image.storageObject, {
+    updatedAt: image.updatedAt,
+    cacheKey: image.id,
+  }) ?? image.storagePath;
 
 interface GalleryEditDialogProps {
   isOpen: boolean;
@@ -99,10 +106,14 @@ export const GalleryEditDialog = ({
 
     setCoverImage(buildStorageUri(galleryCoverImageBucket, galleryCoverImageObject) ?? galleryCoverImage ?? '');
     setCoverPreview(
-      resolveStorageUrl(galleryCoverImage, galleryCoverImageBucket, galleryCoverImageObject) ??
-        (galleryCoverImage ?? null),
+      resolveCachedStorageUrl(
+        galleryCoverImage,
+        galleryCoverImageBucket,
+        galleryCoverImageObject,
+        { updatedAt: gallery.updatedAt, cacheKey: gallery.id },
+      ) ?? (galleryCoverImage ?? null),
     );
-  }, [galleryCoverImage, galleryCoverImageBucket, galleryCoverImageObject, isOpen]);
+  }, [galleryCoverImage, galleryCoverImageBucket, galleryCoverImageObject, gallery.id, gallery.updatedAt, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {

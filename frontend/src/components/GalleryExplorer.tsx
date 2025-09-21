@@ -3,7 +3,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
 
 import { api, ApiError } from '../lib/api';
-import { resolveStorageUrl } from '../lib/storage';
+import { resolveCachedStorageUrl } from '../lib/storage';
 
 import { FilterChip } from './FilterChip';
 import { GalleryEditDialog } from './GalleryEditDialog';
@@ -673,10 +673,11 @@ export const GalleryExplorer = ({
                     {previewImage ? (
                       <img
                         src={
-                          resolveStorageUrl(
+                          resolveCachedStorageUrl(
                             previewImage.storagePath,
                             previewImage.storageBucket,
                             previewImage.storageObject,
+                            { updatedAt: previewImage.updatedAt, cacheKey: previewImage.id },
                           ) ?? previewImage.storagePath
                         }
                         alt={previewImage.title}
@@ -827,8 +828,12 @@ export const GalleryExplorer = ({
                 {activeGalleryImages.length > 0 ? (
                   activeGalleryImages.map((entry) => {
                     const imageUrl =
-                      resolveStorageUrl(entry.image.storagePath, entry.image.storageBucket, entry.image.storageObject) ??
-                      entry.image.storagePath;
+                      resolveCachedStorageUrl(
+                        entry.image.storagePath,
+                        entry.image.storageBucket,
+                        entry.image.storageObject,
+                        { updatedAt: entry.image.updatedAt, cacheKey: entry.image.id },
+                      ) ?? entry.image.storagePath;
                     return (
                       <div key={entry.entryId} role="listitem" className="gallery-detail__thumb">
                         <button
@@ -957,10 +962,11 @@ export const GalleryExplorer = ({
               <div className="gallery-image-modal__media">
                 <img
                   src={
-                    resolveStorageUrl(
+                    resolveCachedStorageUrl(
                       activeImage.image.storagePath,
                       activeImage.image.storageBucket,
                       activeImage.image.storageObject,
+                      { updatedAt: activeImage.image.updatedAt, cacheKey: activeImage.image.id },
                     ) ?? activeImage.image.storagePath
                   }
                   alt={activeImage.image.title}

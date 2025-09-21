@@ -1,6 +1,6 @@
 import type { ModelAsset } from '../types/api';
 
-import { resolveStorageUrl } from '../lib/storage';
+import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
 
 interface AssetCardProps {
   asset: ModelAsset;
@@ -21,7 +21,10 @@ const formatDate = (value: string) =>
 
 export const AssetCard = ({ asset }: AssetCardProps) => {
   const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'Asset';
-  const previewUrl = resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject);
+  const previewUrl = resolveCachedStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject, {
+    updatedAt: asset.updatedAt,
+    cacheKey: asset.id,
+  });
   const downloadUrl =
     resolveStorageUrl(asset.storagePath, asset.storageBucket, asset.storageObject) ?? asset.storagePath;
 

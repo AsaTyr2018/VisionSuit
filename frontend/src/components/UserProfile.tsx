@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import { resolveAvatarUrl } from '../lib/avatar';
-import { resolveStorageUrl } from '../lib/storage';
+import { resolveCachedStorageUrl } from '../lib/storage';
 import type {
   UserProfile as UserProfileResponse,
   UserProfileGallerySummary,
@@ -56,7 +56,11 @@ const renderModelCard = (
   model: UserProfileModelSummary,
   onOpenModel?: (modelId: string) => void,
 ) => {
-  const previewUrl = resolveStorageUrl(model.previewImage, model.previewImageBucket, model.previewImageObject) ?? model.previewImage ?? undefined;
+  const previewUrl =
+    resolveCachedStorageUrl(model.previewImage, model.previewImageBucket, model.previewImageObject, {
+      updatedAt: model.updatedAt,
+      cacheKey: model.id,
+    }) ?? model.previewImage ?? undefined;
   const tagList = model.tags.slice(0, 4);
   const remainingTags = model.tags.length - tagList.length;
 
@@ -125,7 +129,11 @@ const renderGalleryCard = (
   gallery: UserProfileGallerySummary,
   onOpenGallery?: (galleryId: string) => void,
 ) => {
-  const coverUrl = resolveStorageUrl(gallery.coverImage, gallery.coverImageBucket, gallery.coverImageObject) ?? gallery.coverImage ?? undefined;
+  const coverUrl =
+    resolveCachedStorageUrl(gallery.coverImage, gallery.coverImageBucket, gallery.coverImageObject, {
+      updatedAt: gallery.updatedAt,
+      cacheKey: gallery.id,
+    }) ?? gallery.coverImage ?? undefined;
   const entryLabel = gallery.stats.entryCount === 1 ? 'Entry' : 'Entries';
 
   if (!onOpenGallery) {
