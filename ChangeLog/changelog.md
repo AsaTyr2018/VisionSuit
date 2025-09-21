@@ -430,3 +430,8 @@
 - **General**: Restored the ranking admin workspace so weights, tiers, and curator actions work reliably for administrators.
 - **Technical Changes**: Required authenticated admin access for `/api/rankings` endpoints, buffered ranking input handlers against React event reuse, and refreshed README guidance around the responsive admin panel.
 - **Data Changes**: None.
+
+## 088 – Model management mainframe
+- **General**: Simplified the admin model overview to focus on previews and names while moving detailed editing into the mainframe workspace.
+- **Technical Changes**: Reworked the `AdminPanel` model tab to highlight grid cards with a Manage action, introduced a dedicated mainframe form/versions layout, refreshed selection handling, and updated styling to support the new structure.
+- **Data Changes**: None; presentation and client-side workflow updates only.
