@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'rea
 
 import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
 
+import { api, ApiError } from '../lib/api';
 import { resolveStorageUrl } from '../lib/storage';
 
 import { FilterChip } from './FilterChip';
@@ -22,6 +23,8 @@ interface GalleryExplorerProps {
   onGalleryUpdated?: (gallery: Gallery) => void;
   onImageUpdated?: (image: ImageAsset) => void;
   onOpenProfile?: (userId: string) => void;
+  onGalleryDeleted?: (galleryId: string) => void;
+  onImageDeleted?: (imageId: string) => void;
 }
 
 type VisibilityFilter = 'all' | 'public' | 'private';
@@ -205,6 +208,8 @@ export const GalleryExplorer = ({
   onGalleryUpdated,
   onImageUpdated,
   onOpenProfile,
+  onGalleryDeleted,
+  onImageDeleted,
 }: GalleryExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [visibility, setVisibility] = useState<VisibilityFilter>('all');
@@ -216,6 +221,10 @@ export const GalleryExplorer = ({
   const [activeImage, setActiveImage] = useState<GalleryImageEntry | null>(null);
   const [galleryToEdit, setGalleryToEdit] = useState<Gallery | null>(null);
   const [imageToEdit, setImageToEdit] = useState<ImageAsset | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [isDeletingGallery, setIsDeletingGallery] = useState(false);
+  const [imageModalError, setImageModalError] = useState<string | null>(null);
+  const [imageDeletionId, setImageDeletionId] = useState<string | null>(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -335,12 +344,16 @@ export const GalleryExplorer = ({
   useEffect(() => {
     if (!activeGallery) {
       setGalleryToEdit(null);
+      setDetailError(null);
+      setIsDeletingGallery(false);
     }
   }, [activeGallery]);
 
   useEffect(() => {
     if (!activeImage) {
       setImageToEdit(null);
+      setImageModalError(null);
+      setImageDeletionId(null);
     }
   }, [activeImage]);
 
@@ -418,6 +431,73 @@ export const GalleryExplorer = ({
           (currentUser.role === 'ADMIN' || currentUser.id === activeImage.image.owner.id),
       ),
     [activeImage, authToken, currentUser],
+  );
+
+  const handleDeleteGallery = useCallback(async () => {
+    if (!activeGallery) {
+      return;
+    }
+
+    if (!authToken || !canManageActiveGallery) {
+      setDetailError('Please sign in to manage this collection.');
+      return;
+    }
+
+    const confirmation = `Delete “${activeGallery.title}”? This cannot be undone.\nNicht umkehrbar ist wenn gelöscht wird. weg ist weg.`;
+    if (!window.confirm(confirmation)) {
+      return;
+    }
+
+    try {
+      setIsDeletingGallery(true);
+      setDetailError(null);
+      await api.deleteGallery(authToken, activeGallery.id);
+      onGalleryDeleted?.(activeGallery.id);
+      closeDetail();
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setDetailError(error.message);
+      } else if (error instanceof Error) {
+        setDetailError(error.message);
+      } else {
+        setDetailError('Unknown error while deleting the collection.');
+      }
+    } finally {
+      setIsDeletingGallery(false);
+    }
+  }, [activeGallery, authToken, canManageActiveGallery, closeDetail, onGalleryDeleted]);
+
+  const handleDeleteImage = useCallback(
+    async (entry: GalleryImageEntry) => {
+      if (!authToken || !canManageActiveImage) {
+        setImageModalError('Please sign in to manage this image.');
+        return;
+      }
+
+      const confirmation = `Delete image “${entry.image.title}”? This cannot be undone.\nNicht umkehrbar ist wenn gelöscht wird. weg ist weg.`;
+      if (!window.confirm(confirmation)) {
+        return;
+      }
+
+      try {
+        setImageDeletionId(entry.image.id);
+        setImageModalError(null);
+        await api.deleteImageAsset(authToken, entry.image.id);
+        onImageDeleted?.(entry.image.id);
+        setActiveImage(null);
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setImageModalError(error.message);
+        } else if (error instanceof Error) {
+          setImageModalError(error.message);
+        } else {
+          setImageModalError('Unknown error while deleting the image.');
+        }
+      } finally {
+        setImageDeletionId((current) => (current === entry.image.id ? null : current));
+      }
+    },
+    [authToken, canManageActiveImage, onImageDeleted],
   );
 
   useEffect(() => {
@@ -640,18 +720,33 @@ export const GalleryExplorer = ({
                 </div>
                 <div className="gallery-detail__actions">
                   {canManageActiveGallery ? (
-                    <button
-                      type="button"
-                      className="gallery-detail__edit"
-                      onClick={() => setGalleryToEdit(activeGallery)}
-                    >
-                      Edit collection
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="gallery-detail__edit"
+                        onClick={() => setGalleryToEdit(activeGallery)}
+                      >
+                        Edit collection
+                      </button>
+                      <button
+                        type="button"
+                        className="gallery-detail__delete"
+                        onClick={handleDeleteGallery}
+                        disabled={isDeletingGallery}
+                      >
+                        {isDeletingGallery ? 'Deleting…' : 'Delete collection'}
+                      </button>
+                    </>
                   ) : null}
                   <button type="button" className="gallery-detail__close" onClick={closeDetail}>
                     Back to galleries
                   </button>
                 </div>
+                {detailError ? (
+                  <p className="gallery-detail__error" role="alert">
+                    {detailError}
+                  </p>
+                ) : null}
               </header>
 
               {activeGallery.description ? (
@@ -737,13 +832,23 @@ export const GalleryExplorer = ({
               </div>
               <div className="gallery-image-modal__actions">
                 {canManageActiveImage ? (
-                  <button
-                    type="button"
-                    className="gallery-image-modal__edit"
-                    onClick={() => setImageToEdit(activeImage.image)}
-                  >
-                    Edit image
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="gallery-image-modal__edit"
+                      onClick={() => setImageToEdit(activeImage.image)}
+                    >
+                      Edit image
+                    </button>
+                    <button
+                      type="button"
+                      className="gallery-image-modal__delete"
+                      onClick={() => handleDeleteImage(activeImage)}
+                      disabled={imageDeletionId === activeImage.image.id}
+                    >
+                      {imageDeletionId === activeImage.image.id ? 'Deleting…' : 'Delete image'}
+                    </button>
+                  </>
                 ) : null}
                 <button
                   type="button"
@@ -754,6 +859,11 @@ export const GalleryExplorer = ({
                   ×
                 </button>
               </div>
+              {imageModalError ? (
+                <p className="gallery-image-modal__error" role="alert">
+                  {imageModalError}
+                </p>
+              ) : null}
             </header>
             <div className="gallery-image-modal__body">
               <div className="gallery-image-modal__media">

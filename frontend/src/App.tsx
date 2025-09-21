@@ -347,6 +347,42 @@ export const App = () => {
     });
   }, []);
 
+  const handleAssetDeleted = useCallback(
+    (assetId: string) => {
+      setAssets((previous) => previous.filter((asset) => asset.id !== assetId));
+      setGalleries((previous) =>
+        previous.map((gallery) => ({
+          ...gallery,
+          entries: gallery.entries.filter((entry) => entry.modelAsset?.id !== assetId),
+        })),
+      );
+      refreshData().catch((error) => console.error('Failed to refresh after model deletion', error));
+    },
+    [refreshData],
+  );
+
+  const handleGalleryDeleted = useCallback(
+    (galleryId: string) => {
+      setGalleries((previous) => previous.filter((gallery) => gallery.id !== galleryId));
+      refreshData().catch((error) => console.error('Failed to refresh after gallery deletion', error));
+    },
+    [refreshData],
+  );
+
+  const handleImageDeleted = useCallback(
+    (imageId: string) => {
+      setImages((previous) => previous.filter((image) => image.id !== imageId));
+      setGalleries((previous) =>
+        previous.map((gallery) => ({
+          ...gallery,
+          entries: gallery.entries.filter((entry) => entry.imageAsset?.id !== imageId),
+        })),
+      );
+      refreshData().catch((error) => console.error('Failed to refresh after image deletion', error));
+    },
+    [refreshData],
+  );
+
   const handleOpenAssetUpload = () => {
     if (!isAuthenticated) {
       setIsLoginOpen(true);
@@ -680,9 +716,11 @@ export const App = () => {
           externalSearchQuery={modelTagQuery}
           onExternalSearchApplied={() => setModelTagQuery(null)}
           onAssetUpdated={handleAssetUpdated}
+          onAssetDeleted={handleAssetDeleted}
           authToken={token}
           currentUser={authUser}
           onOpenProfile={handleOpenUserProfile}
+          onGalleryUpdated={handleGalleryUpdated}
         />
       );
     }
@@ -703,6 +741,8 @@ export const App = () => {
           onGalleryUpdated={handleGalleryUpdated}
           onImageUpdated={handleImageUpdated}
           onOpenProfile={handleOpenUserProfile}
+          onGalleryDeleted={handleGalleryDeleted}
+          onImageDeleted={handleImageDeleted}
         />
       );
     }

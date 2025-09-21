@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – Curator asset lifecycle tools
+- **General**: Empowered curators and admins to fully manage models, collections, and images with safe deletion workflows and flexible gallery links.
+- **Technical Changes**: Added a backend endpoint for linking models to galleries, refreshed the model explorer with irreversible delete confirmations and link management UI, expanded the gallery explorer with delete actions, updated shared styles, and extended the API client plus app state handlers.
+- **Data Changes**: None; feature relies on existing Prisma models.
+
 ## 033 – Ranking administration suite (commit TBD)
 - **General**: Empowered administrators to tune ranking math, expand the ladder, and moderate curator visibility.
 - **Technical Changes**: Added configurable ranking settings and tier management APIs, introduced user-specific ranking overrides, refreshed profile scoring with dynamic weights, and surfaced ranking blocks in the UI.
@@ -450,3 +455,8 @@
 - **General**: Restored comprehensive moderation access so administrators always see every model, gallery, and image without toggling audit mode in the workspace.
 - **Technical Changes**: Let admin requests bypass `isPublic` filters across asset and gallery listings, ensured gallery serialization includes private entries for admins, and allowed admin profile views to include private uploads while leaving audit mode behavior intact.
 - **Data Changes**: None; visibility rules operate on existing records only.
+
+## 092 – Curator deletion & linking hardening
+- **General**: Finalized curator-facing deletion and gallery linking so model and collection maintenance works without admin support.
+- **Technical Changes**: Regenerated the Prisma client, tightened gallery mapper typings, restored missing backend type imports, and verified linting for both backend and frontend workspaces.
+- **Data Changes**: None; the feature operates on existing Prisma models.

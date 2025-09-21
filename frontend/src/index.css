@@ -3455,6 +3455,32 @@ main {
   outline: none;
 }
 
+.asset-detail__delete {
+  border: none;
+  background: rgba(220, 38, 38, 0.3);
+  color: rgba(254, 226, 226, 0.9);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.asset-detail__delete:hover,
+.asset-detail__delete:focus-visible {
+  background: rgba(220, 38, 38, 0.5);
+  color: #ffffff;
+  outline: none;
+}
+
+.asset-detail__delete:disabled {
+  cursor: wait;
+  background: rgba(120, 53, 15, 0.35);
+  color: rgba(248, 250, 252, 0.65);
+}
+
 .asset-detail__close {
   border: none;
   background: rgba(15, 23, 42, 0.45);
@@ -3765,6 +3791,130 @@ main {
   background: rgba(15, 23, 42, 0.55);
   border-color: rgba(148, 163, 184, 0.35);
   color: rgba(148, 163, 184, 0.7);
+}
+
+.asset-detail__gallery-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.asset-detail__gallery-links-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.asset-detail__gallery-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asset-detail__gallery-links-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.asset-detail__gallery-links-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.asset-detail__gallery-remove {
+  border: none;
+  background: rgba(244, 63, 94, 0.18);
+  color: rgba(254, 226, 226, 0.92);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.asset-detail__gallery-remove:hover,
+.asset-detail__gallery-remove:focus-visible {
+  background: rgba(244, 63, 94, 0.32);
+  color: #ffffff;
+  outline: none;
+}
+
+.asset-detail__gallery-remove:disabled {
+  cursor: wait;
+  background: rgba(71, 85, 105, 0.4);
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.asset-detail__gallery-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.asset-detail__gallery-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.asset-detail__gallery-select select,
+.asset-detail__gallery-note input {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.85rem;
+  min-width: 12rem;
+}
+
+.asset-detail__gallery-select select:disabled,
+.asset-detail__gallery-note input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.asset-detail__gallery-submit {
+  border: none;
+  background: rgba(34, 197, 94, 0.25);
+  color: rgba(220, 252, 231, 0.95);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.asset-detail__gallery-submit:hover,
+.asset-detail__gallery-submit:focus-visible {
+  background: rgba(34, 197, 94, 0.4);
+  color: #ffffff;
+  outline: none;
+}
+
+.asset-detail__gallery-submit:disabled {
+  cursor: not-allowed;
+  background: rgba(71, 85, 105, 0.4);
+  color: rgba(226, 232, 240, 0.65);
+}
+
+.asset-detail__gallery-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(248, 113, 113, 0.95);
 }
 
 .asset-detail__section--tags {
@@ -5903,6 +6053,38 @@ button {
   outline: none;
 }
 
+.gallery-detail__delete {
+  border: none;
+  background: rgba(220, 38, 38, 0.28);
+  color: rgba(254, 226, 226, 0.92);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.gallery-detail__delete:hover,
+.gallery-detail__delete:focus-visible {
+  background: rgba(220, 38, 38, 0.45);
+  color: #ffffff;
+  outline: none;
+}
+
+.gallery-detail__delete:disabled {
+  cursor: wait;
+  background: rgba(120, 53, 15, 0.4);
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.gallery-detail__error {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: rgba(248, 113, 113, 0.95);
+}
+
 .gallery-detail__badge {
   display: inline-flex;
   align-items: center;
@@ -6118,6 +6300,38 @@ button {
   background: rgba(59, 130, 246, 0.5);
   color: #ffffff;
   outline: none;
+}
+
+.gallery-image-modal__delete {
+  border: none;
+  background: rgba(220, 38, 38, 0.28);
+  color: rgba(254, 226, 226, 0.92);
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.gallery-image-modal__delete:hover,
+.gallery-image-modal__delete:focus-visible {
+  background: rgba(220, 38, 38, 0.45);
+  color: #ffffff;
+  outline: none;
+}
+
+.gallery-image-modal__delete:disabled {
+  cursor: wait;
+  background: rgba(120, 53, 15, 0.4);
+  color: rgba(248, 250, 252, 0.7);
+}
+
+.gallery-image-modal__error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: rgba(248, 113, 113, 0.95);
 }
 
 .gallery-image-modal__header h3 {
