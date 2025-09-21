@@ -839,6 +839,7 @@ export const App = () => {
     activeView === 'profile' && activeProfile
       ? `Featuring ${activeProfile.stats.modelCount} model${activeProfile.stats.modelCount === 1 ? '' : 's'} and ${activeProfile.stats.galleryCount} collection${activeProfile.stats.galleryCount === 1 ? '' : 's'}.`
       : currentMeta.description;
+  const currentYear = new Date().getFullYear();
 
   return (
     <div className="app">
@@ -956,6 +957,27 @@ export const App = () => {
             {errorMessage ? <div className="content__alert">{errorMessage}</div> : null}
 
             {renderContent()}
+
+            <footer className="footer" aria-label="Support and credits">
+              <div>
+                <p className="footer__title">VisionSuit Support</p>
+                <div className="footer__links">
+                  <a href="https://discord.gg/UEb68YQwKR" target="_blank" rel="noreferrer noopener">
+                    Join the Discord Support Hub
+                  </a>
+                  <a href="https://github.com/MythosMachina" target="_blank" rel="noreferrer noopener">
+                    MythosMachina Studio
+                  </a>
+                  <a href="https://github.com/AsaTyr2018/" target="_blank" rel="noreferrer noopener">
+                    AsaTyr on GitHub
+                  </a>
+                </div>
+              </div>
+              <div className="footer__status">
+                <span>© {currentYear} MythosMachina. All rights reserved.</span>
+                <span>Developed by AsaTyr.</span>
+              </div>
+            </footer>
           </div>
         </div>
       </div>

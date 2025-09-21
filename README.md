@@ -41,6 +41,10 @@ VisionSuit is evolving toward a richer community layer featuring reactions, thre
 
 An [On-Site Image Generator Project Plan](docs/on-site-image-generator-plan.md) details how a headless ComfyUI service, MinIO-hosted models, and curated review tooling will deliver in-platform rendering with governed moderation and retention workflows.
 
+## Support & Credits
+
+For real-time assistance, join the [VisionSuit Support Discord](https://discord.gg/UEb68YQwKR). VisionSuit is produced by [MythosMachina](https://github.com/MythosMachina) and developed by [AsaTyr](https://github.com/AsaTyr2018/).
+
 ## Architecture Overview
 
 | Layer | Purpose & Key Technologies |

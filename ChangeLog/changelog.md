@@ -540,3 +540,8 @@
 - **General**: Prioritized the enlarged image view by relocating gallery comments into a collapsible side panel.
 - **Technical Changes**: Embedded the comment section inside the metadata column, added a show/hide toggle with smooth focus handling, adjusted modal layout measurements, and refined styles so the side rail scrolls independently without obscuring the media.
 - **Data Changes**: None; UI-only adjustments.
+
+## 108 – Support channel and credits
+- **General**: Added community support details and proper project attribution.
+- **Technical Changes**: Introduced a global footer in the frontend with Discord support and MythosMachina/AsaTyr credits, and refreshed the README with matching links.
+- **Data Changes**: None.
