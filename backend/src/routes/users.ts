@@ -270,7 +270,8 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
     const auditParam = `${req.query.audit ?? ''}`.toLowerCase();
     const wantsAudit = auditParam === '1' || auditParam === 'true';
     const isAuditView = Boolean(viewer && viewer.role === 'ADMIN' && wantsAudit);
-    const includePrivate = isAuditView || viewer?.id === id;
+    const isAdmin = viewer?.role === 'ADMIN';
+    const includePrivate = isAuditView || isAdmin || viewer?.id === id;
 
     const [models, galleries, imageCount] = await Promise.all([
       prisma.modelAsset.findMany({

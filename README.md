@@ -5,7 +5,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 ## Core Highlights
 
 - **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus glassy health cards with color-coded LED beacons for the front end, API, and MinIO services.
-- **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, protected upload flows, and private uploads that stay exclusive to their owner unless an administrator explicitly enters audit mode from the curator profile.
+- **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, protected upload flows, and private uploads that stay exclusive to their owner for curators while administrators always see the full inventory in their workspace (with optional audit mode on curator profiles for spot checks).
 - **Self-service account management** – Sidebar account settings let curators update their display name, bio, and password and now proxy uploaded avatars (PNG/JPG/WebP ≤ 5 MB) through the API while removing manual image URLs for safer defaults.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
@@ -18,7 +18,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Curators can edit their own models, collections, and images directly from the explorers, while administrators continue to see edit controls for every entry.
-- Private uploads remain hidden from other curators; administrators can temporarily reveal them by clicking the new **Audit** button on curator profiles when moderation is required.
+- Private uploads remain hidden from other curators; the administration workspace now surfaces every model, gallery, and image for admins by default, while the **Audit** toggle on curator profiles remains available for targeted moderation checks.
 - Signed-in users can open the **Account settings** dialog from the sidebar to adjust profile details or rotate their password in a single modal workflow.
 - Administration workspace now offers moderation grids for models and images, ranking controls (weights, tiers, and user resets), a streamlined model gallery that opens full management controls in the mainframe, persistent bulk tools tuned for six-figure libraries, multi-step onboarding with permission previews, and one-click actions to promote, rename, or remove secondary model versions. Ranking inputs immediately cache typed values so the tab stays responsive while backend refreshes complete.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
