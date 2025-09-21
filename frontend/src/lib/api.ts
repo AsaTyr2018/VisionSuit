@@ -2,6 +2,9 @@ import type {
   AuthResponse,
   AssetComment,
   Gallery,
+  GeneratorAccessMode,
+  GeneratorRequestSummary,
+  GeneratorSettings,
   ImageAsset,
   MetaStats,
   ModelAsset,
@@ -58,6 +61,18 @@ interface UpdateGalleryPayload {
   coverImage?: string | null;
   entries?: { id: string; position: number; note?: string | null }[];
   removeEntryIds?: string[];
+}
+
+interface CreateGeneratorRequestPayload {
+  baseModelId: string;
+  prompt: string;
+  negativePrompt?: string | null;
+  seed?: string | null;
+  guidanceScale?: number | null;
+  steps?: number | null;
+  width: number;
+  height: number;
+  loras: { id: string; strength: number }[];
 }
 
 const request = async <T>(path: string, options: RequestInit = {}, token?: string): Promise<T> => {
@@ -261,6 +276,34 @@ const deleteModelVersion = async (token: string, modelId: string, versionId: str
     token,
   );
 
+const getGeneratorSettings = (token?: string) =>
+  request<{ settings: GeneratorSettings }>('/api/generator/settings', {}, token).then((response) => response.settings);
+
+const updateGeneratorSettings = (token: string, accessMode: GeneratorAccessMode) =>
+  request<{ settings: GeneratorSettings }>(
+    '/api/generator/settings',
+    {
+      method: 'PUT',
+      body: JSON.stringify({ accessMode }),
+    },
+    token,
+  ).then((response) => response.settings);
+
+const createGeneratorRequest = (token: string, payload: CreateGeneratorRequestPayload) =>
+  request<{ request: GeneratorRequestSummary }>(
+    '/api/generator/requests',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    token,
+  ).then((response) => response.request);
+
+const getGeneratorRequests = (token: string, scope: 'mine' | 'all' = 'mine') => {
+  const path = scope === 'all' ? '/api/generator/requests?scope=all' : '/api/generator/requests';
+  return request<{ requests: GeneratorRequestSummary[] }>(path, {}, token).then((response) => response.requests);
+};
+
 const likeImageAsset = (token: string, imageId: string) =>
   request<{ image: ImageAsset }>(
     `/api/assets/images/${imageId}/likes`,
@@ -290,6 +333,10 @@ export const api = {
   updateModelVersion: putModelVersion,
   promoteModelVersion,
   deleteModelVersion,
+  getGeneratorSettings,
+  updateGeneratorSettings,
+  createGeneratorRequest,
+  getGeneratorRequests,
   getModelComments: (modelId: string, token?: string | null) =>
     request<{ comments: AssetComment[] }>(`/api/assets/models/${modelId}/comments`, {}, token ?? undefined).then(
       (response) => response.comments,

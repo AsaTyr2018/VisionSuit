@@ -13,6 +13,11 @@ enum UserRole {
   ADMIN
 }
 
+enum GeneratorAccessMode {
+  ADMIN_ONLY
+  MEMBERS
+}
+
 model User {
   id          String       @id @default(cuid())
   email       String       @unique
@@ -35,6 +40,7 @@ model User {
   imageCommentLikes ImageCommentLike[]
   uploadDrafts UploadDraft[]
   rankingState UserRankingState?
+  generatorRequests GeneratorRequest[]
 }
 
 model Gallery {
@@ -70,6 +76,7 @@ model ModelAsset {
   galleryItems GalleryEntry[] @relation("GalleryModel")
   versions     ModelVersion[]
   comments     ModelComment[]
+  generatorRequests GeneratorRequest[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -261,6 +268,33 @@ model RankingSettings {
   imageWeight   Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model GeneratorSettings {
+  id         Int                  @id @default(autoincrement())
+  accessMode GeneratorAccessMode  @default(ADMIN_ONLY)
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+}
+
+model GeneratorRequest {
+  id             String                @id @default(cuid())
+  userId         String
+  baseModelId    String
+  prompt         String
+  negativePrompt String?
+  seed           String?
+  guidanceScale  Float?
+  steps          Int?
+  width          Int
+  height         Int
+  loraSelections Json?
+  status         String               @default("draft")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id])
+  baseModel ModelAsset @relation(fields: [baseModelId], references: [id])
 }
 
 model RankTier {

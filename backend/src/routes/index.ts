@@ -8,6 +8,7 @@ import { uploadsRouter } from './uploads';
 import { storageRouter } from './storage';
 import { usersRouter } from './users';
 import { rankingsRouter } from './rankings';
+import { generatorRouter } from './generator';
 
 export const router = Router();
 
@@ -19,3 +20,4 @@ router.use('/uploads', uploadsRouter);
 router.use('/storage', storageRouter);
 router.use('/users', usersRouter);
 router.use('/rankings', rankingsRouter);
+router.use('/generator', generatorRouter);
