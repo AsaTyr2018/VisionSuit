@@ -535,3 +535,8 @@
 - **General**: Opened persistent discussions on modelcards and gallery imagery with inline like toggles for every response.
 - **Technical Changes**: Added Prisma tables for model/image comments plus likes, exposed REST endpoints for loading, posting, and reacting to comments, wired new API helpers, built a reusable CommentSection component with anchors in both explorers, and refreshed styling plus README highlights for the quick comment links.
 - **Data Changes**: Introduced the `ModelComment`, `ModelCommentLike`, `ImageComment`, and `ImageCommentLike` tables via Prisma migration.
+
+## 107 – Gallery comment visibility controls
+- **General**: Prioritized the enlarged image view by relocating gallery comments into a collapsible side panel.
+- **Technical Changes**: Embedded the comment section inside the metadata column, added a show/hide toggle with smooth focus handling, adjusted modal layout measurements, and refined styles so the side rail scrolls independently without obscuring the media.
+- **Data Changes**: None; UI-only adjustments.
