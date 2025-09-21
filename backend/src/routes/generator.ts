@@ -6,6 +6,10 @@ import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
+import {
+  syncGeneratorBaseModels,
+  type GeneratorBaseModelObject,
+} from '../lib/generator/baseModelSync';
 import { resolveStorageLocation, storageClient } from '../lib/storage';
 
 const generatorRouter = Router();
@@ -39,13 +43,33 @@ const readStreamToString = async (stream: NodeJS.ReadableStream): Promise<string
   return Buffer.concat(chunks).toString('utf-8');
 };
 
-const collectManifestEntries = (payload: unknown): string[] => {
+const parseManifestSize = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const collectManifestEntries = (payload: unknown): GeneratorBaseModelObject[] => {
   if (!payload) {
     return [];
   }
 
   if (typeof payload === 'string') {
-    return [payload];
+    return [{ name: payload, size: null }];
   }
 
   if (Array.isArray(payload)) {
@@ -72,10 +96,32 @@ const collectManifestEntries = (payload: unknown): string[] => {
     record.fileName ??
     record.filename;
 
-  const results: string[] = [];
+  const sizeCandidates = [
+    'size',
+    'Size',
+    'filesize',
+    'fileSize',
+    'length',
+    'Length',
+    'contentLength',
+    'ContentLength',
+    'bytes',
+    'Bytes',
+  ];
+
+  let detectedSize: number | null = null;
+  for (const key of sizeCandidates) {
+    const parsed = parseManifestSize(record[key]);
+    if (parsed !== null) {
+      detectedSize = parsed;
+      break;
+    }
+  }
+
+  const results: GeneratorBaseModelObject[] = [];
 
   if (typeof directKey === 'string') {
-    results.push(directKey);
+    results.push({ name: directKey, size: detectedSize });
   }
 
   const nestedKeys = [
@@ -135,8 +181,8 @@ const normalizeManifestObjectName = (value: string): string | null => {
   return trimmed;
 };
 
-const loadObjectNamesFromManifest = async (): Promise<Set<string>> => {
-  const manifestNames = new Set<string>();
+const loadObjectNamesFromManifest = async (): Promise<Map<string, GeneratorBaseModelObject>> => {
+  const manifestNames = new Map<string, GeneratorBaseModelObject>();
 
   for (const objectName of manifestCandidateObjects) {
     try {
@@ -157,9 +203,9 @@ const loadObjectNamesFromManifest = async (): Promise<Set<string>> => {
 
       const entries = collectManifestEntries(parsed);
       for (const entry of entries) {
-        const normalized = typeof entry === 'string' ? normalizeManifestObjectName(entry) : null;
+        const normalized = typeof entry.name === 'string' ? normalizeManifestObjectName(entry.name) : null;
         if (normalized) {
-          manifestNames.add(normalized);
+          manifestNames.set(normalized, { name: normalized, size: entry.size ?? null });
         }
       }
 
@@ -287,7 +333,8 @@ generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
         const stream = storageClient.listObjects(generatorBaseModelBucket, '', true);
         for await (const item of stream) {
           if (item.name) {
-            objectNames.add(item.name);
+            const size = typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : null;
+            objectNames.set(item.name, { name: item.name, size });
           }
         }
       } catch (error) {
@@ -295,6 +342,16 @@ generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
         res.status(502).json({ message: 'Could not list base models from storage.' });
         return;
       }
+    }
+
+    try {
+      await syncGeneratorBaseModels({
+        prisma,
+        bucket: generatorBaseModelBucket,
+        ...(objectNames.size > 0 ? { objects: objectNames.values() } : {}),
+      });
+    } catch (error) {
+      console.warn('Failed to synchronize generator base models automatically', error);
     }
 
     const viewer = req.user!;

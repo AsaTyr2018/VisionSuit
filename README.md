@@ -87,14 +87,14 @@ During execution the installer:
 4. Provisions MinIO credentials, configures buckets, and launches the `visionsuit-minio` container.
 5. Offers optional execution of `npm run prisma:migrate`, `npm run seed`, and `npm run create-admin` for initial data.
 
-Base checkpoints for the On-Site Generator live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `backend/.env` with `GENERATOR_BASE_MODEL_BUCKET` and inside `frontend/.env` via `VITE_GENERATOR_BASE_MODEL_BUCKET` so the generator UI continues to list only the real ComfyUI base models. After uploading or syncing new checkpoints into that bucket, register them with the VisionSuit database so the generator can resolve permissions and metadata:
+Base checkpoints for the On-Site Generator live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `backend/.env` with `GENERATOR_BASE_MODEL_BUCKET` and inside `frontend/.env` via `VITE_GENERATOR_BASE_MODEL_BUCKET` so the generator UI continues to list only the real ComfyUI base models. As soon as new checkpoints land in that bucket the backend now auto-registers them while serving the generator picker, ensuring the latest assets appear without manual intervention. For headless maintenance windows or CI pipelines the helper remains available to pre-seed the catalog explicitly:
 
 ```bash
 cd backend
 npm run generator:sync-base-models
 ```
 
-The helper script cross-references the configured bucket, creates public `checkpoint` model assets for any missing entries, and refreshes ownership/metadata for existing records so curators immediately see the freshly added base models inside the On-Site Generator picker.
+The helper script cross-references the configured bucket, creates public `checkpoint` model assets for any missing entries, and refreshes ownership/metadata for existing records—useful when preparing a dataset before users sign in or when scripting migrations.
 
 Installations where the MinIO or S3 credentials lack `ListObjects` can still power the base-model picker by exposing a manifest JSON inside the same bucket (default `minio-model-manifest.json`) that enumerates object keys. The backend reads this manifest before falling back to live bucket listing. Override the filename through `GENERATOR_BASE_MODEL_MANIFEST` whenever the manifest ships under a different key—`gpuworker/scripts/generate-model-manifest.sh` produces a compatible payload automatically.
 
