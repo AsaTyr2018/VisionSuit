@@ -591,3 +591,8 @@
 - **General**: Fixed GPU workflow validation runs that previously failed on ComfyUI by supplying an API-format prompt.
 - **Technical Changes**: Replaced `gpuworker/workflows/validation.json` with a direct ComfyUI prompt map and updated both READMEs to stress exporting workflows via **Save (API Format)** before posting them with `test-run-workflow.sh`.
 - **Data Changes**: Workflow JSON now stores node parameters in API layout while still referencing the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` LoRA.
+
+## 117 – GPU worker checkpoint sync helper
+- **General**: Equipped GPU render nodes with a direct command to mirror required checkpoints ahead of validation runs.
+- **Technical Changes**: Added a MinIO-backed `sync-checkpoints` utility, registered it with the installer, pre-created the checkpoints directory, and expanded the workflow tester to surface missing assets with actionable guidance.
+- **Data Changes**: Refreshed the primary README and GPU worker guide to document the new helper and the need to sync checkpoints alongside LoRAs.

@@ -27,7 +27,7 @@ CPU_TORCH_INDEX_URL="${CPU_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-$CUDA_TORCH_INDEX_URL}"
 GPU_VENDOR="${GPU_VENDOR:-unknown}"
 SCRIPTS_SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts"
-SCRIPT_NAMES=(generate-model-manifest.sh sync-loras.sh upload-outputs.sh)
+SCRIPT_NAMES=(generate-model-manifest.sh sync-checkpoints.sh sync-loras.sh upload-outputs.sh)
 MINIO_TARGET_ENDPOINT="${MINIO_ENDPOINT:-}"
 MINIO_TARGET_SECURE="${MINIO_SECURE:-}"
 
@@ -290,6 +290,7 @@ setup_python() {
 prepare_directories() {
   log "Ensuring asset directories exist"
   install -d -m 0775 "$MODEL_ROOT"
+  install -d -m 0775 "$MODEL_ROOT/checkpoints"
   install -d -m 0775 "$LORA_ROOT"
   install -d -m 0775 "$OUTPUT_ROOT"
   chown -R "$COMFY_USER":"$COMFY_GROUP" "$MODEL_ROOT" "$LORA_ROOT" "$OUTPUT_ROOT"
