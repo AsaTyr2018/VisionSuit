@@ -636,3 +636,8 @@
 - **General**: Allowed the On-Site Generator to surface base models even when MinIO access is limited to manifest reads instead of bucket listings.
 - **Technical Changes**: Added manifest parsing and normalization inside `/api/generator/base-models`, introduced the configurable `GENERATOR_BASE_MODEL_MANIFEST` default, refreshed `.env` templates, and documented the workflow in the README.
 - **Data Changes**: None; updates touch configuration defaults and documentation only.
+
+## 126 – Generator base-model auto-sync
+- **General**: Ensured On-Site Generator base checkpoints appear immediately by syncing the database from the ComfyUI bucket on demand.
+- **Technical Changes**: Added reusable generator base-model sync helpers, wired the `/api/generator/base-models` route to auto-register checkpoints using manifest sizes, refreshed the CLI sync script, and documented the behavior in the README.
+- **Data Changes**: No schema updates; existing base-model metadata is normalized when the sync runs.
