@@ -109,6 +109,7 @@ The script upserts an `ADMIN` role account, activates it, and stores the hashed 
 ### Dedicated GPU worker provisioning
 
 A remote ComfyUI render node can be prepared independently of the VisionSuit stack. Copy the [`gpuworker/`](gpuworker/README.md) directory to the GPU host, run `sudo ./gpuworker/install.sh`, and provide the MinIO endpoint URL when prompted so the worker targets the correct storage instance. The installer now autodetects NVIDIA and AMD GPUs, installs the matching driver stack (CUDA with the distribution-recommended NVIDIA package or ROCm + HIP for AMD), and falls back to CPU-only PyTorch wheels when no discrete GPU is found. After installation, populate `/etc/comfyui/minio.env` with MinIO credentials before enabling the `comfyui` systemd service. The helper toolkit (`generate-model-manifest`, `sync-loras`, and `upload-outputs`) keeps base models, LoRAs, and rendered outputs synchronized with MinIO.
+If the host repositories omit the legacy `awscli` package, the installer automatically downloads the official AWS CLI v2 bundle so the synchronization helpers remain available.
 
 ## Development Workflow
 
