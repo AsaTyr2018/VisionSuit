@@ -500,3 +500,8 @@
 - **General**: Documented the ComfyUI-based on-site image generator concept with architecture, workflow pipeline, and rollout phases, and linked the plan in the README roadmap.
 - **Technical Changes**: Added `docs/on-site-image-generator-plan.md` detailing service topology, pipeline stages, storage strategy, and operational guidance; updated README to reference the new plan.
 - **Data Changes**: None; planning documentation only.
+
+## 100 – Generator queue & credit planning refresh
+- **General**: Expanded the on-site generator roadmap with detailed queue management and virtual credit policies.
+- **Technical Changes**: Documented Redis-backed queue operations, prioritization tiers, credit-aware submissions, ledger schema considerations, and monitoring/operational responses.
+- **Data Changes**: None; outlined prospective metadata and credit ledger fields only.
