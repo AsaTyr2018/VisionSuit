@@ -106,6 +106,10 @@ npm run create-admin -- \
 
 The script upserts an `ADMIN` role account, activates it, and stores the hashed password.
 
+### Dedicated GPU worker provisioning
+
+A remote ComfyUI render node can be prepared independently of the VisionSuit stack. Copy the [`gpuworker/`](gpuworker/README.md) directory to the GPU host, run `sudo ./gpuworker/install.sh`, and then populate `/etc/comfyui/minio.env` with MinIO credentials before enabling the `comfyui` systemd service. The helper toolkit (`generate-model-manifest`, `sync-loras`, and `upload-outputs`) keeps base models, LoRAs, and rendered outputs synchronized with MinIO.
+
 ## Development Workflow
 
 ### Unified dev starter
