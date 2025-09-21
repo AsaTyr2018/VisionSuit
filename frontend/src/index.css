@@ -3149,6 +3149,94 @@ main {
   resize: vertical;
 }
 
+.edit-dialog__cover-preview {
+  margin-top: 0.25rem;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  border: 1px dashed rgba(148, 163, 184, 0.38);
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.edit-dialog__cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.edit-dialog__cover-placeholder {
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.edit-dialog__cover-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.edit-dialog__cover-status {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.edit-dialog__cover-status--success {
+  color: rgba(134, 239, 172, 0.85);
+}
+
+.edit-dialog__cover-status--error {
+  color: rgba(254, 226, 226, 0.85);
+}
+
+.edit-dialog__cover-selector {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.75rem;
+}
+
+.edit-dialog__cover-option {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  aspect-ratio: 4 / 3;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.edit-dialog__cover-option img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.edit-dialog__cover-option:hover:not(:disabled),
+.edit-dialog__cover-option:focus-visible:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.edit-dialog__cover-option--active {
+  border-color: rgba(59, 130, 246, 0.75);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+.edit-dialog__cover-empty {
+  margin-top: 0.8rem;
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.8);
+}
+
 .edit-dialog__fieldset {
   border: 1px solid rgba(148, 163, 184, 0.3);
   border-radius: 16px;

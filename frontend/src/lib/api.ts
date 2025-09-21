@@ -430,6 +430,19 @@ export const api = {
       },
       token,
     ),
+  uploadGalleryCover: (token: string, id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('cover', file, file.name);
+
+    return request<Gallery>(
+      `/api/galleries/${id}/cover`,
+      {
+        method: 'POST',
+        body: formData,
+      },
+      token,
+    );
+  },
   updateGallery: (token: string, id: string, payload: UpdateGalleryPayload) =>
     request<Gallery>(
       `/api/galleries/${id}`,

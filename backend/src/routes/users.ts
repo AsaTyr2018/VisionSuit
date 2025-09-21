@@ -11,6 +11,7 @@ import { prisma } from '../lib/prisma';
 import { hashPassword, toAuthUser, verifyPassword } from '../lib/auth';
 import { requireAdmin, requireAuth, requireSelfOrAdmin } from '../lib/middleware/auth';
 import { resolveAvatarUrl } from '../lib/avatar';
+import { detectImageFormat, isStaticImageFormat, staticImageMimeTypes } from '../lib/image-format';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { MAX_AVATAR_SIZE_BYTES } from '../lib/uploadLimits';
 import type { ContributionCounts } from '../lib/ranking';
@@ -66,56 +67,6 @@ const avatarUpload = multer({
     fileSize: MAX_AVATAR_SIZE_BYTES,
   },
 });
-
-const isPng = (buffer: Buffer) =>
-  buffer.length >= 8 &&
-  buffer[0] === 0x89 &&
-  buffer[1] === 0x50 &&
-  buffer[2] === 0x4e &&
-  buffer[3] === 0x47 &&
-  buffer[4] === 0x0d &&
-  buffer[5] === 0x0a &&
-  buffer[6] === 0x1a &&
-  buffer[7] === 0x0a;
-
-const isJpeg = (buffer: Buffer) =>
-  buffer.length >= 4 &&
-  buffer[0] === 0xff &&
-  buffer[1] === 0xd8 &&
-  buffer[buffer.length - 2] === 0xff &&
-  buffer[buffer.length - 1] === 0xd9;
-
-const isWebp = (buffer: Buffer) =>
-  buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
-
-const isGif = (buffer: Buffer) =>
-  buffer.length >= 6 && (buffer.toString('ascii', 0, 6) === 'GIF87a' || buffer.toString('ascii', 0, 6) === 'GIF89a');
-
-const detectAvatarFormat = (buffer: Buffer): 'png' | 'jpeg' | 'webp' | 'gif' | null => {
-  if (isPng(buffer)) {
-    return 'png';
-  }
-
-  if (isJpeg(buffer)) {
-    return 'jpeg';
-  }
-
-  if (isWebp(buffer)) {
-    return 'webp';
-  }
-
-  if (isGif(buffer)) {
-    return 'gif';
-  }
-
-  return null;
-};
-
-const avatarMimeTypes: Record<'png' | 'jpeg' | 'webp', string> = {
-  png: 'image/png',
-  jpeg: 'image/jpeg',
-  webp: 'image/webp',
-};
 
 
 const pickFirstHeaderValue = (value?: string) => {
@@ -442,19 +393,19 @@ usersRouter.post('/:id/avatar', requireAuth, requireSelfOrAdmin, (req, res, next
       return;
     }
 
-    const format = detectAvatarFormat(file.buffer);
-
-    if (format === 'gif') {
-      res.status(400).json({ message: 'Animated GIFs are not supported for avatars.' });
-      return;
-    }
+    const format = detectImageFormat(file.buffer);
 
     if (!format) {
       res.status(400).json({ message: 'Avatar must be a PNG, JPEG, or WebP image.' });
       return;
     }
 
-    const mimeType = avatarMimeTypes[format];
+    if (!isStaticImageFormat(format)) {
+      res.status(400).json({ message: 'Animated GIFs are not supported for avatars.' });
+      return;
+    }
+
+    const mimeType = staticImageMimeTypes[format];
     const extension = format === 'jpeg' ? 'jpg' : format;
 
     try {

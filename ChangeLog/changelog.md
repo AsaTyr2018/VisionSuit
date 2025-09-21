@@ -465,3 +465,8 @@
 - **General**: Prevented the model explorer from crashing when opening the page by initializing gallery linking state safely.
 - **Technical Changes**: Reordered the gallery memoization and effect in `frontend/src/components/AssetExplorer.tsx` so React never references `linkableGalleries` before it is computed.
 - **Data Changes**: None; client-side state management only.
+
+## 094 – Collection cover picker
+- **General**: Replaced the manual cover URL input with dedicated actions to upload a new image or pick one from the collection itself.
+- **Technical Changes**: Added a gallery cover upload endpoint with image validation and storage cleanup, refreshed the gallery editor UI with preview/status handling, selection grid styling, and API wiring for immediate updates, and exposed a client helper for the new upload call.
+- **Data Changes**: None; cover selections reuse existing gallery/image records.
