@@ -64,6 +64,73 @@ export interface StorageLocation {
   url: string | null;
 }
 
+const normalizedPublicUrl = appConfig.storage.publicUrl.replace(/\/+$/, '');
+
+const publicUrlComponents = (() => {
+  try {
+    const parsed = new URL(normalizedPublicUrl);
+    return {
+      origin: parsed.origin,
+      pathname: parsed.pathname.replace(/\/$/, ''),
+    };
+  } catch (error) {
+    console.warn('Failed to parse storage public URL for resolution logic', error);
+    return null;
+  }
+})();
+
+const tryResolveFromPublicHttpUrl = (value: string): StorageLocation | null => {
+  if (!publicUrlComponents) {
+    return null;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch (error) {
+    return null;
+  }
+
+  if (parsed.origin !== publicUrlComponents.origin) {
+    return null;
+  }
+
+  const basePath = publicUrlComponents.pathname;
+  let objectPath = parsed.pathname;
+
+  if (basePath && basePath.length > 0) {
+    if (!objectPath.startsWith(basePath)) {
+      return null;
+    }
+
+    objectPath = objectPath.slice(basePath.length);
+  }
+
+  objectPath = objectPath.replace(/^\/+/, '');
+
+  if (objectPath.length === 0) {
+    return null;
+  }
+
+  const [bucket, ...rest] = objectPath.split('/');
+
+  if (!bucket || rest.length === 0) {
+    return null;
+  }
+
+  const decodedSegments: string[] = [];
+  for (const segment of rest) {
+    try {
+      decodedSegments.push(decodeURIComponent(segment));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  const objectName = decodedSegments.join('/');
+  return { bucket, objectName, url: value };
+};
+
 export const resolveStorageLocation = (value?: string | null): StorageLocation => {
   if (!value) {
     return { bucket: null, objectName: null, url: null };
@@ -82,6 +149,11 @@ export const resolveStorageLocation = (value?: string | null): StorageLocation =
   }
 
   if (value.startsWith('http://') || value.startsWith('https://')) {
+    const resolved = tryResolveFromPublicHttpUrl(value);
+    if (resolved) {
+      return resolved;
+    }
+
     return { bucket: null, objectName: null, url: value };
   }
 

@@ -485,3 +485,8 @@
 - **General**: Enabled external access through the frontend without exposing backend or MinIO internals.
 - **Technical Changes**: Added same-origin API routing tokens, automatic Vite proxying with `DEV_API_PROXY_TARGET`, installer support for the proxy target, and refreshed README guidance for reverse proxy deployments.
 - **Data Changes**: None; configuration and documentation updates only.
+
+## 098 – Avatar public URL rewrite
+- **General**: Ensured curator avatars load on public domains by rewriting leftover MinIO links to flow through the API proxy.
+- **Technical Changes**: Taught the storage resolver to map HTTP MinIO URLs back to bucket/object pairs so avatar serialization always emits `/api/users/:id/avatar`, and refreshed the README highlight around the hardened avatar delivery.
+- **Data Changes**: None; existing avatar records are reinterpreted at runtime without touching persisted values.
