@@ -246,6 +246,7 @@ export const GalleryExplorer = ({
   const [imageCommentError, setImageCommentError] = useState<string | null>(null);
   const [isImageCommentSubmitting, setIsImageCommentSubmitting] = useState(false);
   const [imageCommentLikeMutationId, setImageCommentLikeMutationId] = useState<string | null>(null);
+  const [isImageCommentPanelOpen, setIsImageCommentPanelOpen] = useState(false);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -341,10 +342,29 @@ export const GalleryExplorer = ({
     () => (activeImageIdValue ? `image-comments-${activeImageIdValue}` : 'image-comments'),
     [activeImageIdValue],
   );
-  const imageCommentCountLabel = useMemo(
-    () => (isImageCommentsLoading ? 'Comments' : `Comments (${imageComments.length})`),
-    [isImageCommentsLoading, imageComments.length],
-  );
+  const imageCommentToggleLabel = useMemo(() => {
+    const countSuffix = isImageCommentsLoading ? '' : ` (${imageComments.length})`;
+    return `${isImageCommentPanelOpen ? 'Hide comments' : 'Show comments'}${countSuffix}`;
+  }, [imageComments.length, isImageCommentPanelOpen, isImageCommentsLoading]);
+
+  useEffect(() => {
+    setIsImageCommentPanelOpen(false);
+  }, [activeImageIdValue]);
+
+  useEffect(() => {
+    if (imageCommentError || isImageCommentSubmitting) {
+      setIsImageCommentPanelOpen(true);
+    }
+  }, [imageCommentError, isImageCommentSubmitting]);
+
+  useEffect(() => {
+    if (!isImageCommentPanelOpen) {
+      return;
+    }
+
+    const element = document.getElementById(imageCommentsAnchorId);
+    element?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [imageCommentsAnchorId, isImageCommentPanelOpen]);
 
   useEffect(() => {
     if (activeGalleryId && !galleries.some((gallery) => gallery.id === activeGalleryId)) {
@@ -1063,12 +1083,20 @@ export const GalleryExplorer = ({
                   <span aria-hidden="true">♥</span>
                   <span>{activeImage.image.likeCount}</span>
                 </button>
-                <a
-                  href={`#${imageCommentsAnchorId}`}
+                <button
+                  type="button"
                   className="gallery-image-modal__comments-link"
+                  onClick={() => {
+                    setIsImageCommentPanelOpen((previous) => !previous);
+                  }}
+                  aria-expanded={isImageCommentPanelOpen}
+                  aria-controls={imageCommentsAnchorId}
                 >
-                  {imageCommentCountLabel}
-                </a>
+                  <span aria-hidden="true" className="gallery-image-modal__comments-toggle-icon">
+                    {isImageCommentPanelOpen ? '▾' : '▸'}
+                  </span>
+                  <span>{imageCommentToggleLabel}</span>
+                </button>
                 {canManageActiveImage ? (
                   <>
                     <button
@@ -1118,32 +1146,41 @@ export const GalleryExplorer = ({
                 />
               </div>
               <div className="gallery-image-modal__meta">
-                {activeImage.note ? <p className="gallery-image-modal__note">Note: {activeImage.note}</p> : null}
-                <dl>
-                  {buildMetadataRows(activeImage.image).map((row) => (
-                    <div key={row.label}>
-                      <dt>{row.label}</dt>
-                      <dd>{row.value}</dd>
-                    </div>
-                  ))}
-                </dl>
+                <div className="gallery-image-modal__meta-scroll">
+                  {activeImage.note ? <p className="gallery-image-modal__note">Note: {activeImage.note}</p> : null}
+                  <dl>
+                    {buildMetadataRows(activeImage.image).map((row) => (
+                      <div key={row.label}>
+                        <dt>{row.label}</dt>
+                        <dd>{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div
+                    className={`gallery-image-modal__comments${
+                      isImageCommentPanelOpen ? ' gallery-image-modal__comments--open' : ''
+                    }`}
+                    aria-hidden={!isImageCommentPanelOpen}
+                  >
+                    <CommentSection
+                      anchorId={imageCommentsAnchorId}
+                      title="Comments"
+                      comments={imageComments}
+                      isLoading={isImageCommentsLoading}
+                      isSubmitting={isImageCommentSubmitting}
+                      error={imageCommentError}
+                      onRetry={activeImageIdValue ? reloadImageComments : undefined}
+                      onSubmit={canLikeImages ? handleSubmitImageComment : undefined}
+                      onToggleLike={handleToggleImageCommentLike}
+                      likeMutationId={imageCommentLikeMutationId}
+                      canComment={canLikeImages}
+                      canLike={canLikeImages}
+                      emptyLabel="No comments yet. Start the discussion."
+                    />
+                  </div>
+                </div>
               </div>
             </div>
-            <CommentSection
-              anchorId={imageCommentsAnchorId}
-              title="Comments"
-              comments={imageComments}
-              isLoading={isImageCommentsLoading}
-              isSubmitting={isImageCommentSubmitting}
-              error={imageCommentError}
-              onRetry={activeImageIdValue ? reloadImageComments : undefined}
-              onSubmit={canLikeImages ? handleSubmitImageComment : undefined}
-              onToggleLike={handleToggleImageCommentLike}
-              likeMutationId={imageCommentLikeMutationId}
-              canComment={canLikeImages}
-              canLike={canLikeImages}
-              emptyLabel="No comments yet. Start the discussion."
-            />
           </div>
         </div>
       ) : null}
