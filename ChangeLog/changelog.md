@@ -631,3 +631,8 @@
 - **General**: Diagnosed missing base models in the On-Site Generator and added a synchronization path so MinIO checkpoints appear in the picker once they land in the bucket.
 - **Technical Changes**: Introduced `backend/scripts/syncGeneratorBaseModels.ts` with a matching `npm run generator:sync-base-models` alias to upsert public checkpoint assets, ensure ownership, and flag metadata for the generator pipeline.
 - **Data Changes**: None; the helper only registers existing MinIO objects without altering stored checkpoint files.
+
+## 125 – Generator manifest-backed base model feed
+- **General**: Allowed the On-Site Generator to surface base models even when MinIO access is limited to manifest reads instead of bucket listings.
+- **Technical Changes**: Added manifest parsing and normalization inside `/api/generator/base-models`, introduced the configurable `GENERATOR_BASE_MODEL_MANIFEST` default, refreshed `.env` templates, and documented the workflow in the README.
+- **Data Changes**: None; updates touch configuration defaults and documentation only.

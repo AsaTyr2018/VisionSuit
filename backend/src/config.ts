@@ -122,5 +122,9 @@ export const appConfig = {
       process.env.GENERATOR_BASE_MODEL_BUCKET?.trim() && process.env.GENERATOR_BASE_MODEL_BUCKET.trim().length > 0
         ? process.env.GENERATOR_BASE_MODEL_BUCKET.trim()
         : 'comfyui-models',
+    baseModelManifestObject:
+      process.env.GENERATOR_BASE_MODEL_MANIFEST?.trim() && process.env.GENERATOR_BASE_MODEL_MANIFEST.trim().length > 0
+        ? process.env.GENERATOR_BASE_MODEL_MANIFEST.trim()
+        : 'minio-model-manifest.json',
   },
 };

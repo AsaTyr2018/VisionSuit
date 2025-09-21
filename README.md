@@ -96,6 +96,8 @@ npm run generator:sync-base-models
 
 The helper script cross-references the configured bucket, creates public `checkpoint` model assets for any missing entries, and refreshes ownership/metadata for existing records so curators immediately see the freshly added base models inside the On-Site Generator picker.
 
+Installations where the MinIO or S3 credentials lack `ListObjects` can still power the base-model picker by exposing a manifest JSON inside the same bucket (default `minio-model-manifest.json`) that enumerates object keys. The backend reads this manifest before falling back to live bucket listing. Override the filename through `GENERATOR_BASE_MODEL_MANIFEST` whenever the manifest ships under a different key—`gpuworker/scripts/generate-model-manifest.sh` produces a compatible payload automatically.
+
 After completion the stack is ready for development or evaluation. Use `./dev-start.sh` for a combined watch mode when coding locally.
 
 ### Serving VisionSuit through a single public domain
