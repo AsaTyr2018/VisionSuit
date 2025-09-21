@@ -505,3 +505,8 @@
 - **General**: Expanded the on-site generator roadmap with detailed queue management and virtual credit policies.
 - **Technical Changes**: Documented Redis-backed queue operations, prioritization tiers, credit-aware submissions, ledger schema considerations, and monitoring/operational responses.
 - **Data Changes**: None; outlined prospective metadata and credit ledger fields only.
+
+## 101 – Member likes rollout
+- **General**: Enabled the USER member role with public registration, single-tap image likes, and updated guest restrictions across the platform.
+- **Technical Changes**: Added a shared gallery include builder with like hydration, enforced auth on download/like routes, refreshed the gallery explorer UI for accessible inline like controls, updated admin role summaries, and wired the API client plus profile views to surface total like counts.
+- **Data Changes**: Introduced the `ImageLike` table with composite keys and defaulted new accounts to the USER role via Prisma migration.

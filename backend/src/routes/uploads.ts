@@ -9,7 +9,7 @@ import { prisma } from '../lib/prisma';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, slugify } from '../lib/slug';
-import { requireAuth } from '../lib/middleware/auth';
+import { requireAuth, requireCurator } from '../lib/middleware/auth';
 import {
   extractImageMetadata,
   extractModelMetadataFromFile,
@@ -210,7 +210,7 @@ const createUploadSchema = z
 
 export const uploadsRouter = Router();
 
-uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, next) => {
+uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), async (req, res, next) => {
   try {
     const files = ((req as unknown as { files?: MulterFile[] }).files ?? []) as MulterFile[];
 

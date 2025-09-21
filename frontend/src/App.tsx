@@ -5,6 +5,7 @@ import { GalleryExplorer } from './components/GalleryExplorer';
 import { UploadWizard } from './components/UploadWizard';
 import type { UploadWizardResult } from './components/UploadWizard';
 import { LoginDialog } from './components/LoginDialog';
+import { RegisterDialog } from './components/RegisterDialog';
 import { AdminPanel } from './components/AdminPanel';
 import { UserProfile as UserProfileView } from './components/UserProfile';
 import { AccountSettingsDialog } from './components/AccountSettingsDialog';
@@ -96,6 +97,9 @@ export const App = () => {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [registerError, setRegisterError] = useState<string | null>(null);
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
   const [focusedGalleryId, setFocusedGalleryId] = useState<string | null>(null);
   const [modelTagQuery, setModelTagQuery] = useState<string | null>(null);
@@ -271,6 +275,12 @@ export const App = () => {
   }, [isLoginOpen]);
 
   useEffect(() => {
+    if (!isRegisterOpen) {
+      setRegisterError(null);
+    }
+  }, [isRegisterOpen]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setIsAssetUploadOpen(false);
       setIsGalleryUploadOpen(false);
@@ -388,12 +398,26 @@ export const App = () => {
       setIsLoginOpen(true);
       return;
     }
+    if (authUser?.role === 'USER') {
+      setToast({
+        type: 'error',
+        message: 'Uploads are limited to curators. Contact an administrator to request an upgrade.',
+      });
+      return;
+    }
     setIsAssetUploadOpen(true);
   };
 
   const handleOpenGalleryUpload = () => {
     if (!isAuthenticated) {
       setIsLoginOpen(true);
+      return;
+    }
+    if (authUser?.role === 'USER') {
+      setToast({
+        type: 'error',
+        message: 'Uploads are limited to curators. Contact an administrator to request an upgrade.',
+      });
       return;
     }
     setIsGalleryUploadOpen(true);
@@ -490,6 +514,33 @@ export const App = () => {
       throw error;
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleRegisterSubmit = async ({
+    email,
+    displayName,
+    password,
+  }: {
+    email: string;
+    displayName: string;
+    password: string;
+  }) => {
+    setIsRegistering(true);
+    setRegisterError(null);
+    try {
+      await api.register(email, displayName, password);
+      await login(email, password);
+      setIsRegisterOpen(false);
+      setIsLoginOpen(false);
+      setToast({ type: 'success', message: 'Account created successfully. Welcome aboard!' });
+      await refreshData();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Registration failed.';
+      setRegisterError(message);
+      throw error;
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -621,6 +672,12 @@ export const App = () => {
                 >
                   {image.owner.displayName}
                 </button>
+              </dd>
+            </div>
+            <div>
+              <dt>Likes</dt>
+              <dd className={`home-card__likes${image.viewerHasLiked ? ' home-card__likes--active' : ''}`}>
+                {image.likeCount}
               </dd>
             </div>
           </dl>
@@ -800,7 +857,13 @@ export const App = () => {
             {isAuthenticated ? (
               <>
                 <p className="sidebar__auth-name">{authUser?.displayName}</p>
-                <p className="sidebar__auth-role">{authUser?.role === 'ADMIN' ? 'Administrator' : 'Curator'}</p>
+                <p className="sidebar__auth-role">
+                  {authUser?.role === 'ADMIN'
+                    ? 'Administrator'
+                    : authUser?.role === 'CURATOR'
+                      ? 'Curator'
+                      : 'Member'}
+                </p>
                 <div className="sidebar__auth-actions">
                   <button
                     type="button"
@@ -816,14 +879,27 @@ export const App = () => {
                 </div>
               </>
             ) : (
-              <button
-                type="button"
-                className="sidebar__auth-button sidebar__auth-button--primary"
-                onClick={() => setIsLoginOpen(true)}
-                disabled={isLoggingIn}
-              >
-                Sign in
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="sidebar__auth-button sidebar__auth-button--primary"
+                  onClick={() => setIsLoginOpen(true)}
+                  disabled={isLoggingIn || isRegistering}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className="sidebar__auth-button"
+                  onClick={() => {
+                    setIsRegisterOpen(true);
+                    setRegisterError(null);
+                  }}
+                  disabled={isLoggingIn || isRegistering}
+                >
+                  Create account
+                </button>
+              </>
             )}
           </div>
 
@@ -909,6 +985,13 @@ export const App = () => {
         onSubmit={handleLoginSubmit}
         isSubmitting={isLoggingIn}
         errorMessage={loginError}
+      />
+      <RegisterDialog
+        isOpen={isRegisterOpen}
+        onClose={() => setIsRegisterOpen(false)}
+        onSubmit={handleRegisterSubmit}
+        isSubmitting={isRegistering}
+        errorMessage={registerError}
       />
     </div>
   );

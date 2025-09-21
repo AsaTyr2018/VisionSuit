@@ -6,6 +6,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 - **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus glassy health cards with color-coded LED beacons for the front end, API, and MinIO services.
 - **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, protected upload flows, and private uploads that stay exclusive to their owner for curators while administrators always see the full inventory in their workspace (with optional audit mode on curator profiles for spot checks).
+- **Member registration & reactions** – Public self-service signup promotes visitors into the USER role, unlocks downloads, comments, and single-tap image likes, surfaces received-like totals across profiles, and keeps upload rights reserved for curators and admins.
 - **Self-service account management** – Sidebar account settings let curators update their display name, bio, and password, now proxy uploaded avatars (PNG/JPG/WebP ≤ 5 MB) through the API, and automatically reroute legacy MinIO avatar links so external domains never surface `127.0.0.1` references.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
@@ -16,6 +17,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 ## Good to Know
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
+- Guests browse-only—downloads, comments, and reactions remain disabled until they register and sign in.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Curators can edit and delete their own models, collections, and images directly from the explorers (each destructive action ships with a “Nicht umkehrbar ist wenn gelöscht wird. weg ist weg.” warning), while administrators continue to see controls for every entry.
 - Manual collection linking lets curators attach their own galleries to models from the detail view, while administrators can pair any collection when moderation requires intervention.

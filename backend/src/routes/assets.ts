@@ -1,15 +1,15 @@
 import crypto from 'node:crypto';
 
 import { Prisma, ImageAsset, ModelAsset, ModelVersion, Tag, User } from '@prisma/client';
-import type { Express } from 'express';
+import type { Express, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth } from '../lib/middleware/auth';
+import { requireAuth, requireCurator } from '../lib/middleware/auth';
 import { extractModelMetadataFromFile } from '../lib/metadata';
-import { mapGallery } from '../lib/mappers/gallery';
+import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
 import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 
@@ -22,7 +22,23 @@ type HydratedModelAsset = ModelAsset & {
 type HydratedImageAsset = ImageAsset & {
   tags: { tag: Tag }[];
   owner: Pick<User, 'id' | 'displayName' | 'email'>;
+  _count: { likes: number };
+  likes?: { userId: string }[];
 };
+
+const buildImageInclude = (viewerId?: string | null) => ({
+  tags: { include: { tag: true } },
+  owner: { select: { id: true, displayName: true, email: true } },
+  _count: { select: { likes: true } },
+  ...(viewerId
+    ? {
+        likes: {
+          where: { userId: viewerId },
+          select: { userId: true },
+        },
+      }
+    : {}),
+});
 
 type MappedModelVersion = {
   id: string;
@@ -188,8 +204,11 @@ const mapModelAsset = (asset: HydratedModelAsset) => {
   };
 };
 
-const mapImageAsset = (asset: HydratedImageAsset) => {
+const mapImageAsset = (asset: HydratedImageAsset, options: { viewerId?: string | null } = {}) => {
   const storage = resolveStorageLocation(asset.storagePath);
+  const viewerId = options.viewerId;
+  const likeCount = asset._count?.likes ?? 0;
+  const viewerHasLiked = viewerId ? (asset.likes ?? []).some((entry) => entry.userId === viewerId) : false;
 
   return {
     id: asset.id,
@@ -214,6 +233,8 @@ const mapImageAsset = (asset: HydratedImageAsset) => {
     tags: asset.tags.map(({ tag }) => tag),
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,
+    likeCount,
+    viewerHasLiked,
   };
 };
 
@@ -434,20 +455,110 @@ assetsRouter.get('/images', async (req, res, next) => {
 
     const images = await prisma.imageAsset.findMany({
       where: visibilityFilter,
-      include: {
-        tags: { include: { tag: true } },
-        owner: { select: { id: true, displayName: true, email: true } },
-      },
+      include: buildImageInclude(viewer?.id),
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json(images.map(mapImageAsset));
+      res.json(images.map((image) => mapImageAsset(image, { viewerId: viewer?.id ?? null })));
   } catch (error) {
     next(error);
   }
 });
 
-assetsRouter.post('/models/bulk-delete', requireAuth, async (req, res, next) => {
+const ensureImageLikeAccess = async (imageId: string, userId: string, role: string) => {
+  const image = await prisma.imageAsset.findUnique({
+    where: { id: imageId },
+    select: { id: true, ownerId: true, isPublic: true },
+  });
+
+  if (!image) {
+    return { status: 404, message: 'Bild konnte nicht gefunden werden.' } as const;
+  }
+
+  if (!image.isPublic && role !== 'ADMIN' && image.ownerId !== userId) {
+    return { status: 403, message: 'Keine Berechtigung für dieses Bild.' } as const;
+  }
+
+  return { status: 200, image } as const;
+};
+
+const respondWithUpdatedImage = async (
+  res: Response,
+  imageId: string,
+  viewerId: string,
+) => {
+  const updated = await prisma.imageAsset.findUnique({
+    where: { id: imageId },
+    include: buildImageInclude(viewerId),
+  });
+
+  if (!updated) {
+    res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+    return;
+  }
+
+  res.json({ image: mapImageAsset(updated, { viewerId }) });
+};
+
+assetsRouter.post('/images/:id/likes', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { id: imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const access = await ensureImageLikeAccess(imageId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    await prisma.imageLike.upsert({
+      where: { userId_imageId: { userId: req.user.id, imageId } },
+      update: {},
+      create: { userId: req.user.id, imageId },
+    });
+
+    await respondWithUpdatedImage(res, imageId, req.user.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.delete('/images/:id/likes', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { id: imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const access = await ensureImageLikeAccess(imageId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    await prisma.imageLike.deleteMany({ where: { userId: req.user.id, imageId } });
+
+    await respondWithUpdatedImage(res, imageId, req.user.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/bulk-delete', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
       res.status(401).json({ message: 'Authentifizierung erforderlich.' });
@@ -741,7 +852,7 @@ assetsRouter.post(
   },
 );
 
-assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, async (req, res, next) => {
+assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
       res.status(401).json({ message: 'Authentifizierung erforderlich.' });
@@ -841,7 +952,7 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, async (req
   }
 });
 
-assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, async (req, res, next) => {
+assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
       res.status(401).json({ message: 'Authentifizierung erforderlich.' });
@@ -922,7 +1033,7 @@ assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, a
   }
 });
 
-assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, async (req, res, next) => {
+assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
       res.status(401).json({ message: 'Authentifizierung erforderlich.' });
@@ -1008,7 +1119,7 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, async (
   }
 });
 
-assetsRouter.post('/images/bulk-delete', requireAuth, async (req, res, next) => {
+assetsRouter.post('/images/bulk-delete', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
       res.status(401).json({ message: 'Authentifizierung erforderlich.' });
@@ -1070,7 +1181,7 @@ assetsRouter.post('/images/bulk-delete', requireAuth, async (req, res, next) => 
   }
 });
 
-assetsRouter.put('/models/:id', requireAuth, async (req, res, next) => {
+assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, next) => {
   try {
     const { id: assetId } = req.params;
     if (!assetId) {
@@ -1165,7 +1276,7 @@ assetsRouter.put('/models/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-assetsRouter.post('/models/:id/galleries', requireAuth, async (req, res, next) => {
+assetsRouter.post('/models/:id/galleries', requireAuth, requireCurator, async (req, res, next) => {
   try {
     const { id: modelId } = req.params;
     if (!modelId) {
@@ -1253,29 +1364,10 @@ assetsRouter.post('/models/:id/galleries', requireAuth, async (req, res, next) =
       }
     });
 
-    const refreshed = await prisma.gallery.findUnique({
-      where: { id: gallery.id },
-      include: {
-        owner: { select: { id: true, displayName: true, email: true } },
-        entries: {
-          include: {
-            image: {
-              include: {
-                tags: { include: { tag: true } },
-                owner: { select: { id: true, displayName: true, email: true } },
-              },
-            },
-            asset: {
-              include: {
-                tags: { include: { tag: true } },
-                owner: { select: { id: true, displayName: true } },
-              },
-            },
-          },
-          orderBy: { position: 'asc' },
-        },
-      },
-    });
+      const refreshed = await prisma.gallery.findUnique({
+        where: { id: gallery.id },
+        include: buildGalleryInclude(req.user?.id),
+      });
 
     if (!refreshed) {
       res.status(500).json({ message: 'Galerie konnte nach dem Verknüpfen nicht geladen werden.' });
@@ -1288,7 +1380,7 @@ assetsRouter.post('/models/:id/galleries', requireAuth, async (req, res, next) =
   }
 });
 
-assetsRouter.delete('/models/:id', requireAuth, async (req, res, next) => {
+assetsRouter.delete('/models/:id', requireAuth, requireCurator, async (req, res, next) => {
   try {
     const { id: assetId } = req.params;
     if (!assetId) {
@@ -1376,7 +1468,7 @@ assetsRouter.delete('/models/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-assetsRouter.put('/images/:id', requireAuth, async (req, res, next) => {
+assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, next) => {
   try {
     const parsed = updateImageSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -1475,20 +1567,17 @@ assetsRouter.put('/images/:id', requireAuth, async (req, res, next) => {
       return tx.imageAsset.update({
         where: { id: image.id },
         data,
-        include: {
-          tags: { include: { tag: true } },
-          owner: { select: { id: true, displayName: true, email: true } },
-        },
+        include: buildImageInclude(req.user?.id),
       });
     });
 
-    res.json(mapImageAsset(updated));
+    res.json(mapImageAsset(updated, { viewerId: req.user?.id }));
   } catch (error) {
     next(error);
   }
 });
 
-assetsRouter.delete('/images/:id', requireAuth, async (req, res, next) => {
+assetsRouter.delete('/images/:id', requireAuth, requireCurator, async (req, res, next) => {
   try {
     const { id: imageId } = req.params;
     if (!imageId) {

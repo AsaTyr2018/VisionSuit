@@ -678,6 +678,26 @@ body {
   color: rgba(226, 232, 240, 0.92);
 }
 
+.home-card__likes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.home-card__likes::before {
+  content: '♥';
+  font-size: 0.85rem;
+  display: inline-block;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.home-card__likes--active {
+  color: rgba(220, 38, 38, 0.85);
+}
+
 .home-card__tags {
   margin: 0;
   padding: 0;
@@ -6296,26 +6316,129 @@ button {
   border: 1px solid rgba(59, 130, 246, 0.35);
   background: rgba(15, 23, 42, 0.7);
   aspect-ratio: 1 / 1;
+}
+
+.gallery-detail__thumb-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
   padding: 0;
   cursor: pointer;
 }
 
-.gallery-detail__thumb img {
+.gallery-detail__thumb-trigger:hover {
+  outline: none;
+}
+
+.gallery-detail__thumb-trigger:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px rgba(59, 130, 246, 0.45);
+}
+
+.gallery-detail__thumb-trigger img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.gallery-detail__note {
+.gallery-detail__thumb-footer {
   position: absolute;
-  bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   padding: 0.4rem 0.6rem;
+  min-width: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.85) 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.gallery-detail__thumb-footer .gallery-like-button {
+  pointer-events: auto;
+}
+
+.gallery-detail__thumb-footer .gallery-detail__note {
+  pointer-events: auto;
+}
+
+.gallery-detail__note {
+  flex: 1;
   font-size: 0.75rem;
-  background: linear-gradient(180deg, transparent 0%, rgba(2, 6, 23, 0.85) 100%);
   color: rgba(226, 232, 240, 0.92);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.gallery-like-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: rgba(15, 23, 42, 0.78);
+  color: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  line-height: 1;
+}
+
+.gallery-like-button span:first-child {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.gallery-like-button:hover:not(:disabled),
+.gallery-like-button:focus-visible:not(:disabled) {
+  background: rgba(59, 130, 246, 0.85);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.gallery-like-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.45);
+}
+
+.gallery-like-button--active {
+  background: rgba(220, 38, 38, 0.85);
+  color: #ffffff;
+}
+
+.gallery-like-button--active:hover:not(:disabled),
+.gallery-like-button--active:focus-visible:not(:disabled) {
+  background: rgba(220, 38, 38, 0.92);
+}
+
+.gallery-like-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.gallery-like-button--inline {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.7rem;
+}
+
+.gallery-like-button--inline span:first-child {
+  font-size: 0.85rem;
 }
 
 .gallery-detail__empty {
@@ -6886,6 +7009,10 @@ button {
   font-size: 1.8rem;
   font-weight: 700;
   color: #f8fafc;
+}
+
+.profile-view__stat-value--likes {
+  color: rgba(252, 165, 165, 0.95);
 }
 
 .profile-view__stat-label {

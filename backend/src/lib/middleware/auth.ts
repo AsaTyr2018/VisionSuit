@@ -95,6 +95,20 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
   next();
 };
 
+export const requireCurator = (req: Request, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+    return;
+  }
+
+  if (req.user.role === 'USER') {
+    res.status(403).json({ message: 'Kurator:innenrechte erforderlich.' });
+    return;
+  }
+
+  next();
+};
+
 export const requireSelfOrAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
     res.status(401).json({ message: 'Authentifizierung erforderlich.' });

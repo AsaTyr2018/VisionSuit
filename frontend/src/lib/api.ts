@@ -260,6 +260,24 @@ const deleteModelVersion = async (token: string, modelId: string, versionId: str
     token,
   );
 
+const likeImageAsset = (token: string, imageId: string) =>
+  request<{ image: ImageAsset }>(
+    `/api/assets/images/${imageId}/likes`,
+    {
+      method: 'POST',
+    },
+    token,
+  );
+
+const unlikeImageAsset = (token: string, imageId: string) =>
+  request<{ image: ImageAsset }>(
+    `/api/assets/images/${imageId}/likes`,
+    {
+      method: 'DELETE',
+    },
+    token,
+  );
+
 export const api = {
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: (token?: string) => request<ModelAsset[]>('/api/assets/models', {}, token),
@@ -271,10 +289,17 @@ export const api = {
   updateModelVersion: putModelVersion,
   promoteModelVersion,
   deleteModelVersion,
+  likeImageAsset,
+  unlikeImageAsset,
   login: (email: string, password: string) =>
     request<AuthResponse>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+  register: (email: string, displayName: string, password: string) =>
+    request<AuthResponse>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, displayName, password }),
     }),
   getCurrentUser: (token: string) => request<{ user: User }>('/api/auth/me', {}, token),
   getUserProfile: (userId: string, options?: { token?: string; audit?: boolean }) => {
