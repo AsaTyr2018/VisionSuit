@@ -4,7 +4,16 @@ import type { FormEvent } from 'react';
 
 import { ApiError, api } from '../lib/api';
 import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
-import type { Gallery, ImageAsset, ModelAsset, RankTier, RankingSettings, User } from '../types/api';
+import type {
+  Gallery,
+  GeneratorAccessMode,
+  GeneratorSettings,
+  ImageAsset,
+  ModelAsset,
+  RankTier,
+  RankingSettings,
+  User,
+} from '../types/api';
 import { UserCreationDialog, type AsyncActionResult } from './UserCreationDialog';
 
 const roleSummaries: Record<
@@ -86,9 +95,11 @@ interface AdminPanelProps {
   rankingSettings: RankingSettings | null;
   rankingTiers: RankTier[];
   rankingTiersFallback: boolean;
+  generatorSettings: GeneratorSettings | null;
+  onGeneratorSettingsUpdated?: (settings: GeneratorSettings) => void;
 }
 
-type AdminTab = 'users' | 'models' | 'images' | 'galleries' | 'ranking';
+type AdminTab = 'users' | 'models' | 'images' | 'generator' | 'galleries' | 'ranking';
 
 type FilterValue<T extends string> = T | 'all';
 
@@ -201,6 +212,8 @@ export const AdminPanel = ({
   rankingSettings,
   rankingTiers,
   rankingTiersFallback,
+  generatorSettings,
+  onGeneratorSettingsUpdated,
 }: AdminPanelProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -243,6 +256,20 @@ export const AdminPanel = ({
     isActive: true,
   });
   const [rankingUserId, setRankingUserId] = useState('');
+  const generatorAccessModeFromSettings = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
+  const [generatorAccessMode, setGeneratorAccessMode] = useState<GeneratorAccessMode>(
+    generatorAccessModeFromSettings,
+  );
+  const [isSavingGeneratorSettings, setIsSavingGeneratorSettings] = useState(false);
+  const [generatorSettingsError, setGeneratorSettingsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGeneratorAccessMode((current) =>
+      current === generatorAccessModeFromSettings ? current : generatorAccessModeFromSettings,
+    );
+  }, [generatorAccessModeFromSettings]);
+
+  const isGeneratorDirty = generatorAccessMode !== generatorAccessModeFromSettings;
 
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
@@ -278,6 +305,41 @@ export const AdminPanel = ({
   }, [rankingTiers]);
 
   const resetStatus = () => setStatus(null);
+
+  const handleGeneratorAccessChange = (mode: GeneratorAccessMode) => {
+    setGeneratorAccessMode(mode);
+    setGeneratorSettingsError(null);
+    resetStatus();
+  };
+
+  const handleResetGeneratorAccess = () => {
+    setGeneratorAccessMode(generatorAccessModeFromSettings);
+    setGeneratorSettingsError(null);
+    resetStatus();
+  };
+
+  const handleGeneratorSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isGeneratorDirty) {
+      setStatus({ type: 'success', message: 'Generator visibility already matches the stored configuration.' });
+      return;
+    }
+
+    try {
+      setIsSavingGeneratorSettings(true);
+      setGeneratorSettingsError(null);
+      resetStatus();
+      const updated = await api.updateGeneratorSettings(token, generatorAccessMode);
+      setStatus({ type: 'success', message: 'On-Site Generator visibility updated successfully.' });
+      onGeneratorSettingsUpdated?.(updated);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to update generator settings.';
+      setGeneratorSettingsError(message);
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsSavingGeneratorSettings(false);
+    }
+  };
 
   const withStatus = async <T,>(
     action: () => Promise<T>,
@@ -1022,6 +1084,7 @@ export const AdminPanel = ({
               { id: 'users', label: 'User' },
               { id: 'models', label: 'Models' },
               { id: 'images', label: 'Images' },
+              { id: 'generator', label: 'Generator' },
               { id: 'ranking', label: 'Ranking' },
               { id: 'galleries', label: 'Galleries' },
             ] as { id: AdminTab; label: string }[]
@@ -1987,6 +2050,85 @@ export const AdminPanel = ({
                 })}
               </div>
             )}
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === 'generator' ? (
+        <div className="admin__panel">
+          <section className="admin__section admin__section--generator">
+            <div className="admin__section-intro">
+              <h3>On-Site Generator visibility</h3>
+              <p>
+                Decide who sees the generator entry in the sidebar. Admin-only mode keeps the rollout private while the GPU
+                worker comes online; member mode exposes the wizard to every authenticated account (guests stay excluded).
+              </p>
+            </div>
+            <form className="generator-settings" onSubmit={handleGeneratorSettingsSubmit}>
+              <fieldset>
+                <legend>Choose the visibility mode</legend>
+                <label className="generator-settings__option">
+                  <input
+                    type="radio"
+                    name="generator-access"
+                    value="ADMIN_ONLY"
+                    checked={generatorAccessMode === 'ADMIN_ONLY'}
+                    onChange={() => handleGeneratorAccessChange('ADMIN_ONLY')}
+                  />
+                  <span>
+                    <strong>Admin only</strong>
+                    <small>Only administrators see and can use the generator interface.</small>
+                  </span>
+                </label>
+                <label className="generator-settings__option">
+                  <input
+                    type="radio"
+                    name="generator-access"
+                    value="MEMBERS"
+                    checked={generatorAccessMode === 'MEMBERS'}
+                    onChange={() => handleGeneratorAccessChange('MEMBERS')}
+                  />
+                  <span>
+                    <strong>Members & curators</strong>
+                    <small>All signed-in users (USER, CURATOR, ADMIN) can request renders; guests remain blocked.</small>
+                  </span>
+                </label>
+              </fieldset>
+              {generatorSettingsError ? (
+                <p className="generator-settings__error">{generatorSettingsError}</p>
+              ) : null}
+              <div className="generator-settings__actions">
+                <button
+                  type="submit"
+                  className="button button--primary"
+                  disabled={!isGeneratorDirty || isSavingGeneratorSettings}
+                >
+                  {isSavingGeneratorSettings ? 'Saving…' : 'Save access level'}
+                </button>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={handleResetGeneratorAccess}
+                  disabled={isSavingGeneratorSettings || !isGeneratorDirty}
+                >
+                  Revert changes
+                </button>
+              </div>
+            </form>
+          </section>
+          <section className="admin__section admin__section--generator-notes">
+            <h4>Rollout playbook</h4>
+            <ul className="generator-guidance-list">
+              <li>
+                Keep the mode on <strong>Admin only</strong> while syncing checkpoints, LoRAs, and validating GPU worker health.
+              </li>
+              <li>
+                Switch to <strong>Members & curators</strong> once the agent can hot-load models and return outputs reliably.
+              </li>
+              <li>
+                Switching modes updates the sidebar instantly—no deployment or browser refresh required.
+              </li>
+            </ul>
           </section>
         </div>
       ) : null}

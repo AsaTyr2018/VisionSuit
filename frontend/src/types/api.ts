@@ -65,6 +65,52 @@ export interface RankTier {
   updatedAt?: string;
 }
 
+export type GeneratorAccessMode = 'ADMIN_ONLY' | 'MEMBERS';
+
+export interface GeneratorSettings {
+  id?: string | number;
+  accessMode: GeneratorAccessMode;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface GeneratorRequestLoRASelection {
+  id: string;
+  strength: number;
+  title?: string | null;
+  slug?: string | null;
+}
+
+export interface GeneratorRequestSummary {
+  id: string;
+  status: string;
+  prompt: string;
+  negativePrompt?: string | null;
+  seed?: string | null;
+  guidanceScale?: number | null;
+  steps?: number | null;
+  width: number;
+  height: number;
+  loras: GeneratorRequestLoRASelection[];
+  baseModel: {
+    id: string;
+    title: string;
+    slug: string;
+    version: string;
+    previewImage?: string | null;
+    previewImageBucket?: string | null;
+    previewImageObject?: string | null;
+    tags: Tag[];
+  };
+  owner: {
+    id: string;
+    displayName: string;
+    role: UserRole;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserProfileModelSummary {
   id: string;
   title: string;

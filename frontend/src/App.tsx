@@ -7,6 +7,7 @@ import type { UploadWizardResult } from './components/UploadWizard';
 import { LoginDialog } from './components/LoginDialog';
 import { RegisterDialog } from './components/RegisterDialog';
 import { AdminPanel } from './components/AdminPanel';
+import { OnSiteGenerator } from './components/OnSiteGenerator';
 import { UserProfile as UserProfileView } from './components/UserProfile';
 import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
@@ -14,6 +15,7 @@ import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
 import type {
   Gallery,
+  GeneratorSettings,
   ImageAsset,
   ModelAsset,
   RankTier,
@@ -23,8 +25,8 @@ import type {
   UserProfile as UserProfileData,
 } from './types/api';
 
-type ViewKey = 'home' | 'models' | 'images' | 'admin' | 'profile';
-type PrimaryViewKey = 'home' | 'models' | 'images' | 'admin';
+type ViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin' | 'profile';
+type PrimaryViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin';
 type ServiceStatusKey = 'frontend' | 'backend' | 'minio';
 type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
 
@@ -46,6 +48,11 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   images: {
     title: 'Images',
     description: 'Image gallery with prompt details and curated sets for presentations.',
+  },
+  generator: {
+    title: 'On-Site Generator',
+    description:
+      'Compose Stable Diffusion prompts, mix LoRAs, and queue render jobs for the GPU worker agent.',
   },
   admin: {
     title: 'Administration',
@@ -111,13 +118,31 @@ export const App = () => {
   const [profileReloadKey, setProfileReloadKey] = useState(0);
   const [isProfileAuditMode, setIsProfileAuditMode] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
+  const [generatorSettings, setGeneratorSettings] = useState<GeneratorSettings | null>(null);
+  const generatorAccessMode = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
+
+  const canAccessGenerator = useMemo(() => {
+    if (!authUser || !isAuthenticated) {
+      return false;
+    }
+
+    if (authUser.role === 'ADMIN') {
+      return true;
+    }
+
+    return generatorAccessMode === 'MEMBERS';
+  }, [authUser, generatorAccessMode, isAuthenticated]);
+
   const availableViews = useMemo<PrimaryViewKey[]>(() => {
     const views: PrimaryViewKey[] = ['home', 'models', 'images'];
+    if (canAccessGenerator) {
+      views.splice(3, 0, 'generator');
+    }
     if (authUser?.role === 'ADMIN') {
       views.push('admin');
     }
     return views;
-  }, [authUser?.role]);
+  }, [authUser?.role, canAccessGenerator]);
 
   const openPrimaryView = useCallback((view: PrimaryViewKey) => {
     setReturnView(view);
@@ -125,6 +150,10 @@ export const App = () => {
     setActiveProfile(null);
     setProfileError(null);
     setActiveView(view);
+  }, []);
+
+  const handleGeneratorNotify = useCallback((payload: { type: 'success' | 'error'; message: string }) => {
+    setToast(payload);
   }, []);
 
   const fetchServiceStatus = useCallback(async () => {
@@ -214,10 +243,39 @@ export const App = () => {
   }, [refreshData]);
 
   useEffect(() => {
+    let isActive = true;
+
+    const loadGeneratorSettings = async () => {
+      try {
+        const settings = await api.getGeneratorSettings(token);
+        if (isActive) {
+          setGeneratorSettings(settings);
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Failed to load generator settings', error);
+        }
+      }
+    };
+
+    loadGeneratorSettings();
+
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
     if (activeView === 'admin' && authUser?.role !== 'ADMIN') {
       openPrimaryView('home');
     }
   }, [activeView, authUser?.role, openPrimaryView]);
+
+  useEffect(() => {
+    if (activeView === 'generator' && !canAccessGenerator) {
+      openPrimaryView('home');
+    }
+  }, [activeView, canAccessGenerator, openPrimaryView]);
 
   useEffect(() => {
     if (!activeProfileId) {
@@ -764,6 +822,8 @@ export const App = () => {
           rankingSettings={rankingSettings}
           rankingTiers={rankingTiers}
           rankingTiersFallback={rankingTiersFallback}
+          generatorSettings={generatorSettings}
+          onGeneratorSettingsUpdated={setGeneratorSettings}
         />
       );
     }
@@ -808,6 +868,21 @@ export const App = () => {
           onOpenProfile={handleOpenUserProfile}
           onGalleryDeleted={handleGalleryDeleted}
           onImageDeleted={handleImageDeleted}
+        />
+      );
+    }
+
+    if (activeView === 'generator') {
+      if (!authUser || !token || !canAccessGenerator) {
+        return <div className="content__alert">The On-Site Generator requires a signed-in account.</div>;
+      }
+
+      return (
+        <OnSiteGenerator
+          models={assets}
+          token={token}
+          currentUser={authUser}
+          onNotify={handleGeneratorNotify}
         />
       );
     }

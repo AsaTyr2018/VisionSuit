@@ -606,3 +606,8 @@
 - **General**: Added a targeted rollback path so GPU worker tests can return a host to its pre-install ComfyUI state instantly.
 - **Technical Changes**: Introduced `gpuworker/rollback-comfy.sh` to stop the service, remove the checkout, helper binaries, MinIO env file, and dedicated user/group, while updating both READMEs with usage guidance.
 - **Data Changes**: None; the rollback only deletes generated runtime artifacts.
+
+## 120 – On-Site Generator access controls & wizard
+- **General**: Introduced a VisionSuit-native On-Site Generator view with a guided prompt builder, LoRA mixer, and per-user request history alongside an admin toggle that controls who can see the feature.
+- **Technical Changes**: Added generator settings/request tables and routes to the backend, wired new API helpers, created the React wizard plus admin configuration tab, and expanded global styling for the generator UI.
+- **Data Changes**: New Prisma models store generator visibility and submitted requests; migrations update the SQLite schema accordingly.
