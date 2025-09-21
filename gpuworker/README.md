@@ -15,6 +15,14 @@ The `gpuworker` directory contains a self-contained installer for preparing a de
    sudo systemctl enable --now comfyui.service
    ```
 
+### Automatic GPU driver provisioning
+
+- **NVIDIA** hosts receive the distribution-recommended `nvidia-driver-*` package (discovered via `ubuntu-drivers` when available) and CUDA-enabled PyTorch wheels from `https://download.pytorch.org/whl/cu121`.
+- **AMD** hosts automatically receive the AMDGPU + ROCm repositories, install the HIP runtime (`hip-runtime-amd`, `rocm-hip-runtime`, `rocminfo`), and pull ROCm-enabled PyTorch wheels from `https://download.pytorch.org/whl/rocm5.6`.
+- **No discrete GPU detected** falls back to CPU-only PyTorch wheels so the worker still functions for validation or CPU rendering.
+
+Reboot the machine after driver installation if `nvidia-smi` or `rocminfo` remain unavailable.
+
 ## MinIO helper commands
 
 The installer publishes a small toolkit into `/usr/local/bin` so the worker can stay synchronized with MinIO:

@@ -555,3 +555,8 @@
 - **General**: Streamlined GPU worker setup by capturing the target MinIO endpoint during installation.
 - **Technical Changes**: Added an interactive prompt to `gpuworker/install.sh` that records the endpoint and secure-mode flag inside `/etc/comfyui/minio.env`, refreshed the worker README, and updated the project README instructions.
 - **Data Changes**: None; only environment templates are updated.
+
+## 111 – GPU worker driver automation
+- **General**: Equipped the GPU worker installer with intelligent GPU detection and automated driver/runtime setup for NVIDIA and AMD hosts.
+- **Technical Changes**: Added vendor detection with lspci/nvidia-smi/ROCm tools, provisioned CUDA or ROCm repositories, adjusted PyTorch index selection, expanded base dependencies, and refreshed GPU worker documentation plus the project README.
+- **Data Changes**: None.
