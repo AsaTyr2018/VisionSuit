@@ -4,7 +4,6 @@ import { pipeline } from 'node:stream/promises';
 
 import { prisma } from '../lib/prisma';
 import { storageBuckets, storageClient } from '../lib/storage';
-import { requireAuth } from '../lib/middleware/auth';
 
 const allowedBuckets = new Set(Object.values(storageBuckets));
 
@@ -24,7 +23,85 @@ const sendBucketNotAllowed = (res: Response) => {
 
 export const storageRouter = Router();
 
-storageRouter.use(requireAuth);
+type AccessDecision = 'allow' | 'unauthorized' | 'forbidden' | 'not-found';
+
+const evaluateOwnershipAccess = (
+  viewer: Request['user'],
+  ownerId: string,
+  isPublic: boolean,
+): AccessDecision => {
+  if (isPublic) {
+    return 'allow';
+  }
+
+  if (!viewer) {
+    return 'unauthorized';
+  }
+
+  if (viewer.role === 'ADMIN' || viewer.id === ownerId) {
+    return 'allow';
+  }
+
+  return 'forbidden';
+};
+
+const resolveAccessDecision = async (
+  viewer: Request['user'],
+  objectUri: string,
+): Promise<AccessDecision> => {
+  const image = await prisma.imageAsset.findFirst({
+    where: { storagePath: objectUri },
+    select: { ownerId: true, isPublic: true },
+  });
+
+  if (image) {
+    return evaluateOwnershipAccess(viewer, image.ownerId, image.isPublic);
+  }
+
+  const modelAsset = await prisma.modelAsset.findFirst({
+    where: {
+      OR: [{ storagePath: objectUri }, { previewImage: objectUri }],
+    },
+    select: { ownerId: true, isPublic: true },
+  });
+
+  if (modelAsset) {
+    return evaluateOwnershipAccess(viewer, modelAsset.ownerId, modelAsset.isPublic);
+  }
+
+  const modelVersion = await prisma.modelVersion.findFirst({
+    where: {
+      OR: [{ storagePath: objectUri }, { previewImage: objectUri }],
+    },
+    select: {
+      model: { select: { ownerId: true, isPublic: true } },
+    },
+  });
+
+  if (modelVersion?.model) {
+    return evaluateOwnershipAccess(viewer, modelVersion.model.ownerId, modelVersion.model.isPublic);
+  }
+
+  const gallery = await prisma.gallery.findFirst({
+    where: { coverImage: objectUri },
+    select: { ownerId: true, isPublic: true },
+  });
+
+  if (gallery) {
+    return evaluateOwnershipAccess(viewer, gallery.ownerId, gallery.isPublic);
+  }
+
+  const userWithAvatar = await prisma.user.findFirst({
+    where: { avatarUrl: objectUri },
+    select: { id: true },
+  });
+
+  if (userWithAvatar) {
+    return 'allow';
+  }
+
+  return 'not-found';
+};
 
 const handleObjectRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -51,6 +128,24 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
     const objectName = storageObject.objectName;
 
     if (!objectName) {
+      sendNotFound(res);
+      return;
+    }
+
+    const objectUri = `s3://${bucket}/${objectName}`;
+    const accessDecision = await resolveAccessDecision(req.user, objectUri);
+
+    if (accessDecision === 'unauthorized') {
+      res.status(401).json({ message: 'Authentifizierung erforderlich, um auf dieses Objekt zuzugreifen.' });
+      return;
+    }
+
+    if (accessDecision === 'forbidden') {
+      res.status(403).json({ message: 'Keine Berechtigung zum Zugriff auf dieses Objekt.' });
+      return;
+    }
+
+    if (accessDecision === 'not-found') {
       sendNotFound(res);
       return;
     }
