@@ -570,3 +570,13 @@
 - **General**: Added standalone scripts so GPU render nodes can validate MinIO storage without the full VisionSuit stack.
 - **Technical Changes**: Shipped bucket provisioning, checkpoint/LoRA upload, and output download helpers plus README instructions for their usage.
 - **Data Changes**: Scripts can create MinIO buckets and upload test assets during validation runs.
+
+## 114 – ComfyUI workflow CLI validation
+- **General**: Added a non-interactive workflow runner so operators can validate renders without the ComfyUI web UI.
+- **Technical Changes**: Introduced `gpuworker/scripts/test-run-workflow.sh` to source MinIO credentials, post workflows to `/prompt`, poll queue/history endpoints, report asset identifiers, and optionally call `test-export-outputs`.
+- **Data Changes**: Reads existing MinIO environment variables and touches only ComfyUI’s HTTP API plus optional MinIO downloads; no repository data is persisted.
+
+## 033 – SDXL workflow validation pack
+- **General**: Delivered an automation-focused SDXL validation workflow that pairs with the ComfyUI API runner for hands-free checks.
+- **Technical Changes**: Added `gpuworker/workflows/validation.json` capturing the calicomixPonyXL base plus DoomGirl LoRA pipeline and updated the GPU worker README with usage guidance and paths.
+- **Data Changes**: New workflow JSON references the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` adapter for validation renders.
