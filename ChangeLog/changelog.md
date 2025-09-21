@@ -440,3 +440,8 @@
 - **General**: Locked down private models, images, and collections so they’re only visible to their owners, while giving administrators an explicit Audit switch on curator profiles to moderate hidden uploads on demand.
 - **Technical Changes**: Added optional auth middleware, Prisma `isPublic` flags for models and images, request-level filtering across asset and gallery endpoints, profile visibility signalling, audit-aware gallery serialization, and refreshed the React profile view with an Audit control, privacy notices, and private badges.
 - **Data Changes**: Introduced a Prisma migration that persists the new `isPublic` columns for `ModelAsset` and `ImageAsset` records.
+
+## 090 – Model version migration guard
+- **General**: Unblocked local migrations by ensuring the new model version table setup skips recreating already-provisioned structures.
+- **Technical Changes**: Updated the `add_asset_visibility` Prisma migration to conditionally create the `ModelVersion` table and associated indexes when they are missing.
+- **Data Changes**: None; existing `ModelVersion` rows remain untouched.
