@@ -545,3 +545,8 @@
 - **General**: Added community support details and proper project attribution.
 - **Technical Changes**: Introduced a global footer in the frontend with Discord support and MythosMachina/AsaTyr credits, and refreshed the README with matching links.
 - **Data Changes**: None.
+
+## 109 – GPU worker bootstrap
+- **General**: Added a dedicated installer to provision ComfyUI GPU workers with MinIO connectivity.
+- **Technical Changes**: Introduced `gpuworker/install.sh`, MinIO helper scripts for model manifests, LoRA sync, and output uploads, plus documentation updates in the main README and a focused GPU worker guide.
+- **Data Changes**: None; scripts interact with runtime storage only.
