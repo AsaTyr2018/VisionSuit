@@ -2,7 +2,7 @@ import { createHash, webcrypto } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv, type ProxyOptions, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 type SupportedDataView =
@@ -137,11 +137,54 @@ const loadAllowedHosts = () => {
 
 const allowedHosts = loadAllowedHosts()
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
+const resolveApiProxy = (env: Record<string, string>) => {
+  const rawApiUrl = env.VITE_API_URL?.trim() ?? process.env.VITE_API_URL?.trim() ?? ''
+  const normalizedApiUrl = rawApiUrl.trim()
+
+  const sameOriginTokens = new Set(['', '/', '@origin', 'origin', 'same-origin', 'relative'])
+  const useSameOrigin = sameOriginTokens.has(normalizedApiUrl.toLowerCase())
+  const isAbsolute = /^https?:\/\//i.test(normalizedApiUrl)
+  const isRelative = !isAbsolute && normalizedApiUrl.length > 0 && !useSameOrigin
+
+  if (!useSameOrigin && !isRelative) {
+    return undefined
+  }
+
+  const proxyTarget = env.DEV_API_PROXY_TARGET?.trim() ?? process.env.DEV_API_PROXY_TARGET?.trim() ?? 'http://127.0.0.1:4000'
+
+  const proxyKey = (() => {
+    if (useSameOrigin || normalizedApiUrl.length === 0) {
+      return '/api'
+    }
+
+    if (normalizedApiUrl.startsWith('/')) {
+      return normalizedApiUrl.replace(/\/$/, '') || '/api'
+    }
+
+    return `/${normalizedApiUrl.replace(/\/$/, '')}`
+  })()
+
+  return {
+    [proxyKey]: {
+      target: proxyTarget,
+      changeOrigin: true,
+    } satisfies ProxyOptions,
+  }
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const proxy = resolveApiProxy(env)
+
+  const serverConfig: UserConfig['server'] = {
     host: '0.0.0.0',
-    port: parsePort(process.env.FRONTEND_PORT),
+    port: parsePort(env.FRONTEND_PORT ?? process.env.FRONTEND_PORT),
     ...(allowedHosts.length > 0 ? { allowedHosts } : {}),
-  },
+    ...(proxy ? { proxy } : {}),
+  }
+
+  return {
+    plugins: [react()],
+    server: serverConfig,
+  }
 })

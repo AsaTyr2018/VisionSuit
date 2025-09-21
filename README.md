@@ -77,6 +77,10 @@ During execution the installer:
 
 After completion the stack is ready for development or evaluation. Use `./dev-start.sh` for a combined watch mode when coding locally.
 
+### Serving VisionSuit through a single public domain
+
+Expose only the frontend to the internet when publishing VisionSuit under a public hostname (for example `https://example.com`). Set `VITE_API_URL=@origin` inside `frontend/.env` so the React app talks to the backend through the same origin, and let your reverse proxy forward `/api` requests to the private backend port while keeping MinIO reachable solely via the values defined in `backend/.env`. The Vite dev server automatically proxies these relative API calls to the address stored in `DEV_API_PROXY_TARGET` (defaults to `http://127.0.0.1:4000`), so internal service-to-service communication continues to rely on the previously configured `.env` endpoints even when external clients access the platform through the frontend.
+
 ### Creating an initial admin account
 
 The administrative surfaces require a signed-in profile. Create one via SSH on the target machine:

@@ -316,6 +316,7 @@ apply_configuration() {
 
   update_env_value "$FRONTEND_DIR/.env" VITE_API_URL "$frontend_api_url"
   update_env_value "$FRONTEND_DIR/.env" FRONTEND_PORT "$frontend_port"
+  update_env_value "$FRONTEND_DIR/.env" DEV_API_PROXY_TARGET "$frontend_dev_proxy_target"
 }
 
 read_env_value() {
@@ -416,6 +417,8 @@ if [[ ! "$frontend_port_default" =~ ^[0-9]+$ ]]; then
   frontend_port_default="5173"
 fi
 
+frontend_dev_proxy_default="$(read_env_value "$FRONTEND_DIR/.env" DEV_API_PROXY_TARGET || printf 'http://%s:%s' "$SERVER_IP" "$backend_port_default")"
+
 minio_port_default="$(read_env_value "$BACKEND_DIR/.env" MINIO_PORT || printf '9000')"
 if [[ ! "$minio_port_default" =~ ^[0-9]+$ ]]; then
   minio_port_default="9000"
@@ -449,6 +452,11 @@ backend_host="$SERVER_IP"
 backend_port="$backend_port_default"
 frontend_port="$frontend_port_default"
 frontend_api_url="http://$SERVER_IP:$backend_port"
+if [ -n "$frontend_dev_proxy_default" ]; then
+  frontend_dev_proxy_target="$frontend_dev_proxy_default"
+else
+  frontend_dev_proxy_target="http://$SERVER_IP:$backend_port"
+fi
 minio_endpoint="$SERVER_IP"
 minio_port="$minio_port_default"
 minio_use_ssl="$minio_use_ssl_default"
@@ -484,6 +492,7 @@ printf '  %-28s %s\n' "Backend Host:" "$backend_host"
 printf '  %-28s %s\n' "Backend Port:" "$backend_port"
 printf '  %-28s %s\n' "Frontend API URL:" "$frontend_api_url"
 printf '  %-28s %s\n' "Frontend Dev-Port:" "$frontend_port"
+printf '  %-28s %s\n' "Frontend Dev Proxy:" "$frontend_dev_proxy_target"
 printf '  %-28s %s\n' "MinIO Endpoint:" "$minio_endpoint"
 printf '  %-28s %s\n' "MinIO Port:" "$minio_port"
 printf '  %-28s %s\n' "MinIO Access Key:" "$minio_access_key"
@@ -503,6 +512,15 @@ if ! confirm "Diese Einstellungen übernehmen?"; then
   frontend_api_url="$(prompt_default "Frontend API URL" "$api_default")"
   if [ -z "$frontend_api_url" ]; then
     frontend_api_url="$api_default"
+  fi
+
+  if [ "$frontend_dev_proxy_target" = "$frontend_dev_proxy_default" ]; then
+    frontend_dev_proxy_target="http://$backend_host:$backend_port"
+  fi
+
+  frontend_dev_proxy_target="$(prompt_default "Frontend Dev Proxy Target" "$frontend_dev_proxy_target")"
+  if [ -z "$frontend_dev_proxy_target" ]; then
+    frontend_dev_proxy_target="http://$backend_host:$backend_port"
   fi
 
   minio_endpoint="$(prompt_ipv4_with_default "MinIO Endpoint" "$minio_endpoint")"

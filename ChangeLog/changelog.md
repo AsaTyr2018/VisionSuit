@@ -480,3 +480,8 @@
 - **General**: Replaced references to a private domain with a neutral example so operators can copy commands safely.
 - **Technical Changes**: Updated the README usage sample for the allowed-host helper and refreshed the default `frontend/allowed-hosts.json` entry to use `example.com`.
 - **Data Changes**: Adjusted the tracked allow-list file to contain only the placeholder `example.com`.
+
+## 097 – Frontend-origin routing control
+- **General**: Enabled external access through the frontend without exposing backend or MinIO internals.
+- **Technical Changes**: Added same-origin API routing tokens, automatic Vite proxying with `DEV_API_PROXY_TARGET`, installer support for the proxy target, and refreshed README guidance for reverse proxy deployments.
+- **Data Changes**: None; configuration and documentation updates only.
