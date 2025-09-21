@@ -1,6 +1,15 @@
 import crypto from 'node:crypto';
 
-import { Prisma, ImageAsset, ModelAsset, ModelVersion, Tag, User } from '@prisma/client';
+import {
+  Prisma,
+  ImageAsset,
+  ImageComment,
+  ModelAsset,
+  ModelComment,
+  ModelVersion,
+  Tag,
+  User,
+} from '@prisma/client';
 import type { Express, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
@@ -26,9 +35,36 @@ type HydratedImageAsset = ImageAsset & {
   likes?: { userId: string }[];
 };
 
+type CommentAuthor = Pick<User, 'id' | 'displayName' | 'avatarUrl' | 'role'>;
+
+type HydratedModelComment = ModelComment & {
+  author: CommentAuthor;
+  _count: { likes: number };
+  likes?: { userId: string }[];
+};
+
+type HydratedImageComment = ImageComment & {
+  author: CommentAuthor;
+  _count: { likes: number };
+  likes?: { userId: string }[];
+};
+
 const buildImageInclude = (viewerId?: string | null) => ({
   tags: { include: { tag: true } },
   owner: { select: { id: true, displayName: true, email: true } },
+  _count: { select: { likes: true } },
+  ...(viewerId
+    ? {
+        likes: {
+          where: { userId: viewerId },
+          select: { userId: true },
+        },
+      }
+    : {}),
+});
+
+const buildCommentInclude = (viewerId?: string | null) => ({
+  author: { select: { id: true, displayName: true, avatarUrl: true, role: true } },
   _count: { select: { likes: true } },
   ...(viewerId
     ? {
@@ -91,6 +127,61 @@ const mapModelVersion = (
     isPrimary: Boolean(options.isPrimary),
   };
 };
+
+const mapCommentAuthor = (author: CommentAuthor) => ({
+  id: author.id,
+  displayName: author.displayName,
+  role: author.role,
+  avatarUrl: author.avatarUrl ?? null,
+});
+
+const mapModelComment = (comment: HydratedModelComment, viewerId?: string | null) => ({
+  id: comment.id,
+  content: comment.content,
+  createdAt: comment.createdAt.toISOString(),
+  updatedAt: comment.updatedAt.toISOString(),
+  likeCount: comment._count.likes,
+  viewerHasLiked: Boolean(viewerId && (comment.likes?.length ?? 0) > 0),
+  author: mapCommentAuthor(comment.author),
+});
+
+const mapImageComment = (comment: HydratedImageComment, viewerId?: string | null) => ({
+  id: comment.id,
+  content: comment.content,
+  createdAt: comment.createdAt.toISOString(),
+  updatedAt: comment.updatedAt.toISOString(),
+  likeCount: comment._count.likes,
+  viewerHasLiked: Boolean(viewerId && (comment.likes?.length ?? 0) > 0),
+  author: mapCommentAuthor(comment.author),
+});
+
+const commentInputSchema = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, 'Kommentartext ist erforderlich.')
+    .max(1000, 'Kommentare sind auf 1.000 Zeichen begrenzt.'),
+});
+
+const fetchModelComment = async (
+  modelId: string,
+  commentId: string,
+  viewerId?: string | null,
+) =>
+  prisma.modelComment.findFirst({
+    where: { id: commentId, modelId },
+    include: buildCommentInclude(viewerId),
+  });
+
+const fetchImageComment = async (
+  imageId: string,
+  commentId: string,
+  viewerId?: string | null,
+) =>
+  prisma.imageComment.findFirst({
+    where: { id: commentId, imageId },
+    include: buildCommentInclude(viewerId),
+  });
 
 const parseNumericVersion = (value: string) => {
   const trimmed = value.trim();
@@ -465,7 +556,24 @@ assetsRouter.get('/images', async (req, res, next) => {
   }
 });
 
-const ensureImageLikeAccess = async (imageId: string, userId: string, role: string) => {
+const ensureModelCommentAccess = async (modelId: string, viewerId: string | null, role: string | null) => {
+  const model = await prisma.modelAsset.findUnique({
+    where: { id: modelId },
+    select: { id: true, ownerId: true, isPublic: true },
+  });
+
+  if (!model) {
+    return { status: 404, message: 'Modell konnte nicht gefunden werden.' } as const;
+  }
+
+  if (!model.isPublic && role !== 'ADMIN' && model.ownerId !== viewerId) {
+    return { status: 403, message: 'Keine Berechtigung für dieses Modell.' } as const;
+  }
+
+  return { status: 200, model } as const;
+};
+
+const ensureImageVisibility = async (imageId: string, viewerId: string | null, role: string | null) => {
   const image = await prisma.imageAsset.findUnique({
     where: { id: imageId },
     select: { id: true, ownerId: true, isPublic: true },
@@ -475,12 +583,15 @@ const ensureImageLikeAccess = async (imageId: string, userId: string, role: stri
     return { status: 404, message: 'Bild konnte nicht gefunden werden.' } as const;
   }
 
-  if (!image.isPublic && role !== 'ADMIN' && image.ownerId !== userId) {
+  if (!image.isPublic && role !== 'ADMIN' && image.ownerId !== viewerId) {
     return { status: 403, message: 'Keine Berechtigung für dieses Bild.' } as const;
   }
 
   return { status: 200, image } as const;
 };
+
+const ensureImageLikeAccess = async (imageId: string, userId: string, role: string) =>
+  ensureImageVisibility(imageId, userId, role);
 
 const respondWithUpdatedImage = async (
   res: Response,
@@ -553,6 +664,302 @@ assetsRouter.delete('/images/:id/likes', requireAuth, async (req, res, next) => 
     await prisma.imageLike.deleteMany({ where: { userId: req.user.id, imageId } });
 
     await respondWithUpdatedImage(res, imageId, req.user.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.get('/models/:modelId/comments', async (req, res, next) => {
+  try {
+    const { modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Modell-ID fehlt.' });
+      return;
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const viewerRole = req.user?.role ?? null;
+    const access = await ensureModelCommentAccess(modelId, viewerId, viewerRole);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const comments = await prisma.modelComment.findMany({
+      where: { modelId },
+      orderBy: { createdAt: 'asc' },
+      include: buildCommentInclude(viewerId),
+    });
+
+    res.json({ comments: comments.map((comment) => mapModelComment(comment, viewerId)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:modelId/comments', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Modell-ID fehlt.' });
+      return;
+    }
+
+    const access = await ensureModelCommentAccess(modelId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const parsed = commentInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Kommentar konnte nicht gespeichert werden.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const content = parsed.data.content.trim();
+
+    const created = await prisma.modelComment.create({
+      data: { modelId, authorId: req.user.id, content },
+      include: buildCommentInclude(req.user.id),
+    });
+
+    res.status(201).json({ comment: mapModelComment(created, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:modelId/comments/:commentId/like', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { modelId, commentId } = req.params;
+    if (!modelId || !commentId) {
+      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    const access = await ensureModelCommentAccess(modelId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const existing = await fetchModelComment(modelId, commentId, req.user.id);
+    if (!existing) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    await prisma.modelCommentLike.upsert({
+      where: { commentId_userId: { commentId, userId: req.user.id } },
+      update: {},
+      create: { commentId, userId: req.user.id },
+    });
+
+    const refreshed = await fetchModelComment(modelId, commentId, req.user.id);
+    if (!refreshed) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    res.json({ comment: mapModelComment(refreshed, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.delete('/models/:modelId/comments/:commentId/like', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { modelId, commentId } = req.params;
+    if (!modelId || !commentId) {
+      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    const access = await ensureModelCommentAccess(modelId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const existing = await fetchModelComment(modelId, commentId, req.user.id);
+    if (!existing) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    await prisma.modelCommentLike.deleteMany({ where: { commentId, userId: req.user.id } });
+
+    const refreshed = await fetchModelComment(modelId, commentId, req.user.id);
+    if (!refreshed) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    res.json({ comment: mapModelComment(refreshed, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.get('/images/:imageId/comments', async (req, res, next) => {
+  try {
+    const { imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const viewerRole = req.user?.role ?? null;
+    const access = await ensureImageVisibility(imageId, viewerId, viewerRole);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const comments = await prisma.imageComment.findMany({
+      where: { imageId },
+      orderBy: { createdAt: 'asc' },
+      include: buildCommentInclude(viewerId),
+    });
+
+    res.json({ comments: comments.map((comment) => mapImageComment(comment, viewerId)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/images/:imageId/comments', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const access = await ensureImageVisibility(imageId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const parsed = commentInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Kommentar konnte nicht gespeichert werden.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const content = parsed.data.content.trim();
+
+    const created = await prisma.imageComment.create({
+      data: { imageId, authorId: req.user.id, content },
+      include: buildCommentInclude(req.user.id),
+    });
+
+    res.status(201).json({ comment: mapImageComment(created, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/images/:imageId/comments/:commentId/like', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { imageId, commentId } = req.params;
+    if (!imageId || !commentId) {
+      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    const access = await ensureImageVisibility(imageId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const existing = await fetchImageComment(imageId, commentId, req.user.id);
+    if (!existing) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    await prisma.imageCommentLike.upsert({
+      where: { commentId_userId: { commentId, userId: req.user.id } },
+      update: {},
+      create: { commentId, userId: req.user.id },
+    });
+
+    const refreshed = await fetchImageComment(imageId, commentId, req.user.id);
+    if (!refreshed) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    res.json({ comment: mapImageComment(refreshed, req.user.id) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.delete('/images/:imageId/comments/:commentId/like', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const { imageId, commentId } = req.params;
+    if (!imageId || !commentId) {
+      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    const access = await ensureImageVisibility(imageId, req.user.id, req.user.role);
+    if (access.status !== 200) {
+      res.status(access.status).json({ message: access.message });
+      return;
+    }
+
+    const existing = await fetchImageComment(imageId, commentId, req.user.id);
+    if (!existing) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    await prisma.imageCommentLike.deleteMany({ where: { commentId, userId: req.user.id } });
+
+    const refreshed = await fetchImageComment(imageId, commentId, req.user.id);
+    if (!refreshed) {
+      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      return;
+    }
+
+    res.json({ comment: mapImageComment(refreshed, req.user.id) });
   } catch (error) {
     next(error);
   }

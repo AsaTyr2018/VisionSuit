@@ -1,7 +1,7 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 
-import type { Gallery, ModelAsset, ModelVersion, User } from '../types/api';
+import type { AssetComment, Gallery, ModelAsset, ModelVersion, User } from '../types/api';
 
 import { api, ApiError } from '../lib/api';
 import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
@@ -9,6 +9,7 @@ import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
 import { ModelVersionEditDialog } from './ModelVersionEditDialog';
 import { ModelAssetEditDialog } from './ModelAssetEditDialog';
+import { CommentSection } from './CommentSection';
 
 interface AssetExplorerProps {
   assets: ModelAsset[];
@@ -123,6 +124,20 @@ const formatPrimitiveMetadataValue = (value: unknown) => {
   }
 
   return String(value);
+};
+
+const formatApiErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiError) {
+    const details = (error.details ?? []).filter((entry) => entry && entry.length > 0).join(' ');
+    const message = [error.message, details].filter(Boolean).join(' ').trim();
+    return message.length > 0 ? message : fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 const flattenMetadataValue = (
@@ -493,6 +508,11 @@ export const AssetExplorer = ({
   const [isLinking, setIsLinking] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [unlinkingEntryId, setUnlinkingEntryId] = useState<string | null>(null);
+  const [modelComments, setModelComments] = useState<AssetComment[]>([]);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+  const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
+  const [commentLikeMutationId, setCommentLikeMutationId] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -502,6 +522,17 @@ export const AssetExplorer = ({
   const activeAsset = useMemo(
     () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
     [activeAssetId, assets],
+  );
+
+  const activeAssetIdValue = activeAsset?.id ?? null;
+  const modelCommentsAnchorId = useMemo(
+    () => (activeAssetIdValue ? `model-comments-${activeAssetIdValue}` : 'model-comments'),
+    [activeAssetIdValue],
+  );
+  const canCommentOnModel = useMemo(() => Boolean(authToken && currentUser), [authToken, currentUser]);
+  const modelCommentCountLabel = useMemo(
+    () => (isCommentsLoading ? 'Comments' : `Comments (${modelComments.length})`),
+    [isCommentsLoading, modelComments.length],
   );
 
   const canManageActiveAsset = useMemo(
@@ -550,6 +581,113 @@ export const AssetExplorer = ({
     setIsDeleting(false);
     setUnlinkingEntryId(null);
   }, [activeAsset]);
+
+  useEffect(() => {
+    const assetId = activeAsset?.id ?? null;
+
+    if (!assetId) {
+      setModelComments([]);
+      setCommentError(null);
+      setIsCommentsLoading(false);
+      setIsCommentSubmitting(false);
+      setCommentLikeMutationId(null);
+      return;
+    }
+
+    let isActive = true;
+
+    const loadComments = async () => {
+      setModelComments([]);
+      setIsCommentsLoading(true);
+      setCommentError(null);
+      try {
+        const response = await api.getModelComments(assetId, authToken ?? null);
+        if (isActive) {
+          setModelComments(response);
+        }
+      } catch (error) {
+        if (isActive) {
+          setCommentError(formatApiErrorMessage(error, 'Kommentare konnten nicht geladen werden.'));
+          setModelComments([]);
+        }
+      } finally {
+        if (isActive) {
+          setIsCommentsLoading(false);
+        }
+      }
+    };
+
+    void loadComments();
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeAsset?.id, authToken]);
+
+  const reloadModelComments = useCallback(async () => {
+    if (!activeAssetIdValue) {
+      return;
+    }
+
+    setIsCommentsLoading(true);
+    setCommentError(null);
+
+    try {
+      const response = await api.getModelComments(activeAssetIdValue, authToken ?? null);
+      setModelComments(response);
+    } catch (error) {
+      setCommentError(formatApiErrorMessage(error, 'Kommentare konnten nicht geladen werden.'));
+      setModelComments([]);
+    } finally {
+      setIsCommentsLoading(false);
+    }
+  }, [activeAssetIdValue, authToken]);
+
+  const handleSubmitModelComment = useCallback(
+    async (content: string) => {
+      if (!activeAssetIdValue || !authToken || !canCommentOnModel) {
+        throw new Error('Anmeldung erforderlich, um zu kommentieren.');
+      }
+
+      setIsCommentSubmitting(true);
+      setCommentError(null);
+
+      try {
+        const created = await api.createModelComment(activeAssetIdValue, content, authToken);
+        setModelComments((current) => [...current, created]);
+      } catch (error) {
+        setCommentError(formatApiErrorMessage(error, 'Kommentar konnte nicht gespeichert werden.'));
+        throw error;
+      } finally {
+        setIsCommentSubmitting(false);
+      }
+    },
+    [activeAssetIdValue, authToken, canCommentOnModel],
+  );
+
+  const handleToggleModelCommentLike = useCallback(
+    async (comment: AssetComment) => {
+      if (!activeAssetIdValue || !authToken) {
+        return;
+      }
+
+      setCommentLikeMutationId(comment.id);
+      setCommentError(null);
+
+      try {
+        const updated = comment.viewerHasLiked
+          ? await api.unlikeModelComment(activeAssetIdValue, comment.id, authToken)
+          : await api.likeModelComment(activeAssetIdValue, comment.id, authToken);
+
+        setModelComments((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      } catch (error) {
+        setCommentError(formatApiErrorMessage(error, 'Kommentarlikes konnten nicht aktualisiert werden.'));
+      } finally {
+        setCommentLikeMutationId(null);
+      }
+    },
+    [activeAssetIdValue, authToken],
+  );
 
   useEffect(() => {
     if (triggerCopyStatus === 'idle') {
@@ -1496,6 +1634,12 @@ export const AssetExplorer = ({
                             {downloadUnavailableLabel}
                           </span>
                         )}
+                        <a
+                          className="asset-detail__comments-link asset-detail__action"
+                          href={`#${modelCommentsAnchorId}`}
+                        >
+                          {modelCommentCountLabel}
+                        </a>
                         <div className="asset-detail__gallery-links">
                           <span className="asset-detail__gallery-links-label">Collections</span>
                           {relatedGalleries.length > 0 ? (
@@ -1651,7 +1795,21 @@ export const AssetExplorer = ({
                     )}
                   </section>
                 </div>
-
+                <CommentSection
+                  anchorId={modelCommentsAnchorId}
+                  title="Comments"
+                  comments={modelComments}
+                  isLoading={isCommentsLoading}
+                  isSubmitting={isCommentSubmitting}
+                  error={commentError}
+                  onRetry={activeAssetIdValue ? reloadModelComments : undefined}
+                  onSubmit={canCommentOnModel ? handleSubmitModelComment : undefined}
+                  onToggleLike={handleToggleModelCommentLike}
+                  likeMutationId={commentLikeMutationId}
+                  canComment={canCommentOnModel}
+                  canLike={Boolean(authToken && currentUser)}
+                  emptyLabel="No comments yet. Be the first to share your thoughts."
+                />
               </div>
 
             </div>

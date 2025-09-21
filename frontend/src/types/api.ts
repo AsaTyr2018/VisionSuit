@@ -19,6 +19,23 @@ export interface User {
   updatedAt?: string;
 }
 
+export interface CommentAuthor {
+  id: string;
+  displayName: string;
+  role: UserRole;
+  avatarUrl: string | null;
+}
+
+export interface AssetComment {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  likeCount: number;
+  viewerHasLiked: boolean;
+  author: CommentAuthor;
+}
+
 export interface UserProfileRank {
   label: string;
   description: string;
