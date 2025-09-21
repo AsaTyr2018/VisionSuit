@@ -601,3 +601,8 @@
 - **General**: Ensured GPU workers drop synchronized assets where ComfyUI actually loads them.
 - **Technical Changes**: Pointed the installer and MinIO helper scripts at `/opt/comfyui/models` and `/opt/comfyui/output`, refreshed documentation, and kept legacy overrides intact through environment variables.
 - **Data Changes**: None; directories only change location defaults.
+
+## 119 – ComfyUI rollback utility
+- **General**: Added a targeted rollback path so GPU worker tests can return a host to its pre-install ComfyUI state instantly.
+- **Technical Changes**: Introduced `gpuworker/rollback-comfy.sh` to stop the service, remove the checkout, helper binaries, MinIO env file, and dedicated user/group, while updating both READMEs with usage guidance.
+- **Data Changes**: None; the rollback only deletes generated runtime artifacts.
