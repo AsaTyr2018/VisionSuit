@@ -17,7 +17,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 ## Good to Know
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
-- Guests browse-only—downloads, comments, and reactions remain disabled until they register and sign in.
+- Guests can browse and download public assets, while comments and reactions remain disabled until they register and sign in.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Curators can edit and delete their own models, collections, and images directly from the explorers (each destructive action ships with a “Nicht umkehrbar ist wenn gelöscht wird. weg ist weg.” warning), while administrators continue to see controls for every entry.
 - Manual collection linking lets curators attach their own galleries to models from the detail view, while administrators can pair any collection when moderation requires intervention.
@@ -216,7 +216,7 @@ Batch uploads validate up to 12 files per request and enforce the 2 GB size ce
 - `GET /api/assets/images` – Image assets with prompts, model info, and tags.
 - `GET /api/galleries` – Curated gallery collections and associated assets.
 - `POST /api/uploads` – Initiates the upload pipeline for models or galleries (JWT required).
-- `GET /api/storage/:bucket/:objectId` – Secure file proxy resolving anonymized IDs to originals.
+- `GET /api/storage/:bucket/:objectId` – Secure file proxy resolving anonymized IDs to originals with role-aware gating (public assets stream for guests; private ones require owner/admin access).
 - `GET /api/users/:id/avatar` – Streams curator avatars through the API without exposing MinIO endpoints.
 - `GET /api/users` – Admin-only listing of accounts.
 - `POST /api/users` – Admin-only account provisioning.

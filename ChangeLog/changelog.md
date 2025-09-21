@@ -510,3 +510,8 @@
 - **General**: Enabled the USER member role with public registration, single-tap image likes, and updated guest restrictions across the platform.
 - **Technical Changes**: Added a shared gallery include builder with like hydration, enforced auth on download/like routes, refreshed the gallery explorer UI for accessible inline like controls, updated admin role summaries, and wired the API client plus profile views to surface total like counts.
 - **Data Changes**: Introduced the `ImageLike` table with composite keys and defaulted new accounts to the USER role via Prisma migration.
+
+## 102 – Public storage access restoration
+- **General**: Restored public asset previews and downloads after the storage proxy started rejecting guest traffic.
+- **Technical Changes**: Replaced the blanket auth guard on `/api/storage` with role-aware access checks that map objects back to their owning models, images, galleries, or avatars, and refreshed README guidance about guest downloads.
+- **Data Changes**: None; access rules only.
