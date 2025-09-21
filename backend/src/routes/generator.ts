@@ -85,10 +85,44 @@ type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   };
 }>;
 
+const sanitizeGeneratorSettingsBaseModels = async () => {
+  try {
+    await prisma.$executeRawUnsafe(`
+      UPDATE "GeneratorSettings"
+      SET "baseModels" = '[]'
+      WHERE "baseModels" IS NULL OR json_valid("baseModels") = 0
+    `);
+  } catch (rawError) {
+    await prisma.$executeRawUnsafe(`
+      UPDATE "GeneratorSettings"
+      SET "baseModels" = '[]'
+      WHERE "baseModels" IS NULL OR trim("baseModels") = ''
+    `);
+  }
+};
+
+const loadGeneratorSettings = () => prisma.generatorSettings.findFirst({ orderBy: { id: 'asc' } });
+
 const ensureSettings = async () => {
-  const existing = await prisma.generatorSettings.findFirst({ orderBy: { id: 'asc' } });
-  if (existing) {
-    return existing;
+  try {
+    const existing = await loadGeneratorSettings();
+    if (existing) {
+      return existing;
+    }
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2023') {
+      await sanitizeGeneratorSettingsBaseModels();
+      try {
+        const existing = await loadGeneratorSettings();
+        if (existing) {
+          return existing;
+        }
+      } catch (retryError) {
+        throw retryError;
+      }
+    } else {
+      throw error;
+    }
   }
 
   return prisma.generatorSettings.create({ data: { baseModels: [] } });
