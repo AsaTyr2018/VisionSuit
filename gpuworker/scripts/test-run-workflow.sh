@@ -96,6 +96,23 @@ fi
 ensure_command curl
 ensure_command jq
 
+jq_safe() {
+  local input="$1"
+  shift || true
+
+  if [[ -z "$input" ]]; then
+    return 1
+  fi
+
+  local output
+  if ! output=$(printf '%s' "$input" | jq "$@" 2>/dev/null); then
+    return 1
+  fi
+
+  printf '%s' "$output"
+  return 0
+}
+
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
@@ -113,7 +130,19 @@ CLIENT_ID="${COMFY_CLIENT_ID:-$(cat /proc/sys/kernel/random/uuid)}"
 PAYLOAD=$(jq -n --arg client_id "$CLIENT_ID" --slurpfile prompt "$WORKFLOW_FILE" '{prompt: $prompt[0], client_id: $client_id}')
 
 QUEUE_RESPONSE=$(curl -sS -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE_URL/prompt")
-PROMPT_ID=$(printf '%s' "$QUEUE_RESPONSE" | jq -r '.prompt_id // .promptId // .id // empty')
+if ! PROMPT_ID=$(jq_safe "$QUEUE_RESPONSE" -r '
+  if type == "object" then
+    if .prompt_id? then (.prompt_id | tostring)
+    elif .promptId? then (.promptId | tostring)
+    elif .id? then (.id | tostring)
+    else empty
+    end
+  else
+    empty
+  end
+'); then
+  PROMPT_ID=""
+fi
 
 if [[ -z "$PROMPT_ID" ]]; then
   echo "Failed to retrieve prompt ID from response: $QUEUE_RESPONSE" >&2
@@ -135,29 +164,69 @@ while true; do
   PENDING_INDEX=""
   QUEUE_INDEX=""
   if [[ -n "$QUEUE_JSON" ]]; then
-    PENDING_INDEX=$(printf '%s' "$QUEUE_JSON" | jq -r --arg id "$PROMPT_ID" '((.pending // []) | map(.prompt_id) | index($id)) // empty') || true
-    QUEUE_INDEX=$(printf '%s' "$QUEUE_JSON" | jq -r --arg id "$PROMPT_ID" '((.queue // []) | map(.prompt_id) | index($id)) // empty') || true
+    if ! PENDING_INDEX=$(jq_safe "$QUEUE_JSON" -r --arg id "$PROMPT_ID" '
+      if type == "object" and ((.pending? | type) == "array") then
+        (.pending
+          | map(
+            (.prompt_id? // .promptId? // .id?) as $pid
+            | if $pid == null then empty else ($pid | tostring) end
+          )
+          | index($id)
+        )
+      else
+        empty
+      end
+    '); then
+      PENDING_INDEX=""
+    fi
+
+    if ! QUEUE_INDEX=$(jq_safe "$QUEUE_JSON" -r --arg id "$PROMPT_ID" '
+      if type == "object" and ((.queue? | type) == "array") then
+        (.queue
+          | map(
+            (.prompt_id? // .promptId? // .id?) as $pid
+            | if $pid == null then empty else ($pid | tostring) end
+          )
+          | index($id)
+        )
+      else
+        empty
+      end
+    '); then
+      QUEUE_INDEX=""
+    fi
   fi
 
   HISTORY_JSON=$(curl -sS "$BASE_URL/history/$PROMPT_ID" || true)
   HISTORY_NODE=""
   if [[ -n "$HISTORY_JSON" ]]; then
-    HISTORY_NODE=$(printf '%s' "$HISTORY_JSON" | jq -c --arg id "$PROMPT_ID" '
+    if ! HISTORY_NODE=$(jq_safe "$HISTORY_JSON" -c --arg id "$PROMPT_ID" '
       if type == "object" then
         if has("history") then (.history[$id] // empty)
         elif has($id) then (.[$id] // empty)
         else .
         end
-      else empty
+      else
+        empty
       end
-    ') || true
+    '); then
+      HISTORY_NODE=""
+    fi
   fi
 
   if [[ -n "$HISTORY_NODE" && "$HISTORY_NODE" != "null" ]]; then
-    STATUS_LABEL=$(printf '%s' "$HISTORY_NODE" | jq -r '.status.status? // .status.state? // .status.text? // ""')
-    COMPLETED=$(printf '%s' "$HISTORY_NODE" | jq -r '(.status.completed? // false) | tostring')
-    FAILED=$(printf '%s' "$HISTORY_NODE" | jq -r '((.status.failed? // false) or (.status.status? == "error") or (.status.status? == "failed")) | tostring')
-    PROGRESS=$(printf '%s' "$HISTORY_NODE" | jq -r '.status.progress? // empty')
+    if ! STATUS_LABEL=$(jq_safe "$HISTORY_NODE" -r '.status.status? // .status.state? // .status.text? // ""'); then
+      STATUS_LABEL=""
+    fi
+    if ! COMPLETED=$(jq_safe "$HISTORY_NODE" -r '(.status.completed? // false) | tostring'); then
+      COMPLETED="false"
+    fi
+    if ! FAILED=$(jq_safe "$HISTORY_NODE" -r '((.status.failed? // false) or (.status.status? == "error") or (.status.status? == "failed")) | tostring'); then
+      FAILED="false"
+    fi
+    if ! PROGRESS=$(jq_safe "$HISTORY_NODE" -r '.status.progress? // empty'); then
+      PROGRESS=""
+    fi
   else
     STATUS_LABEL="queued"
     COMPLETED="false"
@@ -187,7 +256,9 @@ while true; do
   if [[ "$FAILED" == "true" ]]; then
     ERROR_MESSAGE=""
     if [[ -n "$HISTORY_NODE" && "$HISTORY_NODE" != "null" ]]; then
-      ERROR_MESSAGE=$(printf '%s' "$HISTORY_NODE" | jq -r '.status.error? // .status.message? // empty')
+      if ! ERROR_MESSAGE=$(jq_safe "$HISTORY_NODE" -r '.status.error? // .status.message? // empty'); then
+        ERROR_MESSAGE=""
+      fi
     fi
     [[ -n "$ERROR_MESSAGE" ]] && echo "Error details: $ERROR_MESSAGE" >&2
     exit 1
@@ -202,21 +273,24 @@ done
 if [[ -z "$HISTORY_NODE" || "$HISTORY_NODE" == "null" ]]; then
   HISTORY_JSON=$(curl -sS "$BASE_URL/history/$PROMPT_ID" || true)
   if [[ -n "$HISTORY_JSON" ]]; then
-    HISTORY_NODE=$(printf '%s' "$HISTORY_JSON" | jq -c --arg id "$PROMPT_ID" '
+    if ! HISTORY_NODE=$(jq_safe "$HISTORY_JSON" -c --arg id "$PROMPT_ID" '
       if type == "object" then
         if has("history") then (.history[$id] // empty)
         elif has($id) then (.[$id] // empty)
         else .
         end
-      else empty
+      else
+        empty
       end
-    ') || true
+    '); then
+      HISTORY_NODE=""
+    fi
   fi
 fi
 
 echo "Generated assets:"
 if [[ -n "$HISTORY_NODE" && "$HISTORY_NODE" != "null" ]]; then
-  ASSET_LINES=$(printf '%s' "$HISTORY_NODE" | jq -r '
+  if ! ASSET_LINES=$(jq_safe "$HISTORY_NODE" -r '
     if .outputs then
       .outputs | to_entries[] | . as $entry |
       ($entry.value.images[]? | "- Node \($entry.key) image: \(.subfolder // ".")/\(.filename)") ,
@@ -226,7 +300,9 @@ if [[ -n "$HISTORY_NODE" && "$HISTORY_NODE" != "null" ]]; then
     else
       empty
     end
-  ')
+  '); then
+    ASSET_LINES=""
+  fi
   if [[ -n "$ASSET_LINES" ]]; then
     while IFS= read -r line; do
       printf '%s\n' "$line"

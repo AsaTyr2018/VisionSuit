@@ -582,3 +582,7 @@
 - **Data Changes**: New workflow JSON references the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` adapter for validation renders.
 
 
+## 115 – ComfyUI workflow polling hardening
+- **General**: Prevented the GPU workflow validator from spamming jq errors when the ComfyUI API emits non-JSON responses during queue polling.
+- **Technical Changes**: Added a reusable `jq_safe` helper that type-checks queue and history payloads before parsing, guarded every jq lookup, and refreshed the GPU worker plus root README sections to note the resilience.
+- **Data Changes**: None; the scripts only inspect HTTP responses and print metadata.
