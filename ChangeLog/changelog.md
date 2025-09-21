@@ -565,3 +565,8 @@
 - **General**: Unblocked the GPU worker installer on distributions that no longer ship `awscli` via APT.
 - **Technical Changes**: Added an `ensure_aws_cli` helper that installs the official AWS CLI v2 bundle when necessary and refreshed the README to explain the behavior.
 - **Data Changes**: None.
+
+## 113 – GPU worker MinIO test harness (commit TBD)
+- **General**: Added standalone scripts so GPU render nodes can validate MinIO storage without the full VisionSuit stack.
+- **Technical Changes**: Shipped bucket provisioning, checkpoint/LoRA upload, and output download helpers plus README instructions for their usage.
+- **Data Changes**: Scripts can create MinIO buckets and upload test assets during validation runs.
