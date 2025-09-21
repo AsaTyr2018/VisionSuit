@@ -15,6 +15,16 @@ The `gpuworker` directory contains a self-contained installer for preparing a de
    sudo systemctl enable --now comfyui.service
    ```
 
+### Rollback to a clean ComfyUI state
+
+Should the GPU worker need to be reverted for testing or reprovisioning, run the companion rollback utility from the same host:
+
+```bash
+sudo ./gpuworker/rollback-comfy.sh
+```
+
+The script removes the ComfyUI checkout, virtual environment, helper binaries, `/etc/comfyui/minio.env`, and the `comfyui` systemd unit while leaving system packages untouched. Pass `--dry-run` to preview the cleanup or `--yes` to skip the confirmation prompt.
+
 ### Automatic GPU driver provisioning
 
 - **NVIDIA** hosts receive the distribution-recommended `nvidia-driver-*` package (discovered via `ubuntu-drivers` when available) and CUDA-enabled PyTorch wheels from `https://download.pytorch.org/whl/cu121`.
