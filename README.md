@@ -17,7 +17,8 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
-- Curators can edit their own models, collections, and images directly from the explorers, while administrators continue to see edit controls for every entry.
+- Curators can edit and delete their own models, collections, and images directly from the explorers (each destructive action ships with a “Nicht umkehrbar ist wenn gelöscht wird. weg ist weg.” warning), while administrators continue to see controls for every entry.
+- Manual collection linking lets curators attach their own galleries to models from the detail view, while administrators can pair any collection when moderation requires intervention.
 - Private uploads remain hidden from other curators; the administration workspace now surfaces every model, gallery, and image for admins by default, while the **Audit** toggle on curator profiles remains available for targeted moderation checks.
 - Signed-in users can open the **Account settings** dialog from the sidebar to adjust profile details or rotate their password in a single modal workflow.
 - Administration workspace now offers moderation grids for models and images, ranking controls (weights, tiers, and user resets), a streamlined model gallery that opens full management controls in the mainframe, persistent bulk tools tuned for six-figure libraries, multi-step onboarding with permission previews, and one-click actions to promote, rename, or remove secondary model versions. Ranking inputs immediately cache typed values so the tab stays responsive while backend refreshes complete.

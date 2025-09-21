@@ -1,7 +1,9 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 
 import type { Gallery, ModelAsset, ModelVersion, User } from '../types/api';
 
+import { api, ApiError } from '../lib/api';
 import { resolveStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
@@ -19,9 +21,11 @@ interface AssetExplorerProps {
   externalSearchQuery?: string | null;
   onExternalSearchApplied?: () => void;
   onAssetUpdated?: (asset: ModelAsset) => void;
+  onAssetDeleted?: (assetId: string) => void;
   authToken?: string | null;
   currentUser?: User | null;
   onOpenProfile?: (userId: string) => void;
+  onGalleryUpdated?: (gallery: Gallery) => void;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -462,9 +466,11 @@ export const AssetExplorer = ({
   externalSearchQuery,
   onExternalSearchApplied,
   onAssetUpdated,
+  onAssetDeleted,
   authToken,
   currentUser,
   onOpenProfile,
+  onGalleryUpdated,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -481,6 +487,12 @@ export const AssetExplorer = ({
   const [versionToEdit, setVersionToEdit] = useState<ModelVersion | null>(null);
   const [versionFeedback, setVersionFeedback] = useState<string | null>(null);
   const [triggerCopyStatus, setTriggerCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [selectedGalleryId, setSelectedGalleryId] = useState('');
+  const [linkNote, setLinkNote] = useState('');
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [isLinking, setIsLinking] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [unlinkingEntryId, setUnlinkingEntryId] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -522,6 +534,36 @@ export const AssetExplorer = ({
       setEditDialogOpen(false);
     }
   }, [activeAsset]);
+
+  useEffect(() => {
+    if (!activeAsset) {
+      setSelectedGalleryId('');
+      setLinkNote('');
+      setLinkError(null);
+      setIsLinking(false);
+      setIsDeleting(false);
+      setUnlinkingEntryId(null);
+      return;
+    }
+
+    setLinkError(null);
+    setIsDeleting(false);
+    setUnlinkingEntryId(null);
+  }, [activeAsset]);
+
+  useEffect(() => {
+    if (linkableGalleries.length === 0) {
+      setSelectedGalleryId('');
+      return;
+    }
+
+    setSelectedGalleryId((current) => {
+      if (current && linkableGalleries.some((entry) => entry.id === current)) {
+        return current;
+      }
+      return linkableGalleries[0]?.id ?? '';
+    });
+  }, [linkableGalleries]);
 
   useEffect(() => {
     if (triggerCopyStatus === 'idle') {
@@ -770,6 +812,113 @@ export const AssetExplorer = ({
     [closeDetail, onNavigateToGallery],
   );
 
+  const handleDeleteModel = useCallback(async () => {
+    if (!activeAsset) {
+      return;
+    }
+
+    if (!authToken) {
+      setVersionFeedback('Please sign in to manage this model.');
+      return;
+    }
+
+    const confirmationMessage = `Delete “${activeAsset.title}”? This cannot be undone.\nNicht umkehrbar ist wenn gelöscht wird. weg ist weg.`;
+    if (!window.confirm(confirmationMessage)) {
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await api.deleteModelAsset(authToken, activeAsset.id);
+      onAssetDeleted?.(activeAsset.id);
+      setVersionFeedback('Model deleted.');
+      closeDetail();
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setVersionFeedback(error.message);
+      } else if (error instanceof Error) {
+        setVersionFeedback(error.message);
+      } else {
+        setVersionFeedback('Unknown error while deleting the model.');
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [activeAsset, authToken, closeDetail, onAssetDeleted]);
+
+  const handleLinkGallery = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (!activeAsset) {
+        return;
+      }
+
+      if (!authToken || !canManageActiveAsset) {
+        setLinkError('Please sign in to manage collection links.');
+        return;
+      }
+
+      if (!selectedGalleryId) {
+        setLinkError('Please choose a collection to link.');
+        return;
+      }
+
+      const trimmedNote = linkNote.trim();
+
+      try {
+        setIsLinking(true);
+        setLinkError(null);
+        const response = await api.linkModelToGallery(authToken, activeAsset.id, {
+          galleryId: selectedGalleryId,
+          note: trimmedNote.length > 0 ? trimmedNote : null,
+        });
+        onGalleryUpdated?.(response.gallery);
+        setVersionFeedback('Collection linked to the model.');
+        setLinkNote('');
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setLinkError(error.message);
+        } else if (error instanceof Error) {
+          setLinkError(error.message);
+        } else {
+          setLinkError('Unknown error while linking the collection.');
+        }
+      } finally {
+        setIsLinking(false);
+      }
+    },
+    [activeAsset, authToken, canManageActiveAsset, linkNote, onGalleryUpdated, selectedGalleryId],
+  );
+
+  const handleUnlinkGallery = useCallback(
+    async (galleryId: string, entryId: string) => {
+      if (!authToken || !canManageActiveAsset) {
+        setLinkError('Please sign in to manage collection links.');
+        return;
+      }
+
+      try {
+        setUnlinkingEntryId(entryId);
+        setLinkError(null);
+        const updated = await api.updateGallery(authToken, galleryId, { removeEntryIds: [entryId] });
+        onGalleryUpdated?.(updated);
+        setVersionFeedback('Collection link removed.');
+      } catch (error) {
+        if (error instanceof ApiError) {
+          setLinkError(error.message);
+        } else if (error instanceof Error) {
+          setLinkError(error.message);
+        } else {
+          setLinkError('Unknown error while removing the collection link.');
+        }
+      } finally {
+        setUnlinkingEntryId((current) => (current === entryId ? null : current));
+      }
+    },
+    [authToken, canManageActiveAsset, onGalleryUpdated],
+  );
+
   useEffect(() => {
     if (!activeAssetId) {
       return undefined;
@@ -791,18 +940,54 @@ export const AssetExplorer = ({
 
   const relatedGalleries = useMemo(() => {
     if (!activeAsset) {
-      return [] as { id: string; title: string; slug: string }[];
+      return [] as {
+        galleryId: string;
+        entryId: string;
+        title: string;
+        slug: string;
+        ownerId: string;
+      }[];
     }
 
-    const matches = new Map<string, { id: string; title: string; slug: string }>();
-    galleries.forEach((gallery) => {
-      const hasModel = gallery.entries.some((entry) => entry.modelAsset?.id === activeAsset.id);
-      if (hasModel) {
-        matches.set(gallery.id, { id: gallery.id, title: gallery.title, slug: gallery.slug });
+    return galleries.reduce((accumulator, gallery) => {
+      const matchingEntry = gallery.entries.find((entry) => entry.modelAsset?.id === activeAsset.id);
+      if (matchingEntry) {
+        accumulator.push({
+          galleryId: gallery.id,
+          entryId: matchingEntry.id,
+          title: gallery.title,
+          slug: gallery.slug,
+          ownerId: gallery.owner.id,
+        });
       }
-    });
-    return Array.from(matches.values());
+      return accumulator;
+    }, [] as {
+      galleryId: string;
+      entryId: string;
+      title: string;
+      slug: string;
+      ownerId: string;
+    }[]);
   }, [activeAsset, galleries]);
+
+  const linkableGalleries = useMemo(() => {
+    if (!canManageActiveAsset || !currentUser) {
+      return [] as { id: string; title: string }[];
+    }
+
+    const linkedIds = new Set(relatedGalleries.map((entry) => entry.galleryId));
+
+    return galleries
+      .filter((gallery) => {
+        if (currentUser.role === 'ADMIN') {
+          return true;
+        }
+        return gallery.owner.id === currentUser.id;
+      })
+      .filter((gallery) => !linkedIds.has(gallery.id))
+      .map((gallery) => ({ id: gallery.id, title: gallery.title }))
+      .sort((first, second) => first.title.localeCompare(second.title, 'en'));
+  }, [canManageActiveAsset, currentUser, galleries, relatedGalleries]);
 
   const metadataEntries = useMemo(
     () => buildMetadataRows(activeVersion?.metadata as Record<string, unknown> | null),
@@ -1172,13 +1357,23 @@ export const AssetExplorer = ({
                 </div>
                 <div className="asset-detail__actions">
                   {canManageActiveAsset ? (
-                    <button
-                      type="button"
-                      className="asset-detail__edit"
-                      onClick={() => setEditDialogOpen(true)}
-                    >
-                      Edit model
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="asset-detail__edit"
+                        onClick={() => setEditDialogOpen(true)}
+                      >
+                        Edit model
+                      </button>
+                      <button
+                        type="button"
+                        className="asset-detail__delete"
+                        onClick={handleDeleteModel}
+                        disabled={isDeleting}
+                      >
+                        {isDeleting ? 'Deleting…' : 'Delete model'}
+                      </button>
+                    </>
                   ) : null}
                   <button type="button" className="asset-detail__close" onClick={closeDetail}>
                     Back to model list
@@ -1293,40 +1488,104 @@ export const AssetExplorer = ({
                             Download not available
                           </span>
                         )}
-                        {relatedGalleries.length > 0 ? (
-                          relatedGalleries.map((gallery) => {
-                            const label = 'Open Collection';
-                            const ariaLabel = `Open collection: ${gallery.title}`;
+                        <div className="asset-detail__gallery-links">
+                          <span className="asset-detail__gallery-links-label">Collections</span>
+                          {relatedGalleries.length > 0 ? (
+                            <ul className="asset-detail__gallery-links-list">
+                              {relatedGalleries.map((gallery) => {
+                                const canModifyLink =
+                                  canManageActiveAsset &&
+                                  currentUser &&
+                                  (currentUser.role === 'ADMIN' || currentUser.id === gallery.ownerId);
+                                const isUnlinking = unlinkingEntryId === gallery.entryId;
 
-                            if (onNavigateToGallery) {
-                              return (
-                                <button
-                                  key={gallery.id}
-                                  type="button"
-                                  onClick={() => handleNavigateFromDetail(gallery.id)}
-                                  className="asset-detail__gallery-link asset-detail__action"
-                                  aria-label={ariaLabel}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            }
-
-                            return (
-                              <span
-                                key={gallery.id}
-                                className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action"
-                                aria-label={ariaLabel}
-                              >
-                                {label}
-                              </span>
-                            );
-                          })
-                        ) : (
-                          <span className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action">
-                            No linked image collections
-                          </span>
-                        )}
+                                return (
+                                  <li key={gallery.entryId} className="asset-detail__gallery-links-item">
+                                    {onNavigateToGallery ? (
+                                      <button
+                                        type="button"
+                                        className="asset-detail__gallery-link asset-detail__action"
+                                        onClick={() => handleNavigateFromDetail(gallery.galleryId)}
+                                        aria-label={`Open collection: ${gallery.title}`}
+                                      >
+                                        View “{gallery.title}”
+                                      </button>
+                                    ) : (
+                                      <span
+                                        className="asset-detail__gallery-link asset-detail__gallery-link--disabled asset-detail__action"
+                                        aria-label={`Collection: ${gallery.title}`}
+                                      >
+                                        {gallery.title}
+                                      </span>
+                                    )}
+                                    {canModifyLink ? (
+                                      <button
+                                        type="button"
+                                        className="asset-detail__gallery-remove"
+                                        onClick={() => handleUnlinkGallery(gallery.galleryId, gallery.entryId)}
+                                        disabled={isUnlinking}
+                                      >
+                                        {isUnlinking ? 'Removing…' : 'Remove link'}
+                                      </button>
+                                    ) : null}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : (
+                            <p className="asset-detail__gallery-links-empty">No linked image collections</p>
+                          )}
+                          {canManageActiveAsset ? (
+                            <div className="asset-detail__gallery-manage">
+                              {linkableGalleries.length > 0 ? (
+                                <form className="asset-detail__gallery-form" onSubmit={handleLinkGallery}>
+                                  <label className="asset-detail__gallery-select">
+                                    <span className="sr-only">Choose a collection to link</span>
+                                    <select
+                                      value={selectedGalleryId}
+                                      onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                                        setSelectedGalleryId(event.target.value)
+                                      }
+                                      disabled={isLinking}
+                                    >
+                                      {linkableGalleries.map((gallery) => (
+                                        <option key={gallery.id} value={gallery.id}>
+                                          {gallery.title}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="asset-detail__gallery-note">
+                                    <span className="sr-only">Optional note for the collection link</span>
+                                    <input
+                                      type="text"
+                                      value={linkNote}
+                                      onChange={(event: ChangeEvent<HTMLInputElement>) => setLinkNote(event.target.value)}
+                                      placeholder="Optional note"
+                                      disabled={isLinking}
+                                    />
+                                  </label>
+                                  <button
+                                    type="submit"
+                                    className="asset-detail__gallery-submit"
+                                    disabled={isLinking || !selectedGalleryId}
+                                  >
+                                    {isLinking ? 'Linking…' : 'Link collection'}
+                                  </button>
+                                </form>
+                              ) : (
+                                <p className="asset-detail__gallery-links-empty">
+                                  All eligible collections are already linked.
+                                </p>
+                              )}
+                              {linkError ? (
+                                <p className="asset-detail__gallery-error" role="alert">
+                                  {linkError}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
 

@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../lib/middleware/auth';
 import { extractModelMetadataFromFile } from '../lib/metadata';
+import { mapGallery } from '../lib/mappers/gallery';
 import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 
@@ -372,6 +373,24 @@ const versionUpdateSchema = z
     message: 'Es wurden keine Änderungen übermittelt.',
     path: ['version'],
   });
+
+const galleryLinkNoteSchema = z
+  .string()
+  .trim()
+  .max(600)
+  .nullable()
+  .transform((value) => {
+    if (value == null) {
+      return null;
+    }
+
+    return value.length > 0 ? value : null;
+  });
+
+const linkModelToGallerySchema = z.object({
+  galleryId: z.string().trim().min(1),
+  note: galleryLinkNoteSchema.optional(),
+});
 
 const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
 
@@ -1141,6 +1160,129 @@ assetsRouter.put('/models/:id', requireAuth, async (req, res, next) => {
     });
 
     res.json(mapModelAsset(updated));
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:id/galleries', requireAuth, async (req, res, next) => {
+  try {
+    const { id: modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Model-ID fehlt.' });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      return;
+    }
+
+    const parsed = linkModelToGallerySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const model = await prisma.modelAsset.findUnique({
+      where: { id: modelId },
+      select: { id: true, ownerId: true, previewImage: true },
+    });
+
+    if (!model) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    const actor = req.user;
+    const isAdmin = actor.role === 'ADMIN';
+    if (!isAdmin && model.ownerId !== actor.id) {
+      res.status(403).json({ message: 'Keine Berechtigung zur Verknüpfung dieses Modells.' });
+      return;
+    }
+
+    const gallery = await prisma.gallery.findUnique({
+      where: { id: parsed.data.galleryId },
+      select: { id: true, ownerId: true, coverImage: true },
+    });
+
+    if (!gallery) {
+      res.status(404).json({ message: 'Die Galerie wurde nicht gefunden.' });
+      return;
+    }
+
+    if (!isAdmin && gallery.ownerId !== actor.id) {
+      res.status(403).json({ message: 'Nur eigene Galerien können verknüpft werden.' });
+      return;
+    }
+
+    const existingEntry = await prisma.galleryEntry.findFirst({
+      where: { galleryId: gallery.id, assetId: model.id },
+      select: { id: true },
+    });
+
+    if (existingEntry) {
+      res.status(409).json({ message: 'Dieses Modell ist der Galerie bereits zugeordnet.' });
+      return;
+    }
+
+    const linkNote = parsed.data.note ?? null;
+
+    await prisma.$transaction(async (tx) => {
+      const lastEntry = await tx.galleryEntry.findFirst({
+        where: { galleryId: gallery.id },
+        orderBy: { position: 'desc' },
+      });
+
+      const nextPosition = (lastEntry?.position ?? 0) + 1;
+
+      await tx.galleryEntry.create({
+        data: {
+          galleryId: gallery.id,
+          assetId: model.id,
+          position: nextPosition,
+          note: linkNote,
+        },
+      });
+
+      if (!gallery.coverImage && model.previewImage) {
+        await tx.gallery.update({
+          where: { id: gallery.id },
+          data: { coverImage: model.previewImage },
+        });
+      }
+    });
+
+    const refreshed = await prisma.gallery.findUnique({
+      where: { id: gallery.id },
+      include: {
+        owner: { select: { id: true, displayName: true, email: true } },
+        entries: {
+          include: {
+            image: {
+              include: {
+                tags: { include: { tag: true } },
+                owner: { select: { id: true, displayName: true, email: true } },
+              },
+            },
+            asset: {
+              include: {
+                tags: { include: { tag: true } },
+                owner: { select: { id: true, displayName: true } },
+              },
+            },
+          },
+          orderBy: { position: 'asc' },
+        },
+      },
+    });
+
+    if (!refreshed) {
+      res.status(500).json({ message: 'Galerie konnte nach dem Verknüpfen nicht geladen werden.' });
+      return;
+    }
+
+    res.status(201).json({ gallery: mapGallery(refreshed, { viewer: req.user, includePrivate: true }) });
   } catch (error) {
     next(error);
   }

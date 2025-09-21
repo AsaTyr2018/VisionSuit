@@ -370,6 +370,19 @@ export const api = {
       },
       token,
     ),
+  linkModelToGallery: (
+    token: string,
+    modelId: string,
+    payload: { galleryId: string; note?: string | null },
+  ) =>
+    request<{ gallery: Gallery }>(
+      `/api/assets/models/${modelId}/galleries`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
   deleteModelAsset: (token: string, id: string) => request(`/api/assets/models/${id}`, { method: 'DELETE' }, token),
   bulkDeleteModelAssets: (token: string, ids: string[]) =>
     request<{ deleted: string[] }>(
