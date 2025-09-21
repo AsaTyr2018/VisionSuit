@@ -217,7 +217,7 @@ export const AdminPanel = ({
 
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
-  const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
+  const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
   const [weightDraft, setWeightDraft] = useState<{ modelWeight: string; galleryWeight: string; imageWeight: string }>({
@@ -381,6 +381,64 @@ export const AdminPanel = ({
       return true;
     });
   }, [models, modelFilter]);
+
+  const activeModel = useMemo(() => {
+    if (!activeModelId) {
+      return null;
+    }
+
+    return models.find((model) => model.id === activeModelId) ?? null;
+  }, [models, activeModelId]);
+
+  const activeModelDetails = useMemo(() => {
+    if (!activeModel) {
+      return null;
+    }
+
+    const previewUrl =
+      resolveStorageUrl(activeModel.previewImage, activeModel.previewImageBucket, activeModel.previewImageObject) ??
+      activeModel.previewImage ??
+      null;
+    const downloadUrl =
+      resolveStorageUrl(activeModel.storagePath, activeModel.storageBucket, activeModel.storageObject) ??
+      activeModel.storagePath;
+    const updatedLabel = new Date(activeModel.updatedAt).toLocaleDateString('en-US');
+    const fileSizeLabel = formatFileSize(activeModel.fileSize);
+    const versionCount = activeModel.versions.length;
+    const metadataEntries = [
+      { label: 'Slug', value: activeModel.slug },
+      activeModel.storageBucket ? { label: 'Bucket', value: activeModel.storageBucket } : null,
+      {
+        label: 'Storage object',
+        value: activeModel.storageObject ?? activeModel.storagePath,
+        href: downloadUrl,
+      },
+      {
+        label: 'Checksum',
+        value: activeModel.checksum ?? '—',
+      },
+    ].filter((entry): entry is { label: string; value: string; href?: string } => Boolean(entry));
+
+    return {
+      previewUrl,
+      downloadUrl,
+      updatedLabel,
+      fileSizeLabel,
+      versionCount,
+      metadataEntries,
+    };
+  }, [activeModel]);
+
+  useEffect(() => {
+    if (!activeModelId) {
+      return;
+    }
+
+    const isVisible = filteredModels.some((model) => model.id === activeModelId);
+    if (!isVisible) {
+      setActiveModelId(null);
+    }
+  }, [activeModelId, filteredModels]);
 
   const filteredImages = useMemo(() => {
     return images.filter((image) => {
@@ -602,20 +660,6 @@ export const AdminPanel = ({
     );
   };
 
-  const handleDeleteModel = async (model: ModelAsset) => {
-    if (!window.confirm(`Delete model "${model.title}"?`)) {
-      return;
-    }
-
-    await withStatus(() => api.deleteModelAsset(token, model.id), 'Model deleted.');
-    setSelectedModels((previous) => {
-      const next = new Set(previous);
-      next.delete(model.id);
-      return next;
-    });
-    setExpandedModelId((previous) => (previous === model.id ? null : previous));
-  };
-
   const handleBulkDeleteModels = async () => {
     const ids = Array.from(selectedModels);
     if (ids.length === 0) {
@@ -633,7 +677,7 @@ export const AdminPanel = ({
         }),
       `${ids.length} models removed.`,
     );
-    setExpandedModelId(null);
+    setActiveModelId(null);
   };
 
   const handleUpdateImage = async (event: FormEvent<HTMLFormElement>, image: ImageAsset) => {
@@ -1298,302 +1342,312 @@ export const AdminPanel = ({
                     resolveStorageUrl(model.previewImage, model.previewImageBucket, model.previewImageObject) ??
                     model.previewImage ??
                     null;
-                  const downloadUrl =
-                    resolveStorageUrl(model.storagePath, model.storageBucket, model.storageObject) ?? model.storagePath;
-                  const updatedLabel = new Date(model.updatedAt).toLocaleDateString('en-US');
-                  const fileSizeLabel = formatFileSize(model.fileSize);
-                  const versionCount = model.versions.length;
-                  const visibleTags = model.tags.slice(0, 5);
-                  const remainingTagCount = model.tags.length - visibleTags.length;
-                  const isExpanded = expandedModelId === model.id;
-                  const metadataEntries = [
-                    { label: 'Slug', value: model.slug },
-                    model.storageBucket
-                      ? { label: 'Bucket', value: model.storageBucket }
-                      : null,
-                    {
-                      label: 'Storage object',
-                      value: model.storageObject ?? model.storagePath,
-                      href: downloadUrl,
-                    },
-                    {
-                      label: 'Checksum',
-                      value: model.checksum ?? '—',
-                    },
-                  ].filter((entry): entry is { label: string; value: string; href?: string } => Boolean(entry));
-                  const formId = `model-form-${model.id}`;
+                  const isActive = activeModelId === model.id;
 
                   return (
-                    <form
+                    <article
                       key={model.id}
-                      id={formId}
-                      className={`admin-model-card${isExpanded ? ' admin-model-card--expanded' : ''}`}
-                      onSubmit={(event) => handleUpdateModel(event, model)}
-                      aria-label={`Settings for ${model.title}`}
+                      className={`admin-model-card${isActive ? ' admin-model-card--active' : ''}`}
                       role="listitem"
                     >
-                      <div className="admin-model-card__body">
-                        <div className="admin-model-card__media">
-                          {previewUrl ? (
-                            <img src={previewUrl} alt={model.title} loading="lazy" />
-                          ) : (
-                            <div className="admin-model-card__placeholder">No preview</div>
-                          )}
-                        </div>
-                        <div className="admin-model-card__summary">
-                          <div className="admin-model-card__summary-header">
-                            <label className="admin-model-card__checkbox">
-                              <input
-                                type="checkbox"
-                                checked={selectedModels.has(model.id)}
-                                onChange={(event) =>
-                                  toggleSelection(setSelectedModels, model.id, event.currentTarget.checked)
-                                }
-                                disabled={isBusy}
-                                aria-label={`Select ${model.title}`}
-                              />
-                            </label>
-                            <div className="admin-model-card__titles">
-                              <h4>{model.title}</h4>
-                              <span className="admin-model-card__subtitle">
-                                by{' '}
-                                {onOpenProfile ? (
-                                  <button
-                                    type="button"
-                                    className="curator-link"
-                                    onClick={() => onOpenProfile(model.owner.id)}
-                                  >
-                                    {model.owner.displayName}
-                                  </button>
-                                ) : (
-                                  model.owner.displayName
-                                )}
-                              </span>
-                            </div>
-                            <div className="admin-model-card__meta">
-                              <span className="admin-badge">{model.version}</span>
-                              <span className="admin-badge admin-badge--muted">{updatedLabel}</span>
-                              {fileSizeLabel ? (
-                                <span className="admin-badge admin-badge--muted">{fileSizeLabel}</span>
-                              ) : null}
-                              <span className="admin-badge admin-badge--muted">{versionCount} versions</span>
-                            </div>
-                          </div>
-                          <div className="admin-model-card__tags">
-                            {visibleTags.map((tag) => (
-                              <span key={tag.id} className="admin-badge">
-                                {tag.label}
-                              </span>
-                            ))}
-                            {remainingTagCount > 0 ? (
-                              <span className="admin-badge admin-badge--muted">+{remainingTagCount} more</span>
-                            ) : null}
-                          </div>
-                          {model.description ? (
-                            <p className="admin-model-card__description">{truncateText(model.description)}</p>
-                          ) : null}
-                          {model.trigger ? (
-                            <p className="admin-model-card__trigger">
-                              <strong>Trigger:</strong> {model.trigger}
-                            </p>
-                          ) : null}
-                          <ul className="admin-model-card__metadata">
-                            {metadataEntries.map((entry) => (
-                              <li key={entry.label}>
-                                <span>{entry.label}</span>
-                                {entry.href ? (
-                                  <strong>
-                                    <a href={entry.href} target="_blank" rel="noreferrer">
-                                      {entry.value}
-                                    </a>
-                                  </strong>
-                                ) : (
-                                  <strong>{entry.value}</strong>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                          <div className="admin-model-card__quick-actions">
-                            {previewUrl ? (
-                              <a className="button button--subtle" href={previewUrl} target="_blank" rel="noreferrer">
-                                Preview
-                              </a>
-                            ) : null}
-                            <a className="button button--subtle" href={downloadUrl} target="_blank" rel="noreferrer">
-                              Download latest
-                            </a>
-                            <button
-                              type="button"
-                              className="button button--subtle"
-                              onClick={() =>
-                                setExpandedModelId((previous) => (previous === model.id ? null : model.id))
-                              }
-                              aria-expanded={isExpanded}
-                              aria-controls={`${formId}-details`}
-                            >
-                              {isExpanded ? 'Collapse' : 'Manage'}
-                            </button>
-                          </div>
-                          <div className="admin-model-card__versions">
-                            <div className="admin-model-card__versions-header">
-                              <h5>Version history</h5>
-                              <span className="admin-badge admin-badge--muted">Belongs to {model.title}</span>
-                            </div>
-                            <ul className="admin-model-card__version-list">
-                              {model.versions.map((version) => {
-                                const versionDownloadUrl =
-                                  resolveStorageUrl(
-                                    version.storagePath,
-                                    version.storageBucket,
-                                    version.storageObject,
-                                  ) ?? version.storagePath;
-                                const versionPreviewUrl =
-                                  resolveStorageUrl(
-                                    version.previewImage,
-                                    version.previewImageBucket,
-                                    version.previewImageObject,
-                                  ) ?? version.previewImage ?? null;
-                                const versionUpdatedLabel = new Date(version.updatedAt).toLocaleDateString('en-US');
-                                const versionFileSizeLabel = formatFileSize(version.fileSize);
-
-                                return (
-                                  <li key={version.id} className="admin-model-card__version">
-                                    <div className="admin-model-card__version-main">
-                                      <strong>{version.version}</strong>
-                                      <div className="admin-model-card__version-badges">
-                                        {version.id === model.primaryVersionId ? (
-                                          <span className="admin-badge">Primary</span>
-                                        ) : null}
-                                        {version.id === model.latestVersionId ? (
-                                          <span className="admin-badge admin-badge--muted">Latest</span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <div className="admin-model-card__version-meta">
-                                      <span>{versionUpdatedLabel}</span>
-                                      {versionFileSizeLabel ? <span>{versionFileSizeLabel}</span> : null}
-                                    </div>
-                                    <div className="admin-model-card__version-actions">
-                                      {versionPreviewUrl ? (
-                                        <a
-                                          className="button button--subtle"
-                                          href={versionPreviewUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                        >
-                                          Preview
-                                        </a>
-                                      ) : null}
-                                      <a
-                                        className="button button--subtle"
-                                        href={versionDownloadUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        Download
-                                      </a>
-                                      {version.id !== model.primaryVersionId ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className="button button--subtle"
-                                            onClick={() => handlePromoteModelVersion(model, version)}
-                                            disabled={isBusy}
-                                          >
-                                            Make primary
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="button button--subtle"
-                                            onClick={() => handleRenameModelVersion(model, version)}
-                                            disabled={isBusy}
-                                          >
-                                            Rename
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="button button--danger"
-                                            onClick={() => handleDeleteModelVersion(model, version)}
-                                            disabled={isBusy}
-                                          >
-                                            Delete
-                                          </button>
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        </div>
+                      <label className="admin-model-card__checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedModels.has(model.id)}
+                          onChange={(event) =>
+                            toggleSelection(setSelectedModels, model.id, event.currentTarget.checked)
+                          }
+                          disabled={isBusy}
+                          aria-label={`Select ${model.title}`}
+                        />
+                        <span className="sr-only">Select {model.title}</span>
+                      </label>
+                      <div className="admin-model-card__media">
+                        {previewUrl ? (
+                          <img src={previewUrl} alt={model.title} loading="lazy" />
+                        ) : (
+                          <div className="admin-model-card__placeholder">No preview</div>
+                        )}
                       </div>
-                      {isExpanded ? (
-                        <div id={`${formId}-details`} className="admin-model-card__form admin__form">
-                          <div className="admin-model-card__form-fields">
-                            <label className="admin-model-card__form-item admin-model-card__form-item--full">
-                              <span>Title</span>
-                              <input name="title" defaultValue={model.title} disabled={isBusy} />
-                            </label>
-                            <label className="admin-model-card__form-item">
-                              <span>Owner</span>
-                              <select name="ownerId" defaultValue={model.owner.id} disabled={isBusy}>
-                                {userOptions.map((option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="admin-model-card__form-item">
-                              <span>Primary version</span>
-                              <input name="version" defaultValue={model.version} disabled={isBusy} />
-                            </label>
-                            <label className="admin-model-card__form-item">
-                              <span>Trigger / Activator</span>
-                              <input
-                                name="trigger"
-                                defaultValue={model.trigger ?? ''}
-                                placeholder="Primary activation phrase"
-                                disabled={isBusy}
-                                required
-                              />
-                            </label>
-                            <label className="admin-model-card__form-item">
-                              <span>Tags</span>
-                              <input
-                                name="tags"
-                                defaultValue={model.tags.map((tag) => tag.label).join(', ')}
-                                placeholder="Comma separated"
-                                disabled={isBusy}
-                              />
-                            </label>
-                            <label className="admin-model-card__form-item admin-model-card__form-item--full">
-                              <span>Description</span>
-                              <textarea name="description" rows={3} defaultValue={model.description ?? ''} disabled={isBusy} />
-                            </label>
-                          </div>
-                          <div className="admin-model-card__form-footer">
-                            <button type="submit" className="button button--primary" disabled={isBusy}>
-                              Save changes
-                            </button>
-                            <button
-                              type="button"
-                              className="button button--danger"
-                              onClick={() => handleDeleteModel(model)}
-                              disabled={isBusy}
-                            >
-                              Delete model
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </form>
+                      <h4 className="admin-model-card__title">{model.title}</h4>
+                      <button
+                        type="button"
+                        className="button button--primary admin-model-card__manage"
+                        onClick={() => setActiveModelId(model.id)}
+                        aria-controls="admin-model-mainframe"
+                      >
+                        Manage
+                      </button>
+                    </article>
                   );
                 })}
               </div>
             )}
           </section>
+          {activeModel && activeModelDetails ? (
+            <section
+              className="admin__section admin-model-mainframe"
+              id="admin-model-mainframe"
+              aria-labelledby="admin-model-mainframe-title"
+            >
+              <div className="admin-model-mainframe__header">
+                <div>
+                  <h3 id="admin-model-mainframe-title">{activeModel.title}</h3>
+                  <p className="admin-model-mainframe__subtitle">
+                    Owned by{' '}
+                    {onOpenProfile ? (
+                      <button
+                        type="button"
+                        className="curator-link"
+                        onClick={() => onOpenProfile(activeModel.owner.id)}
+                      >
+                        {activeModel.owner.displayName}
+                      </button>
+                    ) : (
+                      activeModel.owner.displayName
+                    )}
+                  </p>
+                </div>
+                <div className="admin-model-mainframe__actions">
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() => setActiveModelId(null)}
+                    disabled={isBusy}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div className="admin-model-mainframe__layout">
+                <div className="admin-model-mainframe__overview">
+                  <div className="admin-model-mainframe__media admin-model-card__media">
+                    {activeModelDetails.previewUrl ? (
+                      <img src={activeModelDetails.previewUrl} alt={activeModel.title} />
+                    ) : (
+                      <div className="admin-model-card__placeholder">No preview</div>
+                    )}
+                  </div>
+                  <div className="admin-model-mainframe__badges">
+                    <span className="admin-badge">{activeModel.version}</span>
+                    <span className="admin-badge admin-badge--muted">{activeModelDetails.updatedLabel}</span>
+                    {activeModelDetails.fileSizeLabel ? (
+                      <span className="admin-badge admin-badge--muted">{activeModelDetails.fileSizeLabel}</span>
+                    ) : null}
+                    <span className="admin-badge admin-badge--muted">
+                      {activeModelDetails.versionCount} versions
+                    </span>
+                  </div>
+                  {activeModel.tags.length > 0 ? (
+                    <div className="admin-model-card__tags">
+                      {activeModel.tags.map((tag) => (
+                        <span key={tag.id} className="admin-badge">
+                          {tag.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {activeModel.description ? (
+                    <p className="admin-model-card__description">{activeModel.description}</p>
+                  ) : null}
+                  {activeModel.trigger ? (
+                    <p className="admin-model-card__trigger">
+                      <strong>Trigger:</strong> {activeModel.trigger}
+                    </p>
+                  ) : null}
+                  <ul className="admin-model-card__metadata">
+                    {activeModelDetails.metadataEntries.map((entry) => (
+                      <li key={entry.label}>
+                        <span>{entry.label}</span>
+                        {entry.href ? (
+                          <strong>
+                            <a href={entry.href} target="_blank" rel="noreferrer">
+                              {entry.value}
+                            </a>
+                          </strong>
+                        ) : (
+                          <strong>{entry.value}</strong>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="admin-model-card__quick-actions">
+                    {activeModelDetails.previewUrl ? (
+                      <a
+                        className="button button--subtle"
+                        href={activeModelDetails.previewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Preview
+                      </a>
+                    ) : null}
+                    <a
+                      className="button button--subtle"
+                      href={activeModelDetails.downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Download latest
+                    </a>
+                  </div>
+                </div>
+                <form
+                  className="admin-model-card__form admin__form admin-model-mainframe__form"
+                  onSubmit={(event) => handleUpdateModel(event, activeModel)}
+                  aria-label={`Settings for ${activeModel.title}`}
+                >
+                  <div className="admin-model-card__form-fields">
+                    <label className="admin-model-card__form-item admin-model-card__form-item--full">
+                      <span>Title</span>
+                      <input name="title" defaultValue={activeModel.title} disabled={isBusy} />
+                    </label>
+                    <label className="admin-model-card__form-item">
+                      <span>Owner</span>
+                      <select name="ownerId" defaultValue={activeModel.owner.id} disabled={isBusy}>
+                        {userOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="admin-model-card__form-item">
+                      <span>Primary version</span>
+                      <input name="version" defaultValue={activeModel.version} disabled={isBusy} />
+                    </label>
+                    <label className="admin-model-card__form-item">
+                      <span>Trigger / Activator</span>
+                      <input
+                        name="trigger"
+                        defaultValue={activeModel.trigger ?? ''}
+                        placeholder="Primary activation phrase"
+                        disabled={isBusy}
+                        required
+                      />
+                    </label>
+                    <label className="admin-model-card__form-item">
+                      <span>Tags</span>
+                      <input
+                        name="tags"
+                        defaultValue={activeModel.tags.map((tag) => tag.label).join(', ')}
+                        placeholder="Comma separated"
+                        disabled={isBusy}
+                      />
+                    </label>
+                    <label className="admin-model-card__form-item admin-model-card__form-item--full">
+                      <span>Description</span>
+                      <textarea
+                        name="description"
+                        rows={3}
+                        defaultValue={activeModel.description ?? ''}
+                        disabled={isBusy}
+                      />
+                    </label>
+                  </div>
+                  <div className="admin-model-card__form-footer">
+                    <button type="submit" className="button button--primary" disabled={isBusy}>
+                      Save changes
+                    </button>
+                  </div>
+                </form>
+              </div>
+              <div className="admin-model-mainframe__versions">
+                <div className="admin-model-card__versions">
+                  <div className="admin-model-card__versions-header">
+                    <h5>Version history</h5>
+                    <span className="admin-badge admin-badge--muted">Belongs to {activeModel.title}</span>
+                  </div>
+                  <ul className="admin-model-card__version-list">
+                    {activeModel.versions.map((version) => {
+                      const versionDownloadUrl =
+                        resolveStorageUrl(
+                          version.storagePath,
+                          version.storageBucket,
+                          version.storageObject,
+                        ) ?? version.storagePath;
+                      const versionPreviewUrl =
+                        resolveStorageUrl(
+                          version.previewImage,
+                          version.previewImageBucket,
+                          version.previewImageObject,
+                        ) ?? version.previewImage ?? null;
+                      const versionUpdatedLabel = new Date(version.updatedAt).toLocaleDateString('en-US');
+                      const versionFileSizeLabel = formatFileSize(version.fileSize);
+
+                      return (
+                        <li key={version.id} className="admin-model-card__version">
+                          <div className="admin-model-card__version-main">
+                            <strong>{version.version}</strong>
+                            <div className="admin-model-card__version-badges">
+                              {version.id === activeModel.primaryVersionId ? (
+                                <span className="admin-badge">Primary</span>
+                              ) : null}
+                              {version.id === activeModel.latestVersionId ? (
+                                <span className="admin-badge admin-badge--muted">Latest</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <div className="admin-model-card__version-meta">
+                            <span>{versionUpdatedLabel}</span>
+                            {versionFileSizeLabel ? <span>{versionFileSizeLabel}</span> : null}
+                          </div>
+                          <div className="admin-model-card__version-actions">
+                            {versionPreviewUrl ? (
+                              <a
+                                className="button button--subtle"
+                                href={versionPreviewUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Preview
+                              </a>
+                            ) : null}
+                            <a
+                              className="button button--subtle"
+                              href={versionDownloadUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Download
+                            </a>
+                            {version.id !== activeModel.primaryVersionId ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="button button--subtle"
+                                  onClick={() => handlePromoteModelVersion(activeModel, version)}
+                                  disabled={isBusy}
+                                >
+                                  Make primary
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button button--subtle"
+                                  onClick={() => handleRenameModelVersion(activeModel, version)}
+                                  disabled={isBusy}
+                                >
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button button--danger"
+                                  onClick={() => handleDeleteModelVersion(activeModel, version)}
+                                  disabled={isBusy}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
 

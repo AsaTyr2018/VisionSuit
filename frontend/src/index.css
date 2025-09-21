@@ -1713,9 +1713,16 @@ body {
 }
 
 .admin-image-card--expanded,
-.admin-model-card--expanded {
+.admin-model-card--active {
   border-color: rgba(99, 102, 241, 0.6);
   box-shadow: 0 32px 64px rgba(76, 29, 149, 0.25);
+}
+
+.admin-model-card {
+  position: relative;
+  align-items: stretch;
+  text-align: center;
+  padding-top: 2.1rem;
 }
 
 .admin-image-card__body,
@@ -1777,11 +1784,38 @@ body {
   align-items: flex-start;
 }
 
+.admin-model-card__checkbox {
+  position: absolute;
+  top: 0.95rem;
+  left: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 12px 22px rgba(2, 6, 23, 0.38);
+}
+
 .admin-image-card__checkbox input,
 .admin-model-card__checkbox input {
   width: 1.05rem;
   height: 1.05rem;
   accent-color: rgba(56, 189, 248, 0.85);
+}
+
+.admin-model-card__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.admin-model-card__manage {
+  width: 100%;
+  justify-content: center;
 }
 
 .admin-image-card__titles,
@@ -1888,6 +1922,73 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
+}
+
+.admin-model-mainframe {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.admin-model-mainframe__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-model-mainframe__subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+  color: rgba(165, 180, 203, 0.85);
+}
+
+.admin-model-mainframe__actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.admin-model-mainframe__layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 1.4fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .admin-model-mainframe__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.admin-model-mainframe__overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-model-mainframe__media {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.admin-model-mainframe__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.admin-model-mainframe__form {
+  padding-top: 0;
+  border-top: none;
+  gap: 1.25rem;
+}
+
+.admin-model-mainframe__versions {
+  margin-top: 0.5rem;
 }
 
 .admin-image-card__form,
