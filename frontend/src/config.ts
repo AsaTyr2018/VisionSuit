@@ -18,7 +18,18 @@ const resolveApiBase = () => {
   return trimmed.replace(/\/$/, '');
 };
 
+const resolveGeneratorBaseModelBucket = () => {
+  const rawValue = import.meta.env.VITE_GENERATOR_BASE_MODEL_BUCKET;
+  if (!rawValue) {
+    return 'comfyui-models';
+  }
+
+  const trimmed = rawValue.trim();
+  return trimmed.length > 0 ? trimmed : 'comfyui-models';
+};
+
 export const apiBaseUrl = resolveApiBase();
+export const generatorBaseModelBucket = resolveGeneratorBaseModelBucket();
 
 export const buildApiUrl = (path: string) => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;

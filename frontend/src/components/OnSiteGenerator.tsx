@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ApiError, api } from '../lib/api';
+import { generatorBaseModelBucket } from '../config';
 import { resolveCachedStorageUrl } from '../lib/storage';
 import type {
   GeneratorRequestLoRASelection,
@@ -35,7 +36,14 @@ const dimensionPresets = [
 const describeModelType = (asset: ModelAsset) =>
   asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA asset';
 
+const normalizedBaseModelBucket = generatorBaseModelBucket.trim().toLowerCase();
+
 const isLikelyBaseModel = (asset: ModelAsset) => {
+  const assetBucket = asset.storageBucket?.trim().toLowerCase();
+  if (assetBucket && normalizedBaseModelBucket && assetBucket === normalizedBaseModelBucket) {
+    return true;
+  }
+
   const typeLabel = describeModelType(asset).toLowerCase();
   if (typeLabel.includes('checkpoint') || typeLabel.includes('base') || typeLabel.includes('model')) {
     return true;
@@ -57,6 +65,11 @@ const isLikelyBaseModel = (asset: ModelAsset) => {
 };
 
 const isLikelyLora = (asset: ModelAsset) => {
+  const assetBucket = asset.storageBucket?.trim().toLowerCase();
+  if (assetBucket && normalizedBaseModelBucket && assetBucket === normalizedBaseModelBucket) {
+    return false;
+  }
+
   const typeLabel = describeModelType(asset).toLowerCase();
   if (typeLabel.includes('lora')) {
     return true;
