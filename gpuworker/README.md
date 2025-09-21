@@ -48,3 +48,13 @@ When VisionSuit has not yet been wired to the worker you can still verify connec
   ```
 
 Each test script reads `/etc/comfyui/minio.env`, honours optional `MINIO_*_PREFIX` values, and requires the AWS CLI to be installed.
+
+### API-driven workflow validation
+
+Operators can run workflows without the ComfyUI web UI by calling `scripts/test-run-workflow.sh`. The helper reads `/etc/comfyui/minio.env`, posts the selected workflow JSON to the configured ComfyUI API, polls the queue until completion, and prints the generated asset identifiers. Optional flags let you target remote hosts, change the polling interval, or trigger `test-export-outputs` automatically to download the results.
+
+Example:
+
+```bash
+scripts/test-run-workflow.sh --workflow ~/flows/validation.json --host comfyui.local --export-dir ~/tmp/comfyui-run
+```
