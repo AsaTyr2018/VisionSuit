@@ -2,236 +2,76 @@ import { Prisma, GeneratorAccessMode } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
-import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
-import {
-  syncGeneratorBaseModels,
-  type GeneratorBaseModelObject,
-} from '../lib/generator/baseModelSync';
-import { resolveStorageLocation, storageClient } from '../lib/storage';
+import { resolveStorageLocation } from '../lib/storage';
 
 const generatorRouter = Router();
 
-const generatorBaseModelBucket = appConfig.generator.baseModelBucket.trim();
-const normalizedGeneratorBaseBucket = generatorBaseModelBucket.toLowerCase();
-const manifestCandidateObjects = Array.from(
-  new Set(
-    [
-      appConfig.generator.baseModelManifestObject?.trim(),
-      'minio-model-manifest.json',
-      'model-manifest.json',
-    ].filter((entry): entry is string => Boolean(entry && entry.length > 0)),
-  ),
-);
+const generatorBaseModelTypeSchema = z.enum(['SD1.5', 'SDXL', 'PonyXL']);
 
-const readStreamToString = async (stream: NodeJS.ReadableStream): Promise<string> => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    if (chunk instanceof Buffer) {
-      chunks.push(chunk);
-    } else if (typeof chunk === 'string') {
-      chunks.push(Buffer.from(chunk));
-    } else if (chunk) {
-      const view = chunk as ArrayBufferView;
-      const buffer = Buffer.from(view.buffer, view.byteOffset, view.byteLength);
-      chunks.push(buffer);
-    }
-  }
+const generatorBaseModelConfigSchema = z.object({
+  type: generatorBaseModelTypeSchema,
+  name: z.string().trim().min(1).max(120),
+  filename: z.string().trim().min(1).max(512),
+});
 
-  return Buffer.concat(chunks).toString('utf-8');
-};
+type GeneratorBaseModelConfig = z.infer<typeof generatorBaseModelConfigSchema>;
 
-const parseManifestSize = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
+const generatorBaseModelSettingsSchema = z.array(generatorBaseModelConfigSchema).max(32).default([]);
 
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      return null;
-    }
-
-    const parsed = Number(trimmed);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-
-  return null;
-};
-
-const collectManifestEntries = (payload: unknown): GeneratorBaseModelObject[] => {
-  if (!payload) {
+const parseGeneratorBaseModels = (value: unknown): GeneratorBaseModelConfig[] => {
+  const parsed = generatorBaseModelSettingsSchema.safeParse(value ?? []);
+  if (!parsed.success) {
     return [];
   }
 
-  if (typeof payload === 'string') {
-    return [{ name: payload, size: null }];
-  }
-
-  if (Array.isArray(payload)) {
-    return payload.flatMap((entry) => collectManifestEntries(entry));
-  }
-
-  if (typeof payload !== 'object') {
-    return [];
-  }
-
-  const record = payload as Record<string, unknown>;
-  const directKey =
-    record.key ??
-    record.Key ??
-    record.name ??
-    record.object ??
-    record.objectName ??
-    record.path ??
-    record.storageObject ??
-    record.storagePath ??
-    record.location ??
-    record.url ??
-    record.file ??
-    record.fileName ??
-    record.filename;
-
-  const sizeCandidates = [
-    'size',
-    'Size',
-    'filesize',
-    'fileSize',
-    'length',
-    'Length',
-    'contentLength',
-    'ContentLength',
-    'bytes',
-    'Bytes',
-  ];
-
-  let detectedSize: number | null = null;
-  for (const key of sizeCandidates) {
-    const parsed = parseManifestSize(record[key]);
-    if (parsed !== null) {
-      detectedSize = parsed;
-      break;
-    }
-  }
-
-  const results: GeneratorBaseModelObject[] = [];
-
-  if (typeof directKey === 'string') {
-    results.push({ name: directKey, size: detectedSize });
-  }
-
-  const nestedKeys = [
-    'contents',
-    'Contents',
-    'objects',
-    'Objects',
-    'entries',
-    'Entries',
-    'items',
-    'Items',
-    'files',
-    'Files',
-    'data',
-    'Data',
-    'children',
-    'Children',
-  ];
-
-  for (const key of nestedKeys) {
-    const value = record[key];
-    if (value) {
-      results.push(...collectManifestEntries(value));
-    }
-  }
-
-  return results;
+  return parsed.data.map((entry) => ({
+    type: entry.type,
+    name: entry.name.trim(),
+    filename: entry.filename.trim(),
+  }));
 };
 
-const normalizeManifestObjectName = (value: string): string | null => {
-  let trimmed = value.trim();
-  if (trimmed.length === 0) {
+const extractObjectKey = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
     return null;
   }
 
   if (trimmed.startsWith('s3://')) {
     const withoutScheme = trimmed.slice('s3://'.length);
-    const slashIndex = withoutScheme.indexOf('/');
-    if (slashIndex === -1) {
-      return null;
-    }
-
-    const possibleObject = withoutScheme.slice(slashIndex + 1);
-    trimmed = possibleObject;
+    const [, ...rest] = withoutScheme.split('/');
+    const objectKey = rest.join('/');
+    return objectKey.trim() || null;
   }
 
-  if (trimmed.startsWith(generatorBaseModelBucket + '/')) {
-    trimmed = trimmed.slice(generatorBaseModelBucket.length + 1);
-  }
-
-  trimmed = trimmed.replace(/^\/+/, '');
-
-  if (trimmed.length === 0 || trimmed.endsWith('/')) {
-    return null;
-  }
-
-  return trimmed;
+  return trimmed.replace(/^\/+/, '') || null;
 };
 
-const loadObjectNamesFromManifest = async (): Promise<Map<string, GeneratorBaseModelObject>> => {
-  const manifestNames = new Map<string, GeneratorBaseModelObject>();
-
-  for (const objectName of manifestCandidateObjects) {
-    try {
-      const stream = await storageClient.getObject(generatorBaseModelBucket, objectName);
-      const raw = await readStreamToString(stream);
-
-      if (!raw || raw.trim().length === 0) {
-        continue;
-      }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (error) {
-        console.warn('Failed to parse generator base-model manifest JSON', error);
-        continue;
-      }
-
-      const entries = collectManifestEntries(parsed);
-      for (const entry of entries) {
-        const normalized = typeof entry.name === 'string' ? normalizeManifestObjectName(entry.name) : null;
-        if (normalized) {
-          manifestNames.set(normalized, { name: normalized, size: entry.size ?? null });
-        }
-      }
-
-      if (manifestNames.size > 0) {
-        break;
-      }
-    } catch (error) {
-      const code = (error as Error & { code?: string }).code;
-      if (code === 'NoSuchKey' || code === 'NotFound') {
-        continue;
-      }
-
-      console.warn('Failed to load generator base-model manifest from storage', error);
-    }
+const registerAssetKeys = (
+  map: Map<string, ReturnType<typeof mapModelAsset>>,
+  asset: ReturnType<typeof mapModelAsset>,
+  key: string | null | undefined,
+) => {
+  const normalized = extractObjectKey(key);
+  if (!normalized) {
+    return;
   }
 
-  manifestCandidateObjects.forEach((candidate) => {
-    if (candidate) {
-      const normalized = normalizeManifestObjectName(candidate);
-      if (normalized) {
-        manifestNames.delete(normalized);
-      }
-    }
-  });
+  if (!map.has(normalized)) {
+    map.set(normalized, asset);
+  }
 
-  return manifestNames;
+  const tail = normalized.includes('/') ? normalized.slice(normalized.lastIndexOf('/') + 1) : normalized;
+  if (tail && !map.has(tail)) {
+    map.set(tail, asset);
+  }
 };
 
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
@@ -251,7 +91,7 @@ const ensureSettings = async () => {
     return existing;
   }
 
-  return prisma.generatorSettings.create({ data: {} });
+  return prisma.generatorSettings.create({ data: { baseModels: [] } });
 };
 
 const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
@@ -297,6 +137,7 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
 
 const settingsSchema = z.object({
   accessMode: z.nativeEnum(GeneratorAccessMode),
+  baseModels: generatorBaseModelSettingsSchema,
 });
 
 const generatorRequestSchema = z.object({
@@ -321,74 +162,70 @@ const generatorRequestSchema = z.object({
 
 generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
   try {
-    if (!generatorBaseModelBucket) {
+    const settings = await ensureSettings();
+    const configured = parseGeneratorBaseModels(settings.baseModels);
+
+    if (configured.length === 0) {
       res.json([]);
       return;
     }
 
-    const objectNames = await loadObjectNamesFromManifest();
+    const filenames = Array.from(new Set(configured.map((entry) => entry.filename))).filter((entry) => entry.length > 0);
 
-    if (objectNames.size === 0) {
-      try {
-        const stream = storageClient.listObjects(generatorBaseModelBucket, '', true);
-        for await (const item of stream) {
-          if (item.name) {
-            const size = typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : null;
-            objectNames.set(item.name, { name: item.name, size });
-          }
-        }
-      } catch (error) {
-        console.error('Failed to enumerate generator base-model bucket', error);
-        res.status(502).json({ message: 'Could not list base models from storage.' });
-        return;
-      }
+    let assets: HydratedModelAsset[] = [];
+    if (filenames.length > 0) {
+      const lookupConditions = filenames.map<Prisma.ModelAssetWhereInput>((filename) => ({
+        OR: [
+          { storagePath: filename },
+          { storagePath: { endsWith: `/${filename}` } },
+          {
+            versions: {
+              some: {
+                OR: [
+                  { storagePath: filename },
+                  { storagePath: { endsWith: `/${filename}` } },
+                ],
+              },
+            },
+          },
+        ],
+      }));
+
+      assets = (await prisma.modelAsset.findMany({
+        where: { OR: lookupConditions },
+        include: {
+          tags: { include: { tag: true } },
+          owner: { select: { id: true, displayName: true, email: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
+        },
+      })) as HydratedModelAsset[];
     }
 
-    try {
-      await syncGeneratorBaseModels({
-        prisma,
-        bucket: generatorBaseModelBucket,
-        ...(objectNames.size > 0 ? { objects: objectNames.values() } : {}),
+    const mappedAssets = assets.map(mapModelAsset);
+    const assetLookup = new Map<string, ReturnType<typeof mapModelAsset>>();
+
+    mappedAssets.forEach((asset) => {
+      registerAssetKeys(assetLookup, asset, asset.storagePath);
+      registerAssetKeys(assetLookup, asset, asset.storageObject);
+      asset.versions.forEach((version) => {
+        registerAssetKeys(assetLookup, asset, version.storagePath);
+        registerAssetKeys(assetLookup, asset, version.storageObject);
       });
-    } catch (error) {
-      console.warn('Failed to synchronize generator base models automatically', error);
-    }
+    });
 
-    const viewer = req.user!;
-    const isAdmin = viewer.role === 'ADMIN';
-    const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
-      ? {}
-      : { OR: [{ ownerId: viewer.id }, { isPublic: true }] };
+    const payload = configured.map((entry, index) => {
+      const asset = assetLookup.get(entry.filename) ?? null;
+      return {
+        id: asset?.id ?? `config-${index}`,
+        type: entry.type,
+        name: entry.name,
+        filename: entry.filename,
+        asset,
+        isMissing: !asset,
+      };
+    });
 
-    const assets = (await prisma.modelAsset.findMany({
-      where: visibilityFilter,
-      include: {
-        tags: { include: { tag: true } },
-        owner: { select: { id: true, displayName: true, email: true } },
-        versions: { orderBy: { createdAt: 'desc' } },
-      },
-    })) as HydratedModelAsset[];
-
-    const baseModels = assets
-      .map(mapModelAsset)
-      .filter((asset) => {
-        if (!asset.storageBucket || asset.storageBucket.toLowerCase() !== normalizedGeneratorBaseBucket) {
-          return false;
-        }
-
-        if (!asset.storageObject) {
-          return false;
-        }
-
-        if (objectNames.size === 0) {
-          return true;
-        }
-
-        return objectNames.has(asset.storageObject);
-      })
-      .sort((a, b) => a.title.localeCompare(b.title));
-
-    res.json(baseModels);
+    res.json(payload);
   } catch (error) {
     next(error);
   }
@@ -401,6 +238,7 @@ generatorRouter.get('/settings', async (_req, res, next) => {
       settings: {
         id: settings.id,
         accessMode: settings.accessMode,
+        baseModels: parseGeneratorBaseModels(settings.baseModels),
         createdAt: settings.createdAt.toISOString(),
         updatedAt: settings.updatedAt.toISOString(),
       },
@@ -412,7 +250,7 @@ generatorRouter.get('/settings', async (_req, res, next) => {
 
 generatorRouter.put('/settings', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const parsed = settingsSchema.safeParse(req.body);
+    const parsed = settingsSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({
         message: 'Invalid generator settings payload.',
@@ -424,13 +262,14 @@ generatorRouter.put('/settings', requireAuth, requireAdmin, async (req, res, nex
     const current = await ensureSettings();
     const updated = await prisma.generatorSettings.update({
       where: { id: current.id },
-      data: { accessMode: parsed.data.accessMode },
+      data: { accessMode: parsed.data.accessMode, baseModels: parsed.data.baseModels },
     });
 
     res.json({
       settings: {
         id: updated.id,
         accessMode: updated.accessMode,
+        baseModels: parseGeneratorBaseModels(updated.baseModels),
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },

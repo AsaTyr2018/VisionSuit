@@ -7,6 +7,7 @@ import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
 import type {
   Gallery,
   GeneratorAccessMode,
+  GeneratorBaseModelConfig,
   GeneratorSettings,
   ImageAsset,
   ModelAsset,
@@ -120,6 +121,14 @@ const parseCommaList = (value: string) =>
     .split(',')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+
+const generatorBaseModelTypeOptions: GeneratorBaseModelConfig['type'][] = ['SD1.5', 'SDXL', 'PonyXL'];
+
+const normalizeGeneratorBaseModel = (entry: GeneratorBaseModelConfig): GeneratorBaseModelConfig => ({
+  type: entry.type,
+  name: entry.name.trim(),
+  filename: entry.filename.trim(),
+});
 
 const matchText = (value: string | null | undefined, query: string) => {
   if (!query) {
@@ -257,8 +266,15 @@ export const AdminPanel = ({
   });
   const [rankingUserId, setRankingUserId] = useState('');
   const generatorAccessModeFromSettings = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
+  const generatorBaseModelsFromSettings = useMemo(
+    () => (generatorSettings?.baseModels ?? []).map((entry) => ({ ...entry })),
+    [generatorSettings?.baseModels],
+  );
   const [generatorAccessMode, setGeneratorAccessMode] = useState<GeneratorAccessMode>(
     generatorAccessModeFromSettings,
+  );
+  const [baseModelDrafts, setBaseModelDrafts] = useState<GeneratorBaseModelConfig[]>(
+    generatorBaseModelsFromSettings,
   );
   const [isSavingGeneratorSettings, setIsSavingGeneratorSettings] = useState(false);
   const [generatorSettingsError, setGeneratorSettingsError] = useState<string | null>(null);
@@ -269,7 +285,22 @@ export const AdminPanel = ({
     );
   }, [generatorAccessModeFromSettings]);
 
-  const isGeneratorDirty = generatorAccessMode !== generatorAccessModeFromSettings;
+  useEffect(() => {
+    setBaseModelDrafts(generatorBaseModelsFromSettings);
+  }, [generatorBaseModelsFromSettings]);
+
+  const normalizedSettingsBaseModels = useMemo(
+    () => generatorBaseModelsFromSettings.map(normalizeGeneratorBaseModel),
+    [generatorBaseModelsFromSettings],
+  );
+  const normalizedBaseModelDrafts = useMemo(
+    () => baseModelDrafts.map(normalizeGeneratorBaseModel),
+    [baseModelDrafts],
+  );
+
+  const isGeneratorDirty =
+    generatorAccessMode !== generatorAccessModeFromSettings ||
+    JSON.stringify(normalizedBaseModelDrafts) !== JSON.stringify(normalizedSettingsBaseModels);
 
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
@@ -306,6 +337,40 @@ export const AdminPanel = ({
 
   const resetStatus = () => setStatus(null);
 
+  const handleAddBaseModel = () => {
+    setBaseModelDrafts((current) => [...current, { type: 'SD1.5', name: '', filename: '' }]);
+    setGeneratorSettingsError(null);
+    resetStatus();
+  };
+
+  const handleRemoveBaseModel = (index: number) => {
+    setBaseModelDrafts((current) => current.filter((_, idx) => idx !== index));
+    setGeneratorSettingsError(null);
+    resetStatus();
+  };
+
+  const handleBaseModelFieldChange = (
+    index: number,
+    field: keyof GeneratorBaseModelConfig,
+    value: string,
+  ) => {
+    setBaseModelDrafts((current) =>
+      current.map((entry, idx) => {
+        if (idx !== index) {
+          return entry;
+        }
+
+        if (field === 'type') {
+          return { ...entry, type: value as GeneratorBaseModelConfig['type'] };
+        }
+
+        return { ...entry, [field]: value };
+      }),
+    );
+    setGeneratorSettingsError(null);
+    resetStatus();
+  };
+
   const handleGeneratorAccessChange = (mode: GeneratorAccessMode) => {
     setGeneratorAccessMode(mode);
     setGeneratorSettingsError(null);
@@ -314,6 +379,7 @@ export const AdminPanel = ({
 
   const handleResetGeneratorAccess = () => {
     setGeneratorAccessMode(generatorAccessModeFromSettings);
+    setBaseModelDrafts(generatorBaseModelsFromSettings);
     setGeneratorSettingsError(null);
     resetStatus();
   };
@@ -325,11 +391,25 @@ export const AdminPanel = ({
       return;
     }
 
+    if (normalizedBaseModelDrafts.length === 0) {
+      setGeneratorSettingsError('Add at least one base model entry before saving.');
+      return;
+    }
+
+    if (normalizedBaseModelDrafts.some((entry) => entry.name.length === 0 || entry.filename.length === 0)) {
+      setGeneratorSettingsError('Provide a name and filename for every base model entry.');
+      return;
+    }
+
     try {
       setIsSavingGeneratorSettings(true);
       setGeneratorSettingsError(null);
       resetStatus();
-      const updated = await api.updateGeneratorSettings(token, generatorAccessMode);
+      const updated = await api.updateGeneratorSettings(token, {
+        accessMode: generatorAccessMode,
+        baseModels: normalizedBaseModelDrafts,
+      });
+      setBaseModelDrafts(updated.baseModels.map((entry) => ({ ...entry })));
       setStatus({ type: 'success', message: 'On-Site Generator visibility updated successfully.' });
       onGeneratorSettingsUpdated?.(updated);
     } catch (error) {
@@ -2094,6 +2174,71 @@ export const AdminPanel = ({
                   </span>
                 </label>
               </fieldset>
+              <section className="generator-base-models">
+                <div className="generator-base-models__header">
+                  <h4>Base model presets</h4>
+                  <p>Define the checkpoints exposed inside the On-Site Generator wizard.</p>
+                </div>
+                {baseModelDrafts.length === 0 ? (
+                  <p className="generator-base-models__empty">
+                    No base models configured yet. Add at least one checkpoint so users can request renders.
+                  </p>
+                ) : (
+                  <ol className="generator-base-models__list">
+                    {baseModelDrafts.map((entry, index) => (
+                      <li key={`generator-base-model-${index}`} className="generator-base-models__entry">
+                        <div className="generator-base-models__grid">
+                          <label>
+                            <span>Type</span>
+                            <select
+                              value={entry.type}
+                              onChange={(event) => handleBaseModelFieldChange(index, 'type', event.target.value)}
+                            >
+                              {generatorBaseModelTypeOptions.map((option) => (
+                                <option key={option} value={option}>
+                                  {option}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>Name</span>
+                            <input
+                              type="text"
+                              value={entry.name}
+                              onChange={(event) => handleBaseModelFieldChange(index, 'name', event.target.value)}
+                              placeholder="Display label shown to users"
+                            />
+                          </label>
+                          <label>
+                            <span>Filename</span>
+                            <input
+                              type="text"
+                              value={entry.filename}
+                              onChange={(event) => handleBaseModelFieldChange(index, 'filename', event.target.value)}
+                              placeholder="Model filename or object path"
+                            />
+                          </label>
+                        </div>
+                        <div className="generator-base-models__row-actions">
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => handleRemoveBaseModel(index)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                <div className="generator-base-models__footer">
+                  <button type="button" className="button button--ghost" onClick={handleAddBaseModel}>
+                    Add base model
+                  </button>
+                </div>
+              </section>
               {generatorSettingsError ? (
                 <p className="generator-settings__error">{generatorSettingsError}</p>
               ) : null}

@@ -3,6 +3,8 @@ import type {
   AssetComment,
   Gallery,
   GeneratorAccessMode,
+  GeneratorBaseModelConfig,
+  GeneratorBaseModelOption,
   GeneratorRequestSummary,
   GeneratorSettings,
   ImageAsset,
@@ -276,17 +278,21 @@ const deleteModelVersion = async (token: string, modelId: string, versionId: str
     token,
   );
 
-const getGeneratorBaseModels = (token: string) => request<ModelAsset[]>('/api/generator/base-models', {}, token);
+const getGeneratorBaseModels = (token: string) =>
+  request<GeneratorBaseModelOption[]>('/api/generator/base-models', {}, token);
 
 const getGeneratorSettings = (token?: string) =>
   request<{ settings: GeneratorSettings }>('/api/generator/settings', {}, token).then((response) => response.settings);
 
-const updateGeneratorSettings = (token: string, accessMode: GeneratorAccessMode) =>
+const updateGeneratorSettings = (
+  token: string,
+  payload: { accessMode: GeneratorAccessMode; baseModels: GeneratorBaseModelConfig[] },
+) =>
   request<{ settings: GeneratorSettings }>(
     '/api/generator/settings',
     {
       method: 'PUT',
-      body: JSON.stringify({ accessMode }),
+      body: JSON.stringify(payload),
     },
     token,
   ).then((response) => response.settings);

@@ -641,3 +641,8 @@
 - **General**: Ensured On-Site Generator base checkpoints appear immediately by syncing the database from the ComfyUI bucket on demand.
 - **Technical Changes**: Added reusable generator base-model sync helpers, wired the `/api/generator/base-models` route to auto-register checkpoints using manifest sizes, refreshed the CLI sync script, and documented the behavior in the README.
 - **Data Changes**: No schema updates; existing base-model metadata is normalized when the sync runs.
+
+## 127 – On-Site generator base model curation
+- **General**: Empowered administrators to curate the generator’s base-model list directly from the dashboard so members see only vetted checkpoints.
+- **Technical Changes**: Extended Prisma generator settings with a JSON base-model collection, updated the settings and base-model routes to serve the curated definitions, refreshed the admin generator form with add/remove controls, and taught the On-Site Generator to consume the new payload with inline availability warnings.
+- **Data Changes**: `GeneratorSettings` now persists the configured base models as structured JSON entries, enabling future edits without additional tables.

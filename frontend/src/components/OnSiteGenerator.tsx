@@ -6,6 +6,7 @@ import { resolveCachedStorageUrl } from '../lib/storage';
 import type {
   GeneratorRequestLoRASelection,
   GeneratorRequestSummary,
+  GeneratorBaseModelOption,
   ModelAsset,
   User,
 } from '../types/api';
@@ -158,7 +159,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [history, setHistory] = useState<GeneratorRequestSummary[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [baseModels, setBaseModels] = useState<ModelAsset[]>([]);
+  const [baseModels, setBaseModels] = useState<GeneratorBaseModelOption[]>([]);
   const [isBaseModelsLoading, setIsBaseModelsLoading] = useState(false);
   const [baseModelError, setBaseModelError] = useState<string | null>(null);
 
@@ -202,13 +203,18 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     };
   }, [token]);
 
-  const baseModelOptions = useMemo(
-    () => baseModels.slice().sort((a, b) => a.title.localeCompare(b.title)),
+  const resolvedBaseModels = useMemo(
+    () =>
+      baseModels
+        .filter((entry): entry is GeneratorBaseModelOption & { asset: ModelAsset } => Boolean(entry.asset))
+        .map((entry) => ({ ...entry, asset: entry.asset as ModelAsset }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [baseModels],
   );
+  const hasMissingBaseModels = useMemo(() => baseModels.some((entry) => entry.isMissing), [baseModels]);
 
   const loraOptions = useMemo(() => {
-    const baseModelIds = new Set(baseModelOptions.map((asset) => asset.id));
+    const baseModelIds = new Set(resolvedBaseModels.map((entry) => entry.asset.id));
     const candidates = models.filter((asset) => isLikelyLora(asset) && !baseModelIds.has(asset.id));
     if (candidates.length > 0) {
       return candidates.sort((a, b) => a.title.localeCompare(b.title));
@@ -217,24 +223,24 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     return models
       .filter((asset) => asset.id !== selectedBaseModelId && !baseModelIds.has(asset.id))
       .sort((a, b) => a.title.localeCompare(b.title));
-  }, [models, selectedBaseModelId, baseModelOptions]);
+  }, [models, selectedBaseModelId, resolvedBaseModels]);
 
   const loraLookup = useMemo(() => new Map(models.map((asset) => [asset.id, asset])), [models]);
 
   useEffect(() => {
-    if (baseModelOptions.length === 0) {
+    if (resolvedBaseModels.length === 0) {
       setSelectedBaseModelId('');
       return;
     }
 
-    if (!selectedBaseModelId || !baseModelOptions.some((asset) => asset.id === selectedBaseModelId)) {
-      setSelectedBaseModelId(baseModelOptions[0].id);
+    if (!selectedBaseModelId || !resolvedBaseModels.some((entry) => entry.asset.id === selectedBaseModelId)) {
+      setSelectedBaseModelId(resolvedBaseModels[0].asset.id);
     }
-  }, [baseModelOptions, selectedBaseModelId]);
+  }, [resolvedBaseModels, selectedBaseModelId]);
 
   const selectedBaseModel = useMemo(
-    () => baseModelOptions.find((asset) => asset.id === selectedBaseModelId) ?? null,
-    [baseModelOptions, selectedBaseModelId],
+    () => resolvedBaseModels.find((entry) => entry.asset.id === selectedBaseModelId) ?? null,
+    [resolvedBaseModels, selectedBaseModelId],
   );
 
   const filteredLoras = useMemo(() => {
@@ -495,10 +501,10 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     }
 
     if (!selectedBaseModel) {
-      if (baseModelOptions.length === 0) {
+      if (resolvedBaseModels.length === 0) {
         return (
           <div className="generator-preview generator-preview--empty">
-            <p>Upload checkpoints to the {generatorBaseModelBucket} bucket to unlock the On-Site Generator.</p>
+            <p>Configure base models in the Administration → Generator tab to unlock the On-Site Generator.</p>
           </div>
         );
       }
@@ -511,39 +517,48 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     }
 
     const previewUrl = resolveCachedStorageUrl(
-      selectedBaseModel.previewImage,
-      selectedBaseModel.previewImageBucket,
-      selectedBaseModel.previewImageObject,
+      selectedBaseModel.asset.previewImage,
+      selectedBaseModel.asset.previewImageBucket,
+      selectedBaseModel.asset.previewImageObject,
     );
 
     return (
       <div className="generator-preview">
         {previewUrl ? <img src={previewUrl} alt="Base model preview" /> : <div className="generator-preview__fallback">No preview</div>}
         <div className="generator-preview__details">
-          <h3>{selectedBaseModel.title}</h3>
+          <h3>{selectedBaseModel.name}</h3>
           <dl>
             <div>
               <dt>Type</dt>
-              <dd>{describeModelType(selectedBaseModel)}</dd>
+              <dd>{selectedBaseModel.type}</dd>
             </div>
             <div>
               <dt>Version</dt>
-              <dd>{selectedBaseModel.version}</dd>
+              <dd>{selectedBaseModel.asset.version}</dd>
+            </div>
+            <div>
+              <dt>Asset title</dt>
+              <dd>{selectedBaseModel.asset.title}</dd>
             </div>
             <div>
               <dt>Owner</dt>
-              <dd>{selectedBaseModel.owner.displayName}</dd>
+              <dd>{selectedBaseModel.asset.owner.displayName}</dd>
             </div>
           </dl>
-          {selectedBaseModel.tags.length > 0 ? (
+          {selectedBaseModel.asset.tags.length > 0 ? (
             <ul className="generator-preview__tags">
-              {selectedBaseModel.tags.slice(0, 6).map((tag) => (
+              {selectedBaseModel.asset.tags.slice(0, 6).map((tag) => (
                 <li key={tag.id}>{tag.label}</li>
               ))}
-              {selectedBaseModel.tags.length > 6 ? (
-                <li className="generator-preview__tags-more">+{selectedBaseModel.tags.length - 6}</li>
+              {selectedBaseModel.asset.tags.length > 6 ? (
+                <li className="generator-preview__tags-more">+{selectedBaseModel.asset.tags.length - 6}</li>
               ) : null}
             </ul>
+          ) : null}
+          {hasMissingBaseModels ? (
+            <p className="generator-preview__note">
+              Some configured base models could not be matched to stored checkpoints. Ask an administrator to verify the filenames.
+            </p>
           ) : null}
         </div>
       </div>
@@ -753,7 +768,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         <dl>
           <div>
             <dt>Base model</dt>
-            <dd>{selectedBaseModel ? selectedBaseModel.title : 'Not selected'}</dd>
+            <dd>{selectedBaseModel ? selectedBaseModel.name : 'Not selected'}</dd>
           </div>
           <div>
             <dt>Prompt</dt>
@@ -809,26 +824,29 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               id="generator-base-model"
               value={selectedBaseModelId}
               onChange={(event) => setSelectedBaseModelId(event.target.value)}
-              disabled={isBaseModelsLoading || baseModelOptions.length === 0}
+              disabled={isBaseModelsLoading || resolvedBaseModels.length === 0}
             >
-              {baseModelOptions.length === 0 ? (
+              {resolvedBaseModels.length === 0 ? (
                 <option value="">
                   {isBaseModelsLoading ? 'Loading base models…' : 'No base models available'}
                 </option>
               ) : null}
-              {baseModelOptions.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.title} — {describeModelType(asset)}
+              {resolvedBaseModels.map((entry) => (
+                <option key={entry.asset.id} value={entry.asset.id}>
+                  {entry.name} — {entry.type}
                 </option>
               ))}
             </select>
             {isBaseModelsLoading ? (
-              <p className="generator-field__status">Loading base models from storage…</p>
+              <p className="generator-field__status">Loading base model definitions…</p>
             ) : null}
             {baseModelError ? <p className="generator-field__error">{baseModelError}</p> : null}
-            {!isBaseModelsLoading && baseModelOptions.length === 0 && !baseModelError ? (
+            {!isBaseModelsLoading && hasMissingBaseModels && !baseModelError ? (
+              <p className="generator-field__status">Some configured base models could not be located. Check the filenames in Administration → Generator.</p>
+            ) : null}
+            {!isBaseModelsLoading && resolvedBaseModels.length === 0 && !baseModelError ? (
               <p className="generator-field__empty">
-                No checkpoints detected in the {generatorBaseModelBucket} bucket.
+                No base models configured. Ask an administrator to add entries under Administration → Generator.
               </p>
             ) : null}
           </div>
