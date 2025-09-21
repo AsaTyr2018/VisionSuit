@@ -646,3 +646,8 @@
 - **General**: Empowered administrators to curate the generator’s base-model list directly from the dashboard so members see only vetted checkpoints.
 - **Technical Changes**: Extended Prisma generator settings with a JSON base-model collection, updated the settings and base-model routes to serve the curated definitions, refreshed the admin generator form with add/remove controls, and taught the On-Site Generator to consume the new payload with inline availability warnings.
 - **Data Changes**: `GeneratorSettings` now persists the configured base models as structured JSON entries, enabling future edits without additional tables.
+
+## 128 – Generator settings recovery
+- **General**: Stopped the admin generator settings view from crashing when legacy rows contain invalid JSON.
+- **Technical Changes**: Added a sanitization fallback for generator settings, retrying reads after normalizing bad `baseModels` payloads.
+- **Data Changes**: Automatically rewrites malformed generator `baseModels` entries to an empty array when encountered.
