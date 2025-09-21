@@ -550,3 +550,8 @@
 - **General**: Added a dedicated installer to provision ComfyUI GPU workers with MinIO connectivity.
 - **Technical Changes**: Introduced `gpuworker/install.sh`, MinIO helper scripts for model manifests, LoRA sync, and output uploads, plus documentation updates in the main README and a focused GPU worker guide.
 - **Data Changes**: None; scripts interact with runtime storage only.
+
+## 110 – GPU worker MinIO endpoint prompt (pending)
+- **General**: Streamlined GPU worker setup by capturing the target MinIO endpoint during installation.
+- **Technical Changes**: Added an interactive prompt to `gpuworker/install.sh` that records the endpoint and secure-mode flag inside `/etc/comfyui/minio.env`, refreshed the worker README, and updated the project README instructions.
+- **Data Changes**: None; only environment templates are updated.

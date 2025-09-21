@@ -9,7 +9,8 @@ The `gpuworker` directory contains a self-contained installer for preparing a de
    ```bash
    sudo ./gpuworker/install.sh
    ```
-3. Edit `/etc/comfyui/minio.env` and provide the MinIO endpoint, credentials, and bucket names before starting the `comfyui` systemd service:
+3. When prompted, supply the MinIO endpoint URL (for example `http://192.168.1.10:9000`). The installer writes the endpoint and secure-mode flag to `/etc/comfyui/minio.env`.
+4. Edit `/etc/comfyui/minio.env` and provide the MinIO credentials and bucket names before starting the `comfyui` systemd service:
    ```bash
    sudo systemctl enable --now comfyui.service
    ```
