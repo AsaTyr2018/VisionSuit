@@ -166,6 +166,7 @@ const mapModelAsset = (asset: HydratedModelAsset) => {
     title: asset.title,
     description: asset.description,
     trigger: asset.trigger,
+    isPublic: asset.isPublic,
     version: latestVersion.version,
     fileSize: latestVersion.fileSize,
     checksum: latestVersion.checksum,
@@ -193,6 +194,7 @@ const mapImageAsset = (asset: HydratedImageAsset) => {
     id: asset.id,
     title: asset.title,
     description: asset.description,
+    isPublic: asset.isPublic,
     dimensions: asset.width && asset.height ? { width: asset.width, height: asset.height } : undefined,
     fileSize: asset.fileSize,
     storagePath: storage.url ?? asset.storagePath,
@@ -375,9 +377,15 @@ const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${object
 
 export const assetsRouter = Router();
 
-assetsRouter.get('/models', async (_req, res, next) => {
+assetsRouter.get('/models', async (req, res, next) => {
   try {
+    const viewer = req.user;
+    const visibilityFilter: Prisma.ModelAssetWhereInput = viewer
+      ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
+      : { isPublic: true };
+
     const assets = await prisma.modelAsset.findMany({
+      where: visibilityFilter,
       include: {
         tags: { include: { tag: true } },
         owner: { select: { id: true, displayName: true, email: true } },
@@ -392,9 +400,15 @@ assetsRouter.get('/models', async (_req, res, next) => {
   }
 });
 
-assetsRouter.get('/images', async (_req, res, next) => {
+assetsRouter.get('/images', async (req, res, next) => {
   try {
+    const viewer = req.user;
+    const visibilityFilter: Prisma.ImageAssetWhereInput = viewer
+      ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
+      : { isPublic: true };
+
     const images = await prisma.imageAsset.findMany({
+      where: visibilityFilter,
       include: {
         tags: { include: { tag: true } },
         owner: { select: { id: true, displayName: true, email: true } },

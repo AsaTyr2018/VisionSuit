@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
+import type { AuthenticatedUser } from '../lib/auth';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../lib/middleware/auth';
 import { resolveStorageLocation } from '../lib/storage';
@@ -32,6 +33,27 @@ type HydratedGallery = Prisma.GalleryGetPayload<{
 
 type HydratedGalleryImage = NonNullable<HydratedGallery['entries'][number]['image']>;
 
+const canViewResource = (
+  viewer: AuthenticatedUser | undefined,
+  ownerId: string,
+  isPublic: boolean,
+  options: { includePrivate?: boolean } = {},
+) => {
+  if (options.includePrivate) {
+    return true;
+  }
+
+  if (isPublic) {
+    return true;
+  }
+
+  if (!viewer) {
+    return false;
+  }
+
+  return viewer.id === ownerId;
+};
+
 const mapGalleryImageAsset = (image: HydratedGalleryImage) => {
   const storage = resolveStorageLocation(image.storagePath);
 
@@ -39,6 +61,7 @@ const mapGalleryImageAsset = (image: HydratedGalleryImage) => {
     id: image.id,
     title: image.title,
     description: image.description,
+    isPublic: image.isPublic,
     dimensions: image.width && image.height ? { width: image.width, height: image.height } : undefined,
     fileSize: image.fileSize,
     storagePath: storage.url ?? image.storagePath,
@@ -60,8 +83,12 @@ const mapGalleryImageAsset = (image: HydratedGalleryImage) => {
   };
 };
 
-const mapGallery = (gallery: HydratedGallery) => {
+const mapGallery = (
+  gallery: HydratedGallery,
+  options: { viewer?: AuthenticatedUser; includePrivate?: boolean } = {},
+) => {
   const cover = resolveStorageLocation(gallery.coverImage);
+  const viewer = options.viewer;
 
   return {
     id: gallery.id,
@@ -75,29 +102,53 @@ const mapGallery = (gallery: HydratedGallery) => {
     owner: gallery.owner,
     createdAt: gallery.createdAt,
     updatedAt: gallery.updatedAt,
-    entries: gallery.entries.map((entry) => {
-      const modelStorage = entry.asset ? resolveStorageLocation(entry.asset.storagePath) : null;
-      const modelPreview = entry.asset ? resolveStorageLocation(entry.asset.previewImage) : null;
+    entries: gallery.entries
+      .filter((entry) => {
+        if (options.includePrivate) {
+          return true;
+        }
 
-      return {
-        id: entry.id,
-        position: entry.position,
-        note: entry.note,
-        modelAsset: entry.asset
-          ? {
-              ...entry.asset,
-              storagePath: modelStorage?.url ?? entry.asset.storagePath,
-              storageBucket: modelStorage?.bucket ?? null,
-              storageObject: modelStorage?.objectName ?? null,
-              previewImage: modelPreview?.url ?? entry.asset.previewImage,
-              previewImageBucket: modelPreview?.bucket ?? null,
-              previewImageObject: modelPreview?.objectName ?? null,
-              tags: entry.asset.tags.map(({ tag }) => tag),
-            }
-          : null,
-        imageAsset: entry.image ? mapGalleryImageAsset(entry.image) : null,
-      };
-    }),
+        const canViewAsset = entry.asset
+          ? canViewResource(viewer, entry.asset.ownerId, entry.asset.isPublic, options)
+          : false;
+        const canViewImage = entry.image
+          ? canViewResource(viewer, entry.image.ownerId, entry.image.isPublic, options)
+          : false;
+
+        return canViewAsset || canViewImage;
+      })
+      .map((entry) => {
+        const modelStorage = entry.asset ? resolveStorageLocation(entry.asset.storagePath) : null;
+        const modelPreview = entry.asset ? resolveStorageLocation(entry.asset.previewImage) : null;
+        const canViewAsset = entry.asset
+          ? canViewResource(viewer, entry.asset.ownerId, entry.asset.isPublic, options)
+          : false;
+        const canViewImage = entry.image
+          ? canViewResource(viewer, entry.image.ownerId, entry.image.isPublic, options)
+          : false;
+
+        return {
+          id: entry.id,
+          position: entry.position,
+          note: entry.note,
+          modelAsset: entry.asset && (options.includePrivate || canViewAsset)
+            ? {
+                ...entry.asset,
+                isPublic: entry.asset.isPublic,
+                storagePath: modelStorage?.url ?? entry.asset.storagePath,
+                storageBucket: modelStorage?.bucket ?? null,
+                storageObject: modelStorage?.objectName ?? null,
+                previewImage: modelPreview?.url ?? entry.asset.previewImage,
+                previewImageBucket: modelPreview?.bucket ?? null,
+                previewImageObject: modelPreview?.objectName ?? null,
+                tags: entry.asset.tags.map(({ tag }) => tag),
+              }
+            : null,
+          imageAsset: entry.image && (options.includePrivate || canViewImage)
+            ? mapGalleryImageAsset(entry.image)
+            : null,
+        };
+      }),
   };
 };
 
@@ -156,8 +207,9 @@ const updateGallerySchema = z.object({
   removeEntryIds: z.array(z.string().trim().min(1)).optional(),
 });
 
-galleriesRouter.get('/', async (_req, res, next) => {
+galleriesRouter.get('/', async (req, res, next) => {
   try {
+    const viewer = req.user;
     const galleries = await prisma.gallery.findMany({
       include: {
         owner: { select: { id: true, displayName: true, email: true } },
@@ -182,7 +234,20 @@ galleriesRouter.get('/', async (_req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json(galleries.map(mapGallery));
+    const visibleGalleries = galleries.filter((gallery) => {
+      if (gallery.isPublic) {
+        return true;
+      }
+
+      if (!viewer) {
+        return false;
+      }
+
+      return gallery.ownerId === viewer.id;
+    });
+
+    const mapOptions: { viewer?: AuthenticatedUser } = viewer ? { viewer } : {};
+    res.json(visibleGalleries.map((gallery) => mapGallery(gallery, mapOptions)));
   } catch (error) {
     next(error);
   }
@@ -363,7 +428,7 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
       return;
     }
 
-    res.json(mapGallery(updated));
+    res.json(mapGallery(updated, { viewer: req.user, includePrivate: true }));
   } catch (error) {
     next(error);
   }

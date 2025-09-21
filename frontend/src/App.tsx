@@ -105,6 +105,7 @@ export const App = () => {
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileReloadKey, setProfileReloadKey] = useState(0);
+  const [isProfileAuditMode, setIsProfileAuditMode] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const availableViews = useMemo<PrimaryViewKey[]>(() => {
     const views: PrimaryViewKey[] = ['home', 'models', 'images'];
@@ -152,9 +153,9 @@ export const App = () => {
     try {
       setIsLoading(true);
       const [fetchedAssets, fetchedGalleries, fetchedImages] = await Promise.all([
-        api.getModelAssets(),
-        api.getGalleries(),
-        api.getImageAssets(),
+        api.getModelAssets(token),
+        api.getGalleries(token),
+        api.getImageAssets(token),
       ]);
 
       setAssets(fetchedAssets);
@@ -226,13 +227,18 @@ export const App = () => {
     setIsProfileLoading(true);
     setProfileError(null);
 
+    const shouldAudit = authUser?.role === 'ADMIN' && isProfileAuditMode;
+
     api
-      .getUserProfile(activeProfileId)
+      .getUserProfile(activeProfileId, { token: token ?? undefined, audit: shouldAudit })
       .then(({ profile }) => {
         if (!isActive) {
           return;
         }
         setActiveProfile(profile);
+        if (profile.visibility) {
+          setIsProfileAuditMode(profile.visibility.audit);
+        }
       })
       .catch((error) => {
         if (!isActive) {
@@ -250,7 +256,7 @@ export const App = () => {
     return () => {
       isActive = false;
     };
-  }, [activeProfileId, profileReloadKey]);
+  }, [activeProfileId, profileReloadKey, token, authUser?.role, isProfileAuditMode]);
 
   useEffect(() => {
     if (!toast) return;
@@ -408,6 +414,7 @@ export const App = () => {
       setActiveProfileId(userId);
       setActiveProfile((previous) => (previous?.id === userId ? previous : null));
       setProfileError(null);
+      setIsProfileAuditMode(false);
       setActiveView('profile');
     },
     [activeView],
@@ -416,6 +423,7 @@ export const App = () => {
   const handleCloseProfile = useCallback(() => {
     openPrimaryView(returnView);
     setActiveProfileId(null);
+    setIsProfileAuditMode(false);
   }, [openPrimaryView, returnView]);
 
   const handleRefreshProfile = useCallback(() => {
@@ -424,6 +432,13 @@ export const App = () => {
     }
     setProfileReloadKey((previous) => previous + 1);
   }, [activeProfileId]);
+
+  const handleToggleProfileAudit = useCallback(() => {
+    if (!authUser || authUser.role !== 'ADMIN') {
+      return;
+    }
+    setIsProfileAuditMode((previous) => !previous);
+  }, [authUser]);
 
   const handleLoginSubmit = async (email: string, password: string) => {
     setIsLoggingIn(true);
@@ -702,6 +717,9 @@ export const App = () => {
           onRetry={handleRefreshProfile}
           onOpenModel={handleNavigateToModel}
           onOpenGallery={handleNavigateToGallery}
+          canAudit={authUser?.role === 'ADMIN' && Boolean(activeProfileId)}
+          isAuditActive={activeProfile?.visibility?.audit ?? (authUser?.role === 'ADMIN' && isProfileAuditMode)}
+          onToggleAudit={handleToggleProfileAudit}
         />
       );
     }

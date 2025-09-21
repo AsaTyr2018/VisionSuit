@@ -51,6 +51,41 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const attachOptionalUser = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const token = extractToken(req);
+    if (!token) {
+      next();
+      return;
+    }
+
+    const payload = verifyAccessToken(token);
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        role: true,
+        bio: true,
+        avatarUrl: true,
+        isActive: true,
+      },
+    });
+
+    if (user && user.isActive) {
+      req.user = toAuthUser(user);
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.warn('Optional auth token rejected:', error);
+    }
+  }
+
+  next();
+};
+
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user || req.user.role !== 'ADMIN') {
     res.status(403).json({ message: 'Administratorrechte erforderlich.' });

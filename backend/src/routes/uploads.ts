@@ -498,6 +498,7 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
             storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
             previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
             metadata: modelMetadataPayload,
+            isPublic: payload.visibility === 'public',
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
@@ -561,6 +562,7 @@ uploadsRouter.post('/', requireAuth, upload.array('files'), async (req, res, nex
             sampler: metadata?.sampler ?? null,
             cfgScale: metadata?.cfgScale ?? null,
             steps: metadata?.steps ?? null,
+            isPublic: payload.visibility === 'public',
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
