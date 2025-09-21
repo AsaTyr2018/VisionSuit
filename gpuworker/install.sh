@@ -39,6 +39,51 @@ escape_sed_replacement() {
   printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
 }
 
+ensure_aws_cli() {
+  if command -v aws >/dev/null 2>&1; then
+    log "AWS CLI already installed"
+    return
+  fi
+
+  if apt-cache show awscli >/dev/null 2>&1; then
+    log "Installing AWS CLI from APT"
+    if apt-get install -y --no-install-recommends awscli; then
+      return
+    fi
+    log "WARNING: Failed to install AWS CLI from APT; falling back to official bundle"
+  else
+    log "AWS CLI package not available in APT repositories; downloading official bundle"
+  fi
+
+  local arch
+  arch="$(uname -m)"
+  local bundle_url=""
+  case "$arch" in
+    x86_64|amd64)
+      bundle_url="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+      ;;
+    aarch64|arm64)
+      bundle_url="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
+      ;;
+    *)
+      log "ERROR: Unsupported architecture $arch for AWS CLI bundle; install AWS CLI manually and re-run the installer."
+      return 1
+      ;;
+  esac
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  trap "rm -rf \"$tmpdir\"" RETURN
+
+  log "Installing AWS CLI v2 from official bundle"
+  curl -sSL "$bundle_url" -o "$tmpdir/awscliv2.zip"
+  unzip -q "$tmpdir/awscliv2.zip" -d "$tmpdir"
+  "$tmpdir/aws/install" --update -i /usr/local/aws-cli -b /usr/local/bin
+  rm -rf "$tmpdir"
+  trap - RETURN
+  log "AWS CLI v2 installation complete"
+}
+
 install_packages() {
   log "Installing system dependencies"
   export DEBIAN_FRONTEND=noninteractive
@@ -55,11 +100,12 @@ install_packages() {
     wget \
     unzip \
     jq \
-    awscli \
     pkg-config \
     pciutils \
     lsb-release \
     gnupg
+
+  ensure_aws_cli
 
   if apt-cache show ubuntu-drivers-common >/dev/null 2>&1; then
     apt-get install -y --no-install-recommends ubuntu-drivers-common

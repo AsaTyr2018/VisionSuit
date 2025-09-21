@@ -560,3 +560,8 @@
 - **General**: Equipped the GPU worker installer with intelligent GPU detection and automated driver/runtime setup for NVIDIA and AMD hosts.
 - **Technical Changes**: Added vendor detection with lspci/nvidia-smi/ROCm tools, provisioned CUDA or ROCm repositories, adjusted PyTorch index selection, expanded base dependencies, and refreshed GPU worker documentation plus the project README.
 - **Data Changes**: None.
+
+## 112 – GPU worker AWS CLI fallback (commit TBD)
+- **General**: Unblocked the GPU worker installer on distributions that no longer ship `awscli` via APT.
+- **Technical Changes**: Added an `ensure_aws_cli` helper that installs the official AWS CLI v2 bundle when necessary and refreshed the README to explain the behavior.
+- **Data Changes**: None.
