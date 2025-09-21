@@ -1,8 +1,12 @@
+import { randomUUID } from 'node:crypto';
+
 import type { Prisma } from '@prisma/client';
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 
 import type { AuthenticatedUser } from '../lib/auth';
+import { detectImageFormat, isStaticImageFormat, staticImageMimeTypes } from '../lib/image-format';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../lib/middleware/auth';
 import {
@@ -12,9 +16,40 @@ import {
   mapGallery,
   mapGalleryImageAsset,
 } from '../lib/mappers/gallery';
-import { resolveStorageLocation } from '../lib/storage';
+import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 
 export const galleriesRouter = Router();
+
+const MAX_GALLERY_COVER_SIZE_BYTES = 8 * 1024 * 1024;
+
+const coverUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fileSize: MAX_GALLERY_COVER_SIZE_BYTES,
+  },
+});
+
+const galleryInclude = {
+  owner: { select: { id: true, displayName: true, email: true } },
+  entries: {
+    include: {
+      image: {
+        include: {
+          tags: { include: { tag: true } },
+          owner: { select: { id: true, displayName: true, email: true } },
+        },
+      },
+      asset: {
+        include: {
+          tags: { include: { tag: true } },
+          owner: { select: { id: true, displayName: true } },
+        },
+      },
+    },
+    orderBy: { position: 'asc' },
+  },
+} satisfies Prisma.GalleryInclude;
 
 const noteTransformer = z
   .string()
@@ -147,26 +182,7 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
 
     const gallery = await prisma.gallery.findUnique({
       where: { id },
-      include: {
-        owner: { select: { id: true, displayName: true, email: true } },
-        entries: {
-          include: {
-            image: {
-              include: {
-                tags: { include: { tag: true } },
-                owner: { select: { id: true, displayName: true, email: true } },
-              },
-            },
-            asset: {
-              include: {
-                tags: { include: { tag: true } },
-                owner: { select: { id: true, displayName: true } },
-              },
-            },
-          },
-          orderBy: { position: 'asc' },
-        },
-      },
+      include: galleryInclude,
     });
 
     if (!gallery) {
@@ -248,51 +264,13 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
         return tx.gallery.update({
           where: { id: gallery.id },
           data: galleryUpdates,
-          include: {
-            owner: { select: { id: true, displayName: true, email: true } },
-            entries: {
-          include: {
-            image: {
-              include: {
-                tags: { include: { tag: true } },
-                owner: { select: { id: true, displayName: true, email: true } },
-              },
-            },
-            asset: {
-              include: {
-                tags: { include: { tag: true } },
-                owner: { select: { id: true, displayName: true } },
-              },
-                },
-              },
-              orderBy: { position: 'asc' },
-            },
-          },
+          include: galleryInclude,
         });
       }
 
       return tx.gallery.findUnique({
         where: { id: gallery.id },
-        include: {
-          owner: { select: { id: true, displayName: true, email: true } },
-          entries: {
-            include: {
-              image: {
-                include: {
-                  tags: { include: { tag: true } },
-                  owner: { select: { id: true, displayName: true, email: true } },
-                },
-              },
-              asset: {
-                include: {
-                  tags: { include: { tag: true } },
-                  owner: { select: { id: true, displayName: true } },
-                },
-              },
-            },
-            orderBy: { position: 'asc' },
-          },
-        },
+        include: galleryInclude,
       });
     });
 
@@ -305,6 +283,133 @@ galleriesRouter.put('/:id', requireAuth, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+galleriesRouter.post('/:id/cover', requireAuth, (req, res, next) => {
+  coverUpload.single('cover')(req, res, async (error: unknown) => {
+    if (error) {
+      if (error instanceof multer.MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ message: 'Cover exceeds the 8 MB limit.' });
+          return;
+        }
+
+        res.status(400).json({ message: `Cover upload failed: ${error.message}` });
+        return;
+      }
+
+      next(error instanceof Error ? error : new Error('Unexpected cover upload error.'));
+      return;
+    }
+
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        res.status(400).json({ message: 'Galerie-ID fehlt.' });
+        return;
+      }
+
+      const file = req.file as Express.Multer.File | undefined;
+      if (!file) {
+        res.status(400).json({ message: 'Kein Cover-Bild gefunden.' });
+        return;
+      }
+
+      if (file.size === 0) {
+        res.status(400).json({ message: 'Cover-Datei ist leer.' });
+        return;
+      }
+
+      const format = detectImageFormat(file.buffer);
+      if (!format) {
+        res.status(400).json({ message: 'Cover muss als PNG, JPEG oder WebP vorliegen.' });
+        return;
+      }
+
+      if (!isStaticImageFormat(format)) {
+        res.status(400).json({ message: 'Animierte GIFs werden für Cover nicht unterstützt.' });
+        return;
+      }
+
+      const gallery = await prisma.gallery.findUnique({
+        where: { id },
+        include: galleryInclude,
+      });
+
+      if (!gallery) {
+        res.status(404).json({ message: 'Galerie wurde nicht gefunden.' });
+        return;
+      }
+
+      if (!req.user) {
+        res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+        return;
+      }
+
+      const isAdmin = req.user.role === 'ADMIN';
+      if (gallery.ownerId !== req.user.id && !isAdmin) {
+        res.status(403).json({ message: 'Keine Berechtigung zum Aktualisieren des Covers.' });
+        return;
+      }
+
+      const mimeType = staticImageMimeTypes[format];
+      const extension = format === 'jpeg' ? 'jpg' : format;
+      const bucket = storageBuckets.images;
+      const objectName = `gallery-covers/${id}/${Date.now()}-${randomUUID()}.${extension}`;
+
+      try {
+        await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
+          'Content-Type': mimeType,
+        });
+      } catch (storageError) {
+        console.error('Failed to upload gallery cover to storage', storageError);
+        res.status(500).json({ message: 'Cover konnte nicht gespeichert werden.' });
+        return;
+      }
+
+      const storedUri = `s3://${bucket}/${objectName}`;
+
+      let updatedGallery: HydratedGallery | null = null;
+
+      try {
+        updatedGallery = await prisma.gallery.update({
+          where: { id },
+          data: { coverImage: storedUri },
+          include: galleryInclude,
+        });
+      } catch (dbError) {
+        console.error('Failed to persist gallery cover', dbError);
+        try {
+          await storageClient.removeObject(bucket, objectName);
+        } catch (cleanupError) {
+          console.warn('Failed to cleanup gallery cover upload', cleanupError);
+        }
+        res.status(500).json({ message: 'Cover konnte nicht aktualisiert werden.' });
+        return;
+      }
+
+      const previousCover = resolveStorageLocation(gallery.coverImage ?? undefined);
+      if (
+        previousCover.bucket === bucket &&
+        typeof previousCover.objectName === 'string' &&
+        previousCover.objectName.startsWith(`gallery-covers/${id}/`)
+      ) {
+        storageClient
+          .removeObject(bucket, previousCover.objectName)
+          .catch((cleanupError) => console.warn('Failed to remove previous gallery cover', cleanupError));
+      }
+
+      const mapped = mapGallery(updatedGallery, {
+        viewer: req.user as AuthenticatedUser,
+        includePrivate: isAdmin,
+      });
+
+      res.json({ gallery: mapped });
+    } catch (handlerError) {
+      next(handlerError);
+    }
+  });
 });
 
 galleriesRouter.delete('/:id', requireAuth, async (req, res, next) => {

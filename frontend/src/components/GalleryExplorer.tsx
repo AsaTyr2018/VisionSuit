@@ -902,7 +902,7 @@ export const GalleryExplorer = ({
           token={authToken ?? null}
           onSuccess={(updated) => {
             onGalleryUpdated?.(updated);
-            setGalleryToEdit(null);
+            setGalleryToEdit(updated);
           }}
         />
       ) : null}
