@@ -1,4 +1,7 @@
 import { createHash, webcrypto } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -101,10 +104,44 @@ const parsePort = (value?: string) => {
   return Number.isNaN(parsed) ? 5173 : parsed
 }
 
+const loadAllowedHosts = () => {
+  const currentDir = dirname(fileURLToPath(import.meta.url))
+  const configPath = resolve(currentDir, 'allowed-hosts.json')
+
+  if (!existsSync(configPath)) {
+    return [] as string[]
+  }
+
+  try {
+    const raw = readFileSync(configPath, 'utf8')
+    const parsed = JSON.parse(raw)
+
+    if (!Array.isArray(parsed)) {
+      console.warn(
+        `Expected an array in ${configPath} but received ${typeof parsed}. Ignoring custom allowed hosts.`,
+      )
+      return []
+    }
+
+    const normalized = parsed
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value): value is string => value.length > 0)
+
+    const unique = Array.from(new Set(normalized))
+    return unique
+  } catch (error) {
+    console.warn(`Failed to read custom allowed hosts from ${configPath}:`, error)
+    return []
+  }
+}
+
+const allowedHosts = loadAllowedHosts()
+
 export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
     port: parsePort(process.env.FRONTEND_PORT),
+    ...(allowedHosts.length > 0 ? { allowedHosts } : {}),
   },
 })

@@ -470,3 +470,13 @@
 - **General**: Replaced the manual cover URL input with dedicated actions to upload a new image or pick one from the collection itself.
 - **Technical Changes**: Added a gallery cover upload endpoint with image validation and storage cleanup, refreshed the gallery editor UI with preview/status handling, selection grid styling, and API wiring for immediate updates, and exposed a client helper for the new upload call.
 - **Data Changes**: None; cover selections reuse existing gallery/image records.
+
+## 095 – Vite host allow list helper (commit TBD)
+- **General**: Simplified approving external domains for the front-end dev server.
+- **Technical Changes**: Added a Node helper to append domains to `frontend/allowed-hosts.json`, taught `vite.config.ts` to load the allow list, and documented the workflow in the README.
+- **Data Changes**: None; stores hostnames in a tracked configuration file only.
+
+## 096 – Neutralize Vite host documentation
+- **General**: Replaced references to a private domain with a neutral example so operators can copy commands safely.
+- **Technical Changes**: Updated the README usage sample for the allowed-host helper and refreshed the default `frontend/allowed-hosts.json` entry to use `example.com`.
+- **Data Changes**: Adjusted the tracked allow-list file to contain only the placeholder `example.com`.
