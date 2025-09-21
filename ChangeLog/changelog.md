@@ -626,3 +626,8 @@
 - **General**: Ensured the On-Site Generator surfaces only real ComfyUI checkpoints by reading the dedicated MinIO bucket instead of relying on heuristics that exposed LoRA assets.
 - **Technical Changes**: Added a backend `/api/generator/base-models` endpoint driven by the new `GENERATOR_BASE_MODEL_BUCKET` config, refactored mapping utilities for reuse, fetched and rendered the base-model list on the client with loading/error states, updated styles, and refreshed documentation plus env templates.
 - **Data Changes**: None; changes are configuration-driven with no schema updates.
+
+## 124 – Generator checkpoint sync helper
+- **General**: Diagnosed missing base models in the On-Site Generator and added a synchronization path so MinIO checkpoints appear in the picker once they land in the bucket.
+- **Technical Changes**: Introduced `backend/scripts/syncGeneratorBaseModels.ts` with a matching `npm run generator:sync-base-models` alias to upsert public checkpoint assets, ensure ownership, and flag metadata for the generator pipeline.
+- **Data Changes**: None; the helper only registers existing MinIO objects without altering stored checkpoint files.
