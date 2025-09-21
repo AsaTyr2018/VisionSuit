@@ -24,9 +24,15 @@ TORCH_PACKAGE_SPEC="${TORCH_PACKAGE_SPEC:-torch torchvision torchaudio}"
 TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
 SCRIPTS_SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts"
 SCRIPT_NAMES=(generate-model-manifest.sh sync-loras.sh upload-outputs.sh)
+MINIO_TARGET_ENDPOINT="${MINIO_ENDPOINT:-}"
+MINIO_TARGET_SECURE="${MINIO_SECURE:-}"
 
 log() {
   printf '\n[%s] %s\n' "$(date --iso-8601=seconds)" "$*"
+}
+
+escape_sed_replacement() {
+  printf '%s' "$1" | sed -e 's/[&|\\]/\\&/g'
 }
 
 install_packages() {
@@ -108,22 +114,75 @@ install_support_scripts() {
   done
 }
 
+prompt_minio_endpoint() {
+  if [[ -n "$MINIO_TARGET_ENDPOINT" ]]; then
+    log "Using MinIO endpoint from environment: $MINIO_TARGET_ENDPOINT"
+  else
+    if [[ ! -t 0 ]]; then
+      echo "MINIO_ENDPOINT must be supplied when running non-interactively." >&2
+      exit 1
+    fi
+    echo
+    echo "MinIO configuration"
+    echo "-------------------"
+    echo "Enter the MinIO endpoint URL that this worker should target."
+    echo "Example: http://192.168.1.10:9000"
+    while true; do
+      read -rp "MinIO endpoint: " user_input
+      if [[ -n "$user_input" ]]; then
+        break
+      fi
+      echo "A MinIO endpoint (IP or hostname) is required."
+    done
+    if [[ "$user_input" != *"://"* ]]; then
+      user_input="http://$user_input"
+    fi
+    MINIO_TARGET_ENDPOINT="${user_input%/}"
+    log "Captured MinIO endpoint: $MINIO_TARGET_ENDPOINT"
+  fi
+
+  if [[ -z "$MINIO_TARGET_SECURE" ]]; then
+    if [[ "$MINIO_TARGET_ENDPOINT" =~ ^https:// ]]; then
+      MINIO_TARGET_SECURE="true"
+    else
+      MINIO_TARGET_SECURE="false"
+    fi
+  fi
+}
+
 stage_minio_env() {
   install -d -m 0750 "$MINIO_ENV_DIR"
   if [[ ! -f "$MINIO_ENV_FILE" ]]; then
     log "Creating MinIO environment template at $MINIO_ENV_FILE"
-    cat <<'EOT' >"$MINIO_ENV_FILE"
+    cat <<EOT >"$MINIO_ENV_FILE"
 # Populate with production credentials before starting ComfyUI
-MINIO_ENDPOINT="https://minio.example.com"
+MINIO_ENDPOINT="$MINIO_TARGET_ENDPOINT"
 MINIO_REGION="us-east-1"
 MINIO_ACCESS_KEY="change-me"
 MINIO_SECRET_KEY="change-me"
 MINIO_MODELS_BUCKET="comfyui-models"
 MINIO_LORAS_BUCKET="comfyui-loras"
 MINIO_OUTPUTS_BUCKET="comfyui-outputs"
-MINIO_SECURE="true"
+MINIO_SECURE="$MINIO_TARGET_SECURE"
 EOT
     chmod 0640 "$MINIO_ENV_FILE"
+  else
+    log "Updating MinIO endpoint in $MINIO_ENV_FILE"
+    local escaped_endpoint
+    escaped_endpoint="$(escape_sed_replacement "$MINIO_TARGET_ENDPOINT")"
+    if grep -q '^MINIO_ENDPOINT=' "$MINIO_ENV_FILE"; then
+      sed -i -E "s|^MINIO_ENDPOINT=.*|MINIO_ENDPOINT=\"$escaped_endpoint\"|" "$MINIO_ENV_FILE"
+    else
+      printf '\nMINIO_ENDPOINT="%s"\n' "$MINIO_TARGET_ENDPOINT" >>"$MINIO_ENV_FILE"
+    fi
+
+    local escaped_secure
+    escaped_secure="$(escape_sed_replacement "$MINIO_TARGET_SECURE")"
+    if grep -q '^MINIO_SECURE=' "$MINIO_ENV_FILE"; then
+      sed -i -E "s|^MINIO_SECURE=.*|MINIO_SECURE=\"$escaped_secure\"|" "$MINIO_ENV_FILE"
+    else
+      printf 'MINIO_SECURE="%s"\n' "$MINIO_TARGET_SECURE" >>"$MINIO_ENV_FILE"
+    fi
   fi
   chown -R "$COMFY_USER":"$COMFY_GROUP" "$MINIO_ENV_DIR"
 }
@@ -162,6 +221,7 @@ main() {
   clone_repo
   setup_python
   prepare_directories
+  prompt_minio_endpoint
   install_support_scripts
   stage_minio_env
   install_service
