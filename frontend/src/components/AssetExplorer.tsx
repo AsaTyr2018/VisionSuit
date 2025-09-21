@@ -552,20 +552,6 @@ export const AssetExplorer = ({
   }, [activeAsset]);
 
   useEffect(() => {
-    if (linkableGalleries.length === 0) {
-      setSelectedGalleryId('');
-      return;
-    }
-
-    setSelectedGalleryId((current) => {
-      if (current && linkableGalleries.some((entry) => entry.id === current)) {
-        return current;
-      }
-      return linkableGalleries[0]?.id ?? '';
-    });
-  }, [linkableGalleries]);
-
-  useEffect(() => {
     if (triggerCopyStatus === 'idle') {
       return;
     }
@@ -988,6 +974,20 @@ export const AssetExplorer = ({
       .map((gallery) => ({ id: gallery.id, title: gallery.title }))
       .sort((first, second) => first.title.localeCompare(second.title, 'en'));
   }, [canManageActiveAsset, currentUser, galleries, relatedGalleries]);
+
+  useEffect(() => {
+    if (linkableGalleries.length === 0) {
+      setSelectedGalleryId('');
+      return;
+    }
+
+    setSelectedGalleryId((current) => {
+      if (current && linkableGalleries.some((entry) => entry.id === current)) {
+        return current;
+      }
+      return linkableGalleries[0]?.id ?? '';
+    });
+  }, [linkableGalleries]);
 
   const metadataEntries = useMemo(
     () => buildMetadataRows(activeVersion?.metadata as Record<string, unknown> | null),
