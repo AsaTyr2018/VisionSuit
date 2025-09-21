@@ -11,6 +11,15 @@ const roleSummaries: Record<
   User['role'],
   { title: string; headline: string; bullets: string[] }
 > = {
+  USER: {
+    title: 'Member permissions',
+    headline: 'Members explore curated content, download approved files, and react without upload rights.',
+    bullets: [
+      'Browse public galleries, LoRA models, and metadata safely.',
+      'Download approved assets directly through the governed proxy.',
+      'Engage with images by leaving likes while awaiting curator promotion.',
+    ],
+  },
   CURATOR: {
     title: 'Curator permissions',
     headline: 'Curators focus on creative intake and gallery management with safe defaults.',
@@ -36,7 +45,7 @@ const RoleSummaryDialog = ({ role, isOpen, onClose }: { role: User['role']; isOp
     return null;
   }
 
-  const summary = roleSummaries[role];
+  const summary = roleSummaries[role] ?? roleSummaries.CURATOR;
 
   return (
     <div className="modal role-summary-dialog" role="dialog" aria-modal="true" aria-labelledby="role-summary-title">
@@ -1041,6 +1050,37 @@ export const AdminPanel = ({
             <div className="user-onboarding-grid">
               <article className="user-onboarding-card">
                 <header>
+                  <h4>Member preset</h4>
+                  <p>For community accounts that react and download without uploading content.</p>
+                </header>
+                <ul className="user-onboarding-list">
+                  <li>Explore public galleries, models, and curator profiles.</li>
+                  <li>Download approved assets through the secured storage proxy.</li>
+                  <li>Engage with collections by leaving likes on favorite images.</li>
+                </ul>
+                <div className="user-onboarding-actions">
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    onClick={() => {
+                      setUserDialogInitialRole('USER');
+                      setIsCreateUserDialogOpen(true);
+                    }}
+                    disabled={isBusy}
+                  >
+                    Create member account
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() => setRoleSummary('USER')}
+                  >
+                    Quick preview
+                  </button>
+                </div>
+              </article>
+              <article className="user-onboarding-card">
+                <header>
                   <h4>Curator preset</h4>
                   <p>For artists and moderators who manage uploads, tags, and galleries.</p>
                 </header>
@@ -1147,6 +1187,7 @@ export const AdminPanel = ({
                     disabled={isBusy}
                   >
                     <option value="all">All</option>
+                    <option value="USER">Members</option>
                     <option value="CURATOR">Curators</option>
                     <option value="ADMIN">Admin</option>
                   </select>
@@ -1233,6 +1274,7 @@ export const AdminPanel = ({
                         <label>
                           <span>Role</span>
                           <select name="role" defaultValue={user.role} disabled={isBusy}>
+                            <option value="USER">Member</option>
                             <option value="CURATOR">Curator</option>
                             <option value="ADMIN">Admin</option>
                           </select>

@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 
 import { prisma } from '../lib/prisma';
 import { storageBuckets, storageClient } from '../lib/storage';
+import { requireAuth } from '../lib/middleware/auth';
 
 const allowedBuckets = new Set(Object.values(storageBuckets));
 
@@ -22,6 +23,8 @@ const sendBucketNotAllowed = (res: Response) => {
 };
 
 export const storageRouter = Router();
+
+storageRouter.use(requireAuth);
 
 const handleObjectRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {

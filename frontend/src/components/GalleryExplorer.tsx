@@ -225,6 +225,7 @@ export const GalleryExplorer = ({
   const [isDeletingGallery, setIsDeletingGallery] = useState(false);
   const [imageModalError, setImageModalError] = useState<string | null>(null);
   const [imageDeletionId, setImageDeletionId] = useState<string | null>(null);
+  const [likeMutationId, setLikeMutationId] = useState<string | null>(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -314,6 +315,7 @@ export const GalleryExplorer = ({
   }, [activeGallery]);
 
   const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
+  const canLikeImages = useMemo(() => Boolean(authToken && currentUser), [authToken, currentUser]);
 
   useEffect(() => {
     if (activeGalleryId && !galleries.some((gallery) => gallery.id === activeGalleryId)) {
@@ -354,6 +356,7 @@ export const GalleryExplorer = ({
       setImageToEdit(null);
       setImageModalError(null);
       setImageDeletionId(null);
+      setLikeMutationId(null);
     }
   }, [activeImage]);
 
@@ -498,6 +501,46 @@ export const GalleryExplorer = ({
       }
     },
     [authToken, canManageActiveImage, onImageDeleted],
+  );
+
+  const handleToggleLike = useCallback(
+    async (image: ImageAsset) => {
+      if (!authToken || !currentUser) {
+        const message = 'Sign in to like images. Create an account to join the community.';
+        setDetailError(message);
+        setImageModalError(message);
+        return;
+      }
+
+      setLikeMutationId(image.id);
+      setImageModalError(null);
+      setDetailError(null);
+
+      try {
+        const response = image.viewerHasLiked
+          ? await api.unlikeImageAsset(authToken, image.id)
+          : await api.likeImageAsset(authToken, image.id);
+        const updated = response.image;
+        onImageUpdated?.(updated);
+        setActiveImage((previous) =>
+          previous && previous.image.id === updated.id ? { ...previous, image: updated } : previous,
+        );
+      } catch (error) {
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : 'Failed to update the like status.';
+        setImageModalError(message);
+        if (!activeImage || activeImage.image.id !== image.id) {
+          setDetailError(message);
+        }
+      } finally {
+        setLikeMutationId((current) => (current === image.id ? null : current));
+      }
+    },
+    [activeImage, authToken, currentUser, onImageUpdated],
   );
 
   useEffect(() => {
@@ -787,16 +830,41 @@ export const GalleryExplorer = ({
                       resolveStorageUrl(entry.image.storagePath, entry.image.storageBucket, entry.image.storageObject) ??
                       entry.image.storagePath;
                     return (
-                      <button
-                        key={entry.entryId}
-                        type="button"
-                        role="listitem"
-                        className="gallery-detail__thumb"
-                        onClick={() => setActiveImage(entry)}
-                      >
-                        <img src={imageUrl} alt={entry.image.title} loading="lazy" />
-                        {entry.note ? <span className="gallery-detail__note">{entry.note}</span> : null}
-                      </button>
+                      <div key={entry.entryId} role="listitem" className="gallery-detail__thumb">
+                        <button
+                          type="button"
+                          className="gallery-detail__thumb-trigger"
+                          onClick={() => setActiveImage(entry)}
+                          aria-label={`View ${entry.image.title}`}
+                        >
+                          <img src={imageUrl} alt={entry.image.title} loading="lazy" />
+                        </button>
+                        <div className="gallery-detail__thumb-footer">
+                          <button
+                            type="button"
+                            className={`gallery-like-button gallery-like-button--inline${
+                              entry.image.viewerHasLiked ? ' gallery-like-button--active' : ''
+                            }`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void handleToggleLike(entry.image);
+                            }}
+                            disabled={!canLikeImages || likeMutationId === entry.image.id}
+                            aria-pressed={entry.image.viewerHasLiked}
+                            aria-label={
+                              entry.image.viewerHasLiked
+                                ? `Remove like from ${entry.image.title}`
+                                : `Like ${entry.image.title}`
+                            }
+                            title={canLikeImages ? 'Toggle like' : 'Sign in to like images'}
+                          >
+                            <span aria-hidden="true">♥</span>
+                            <span>{entry.image.likeCount}</span>
+                          </button>
+                          {entry.note ? <span className="gallery-detail__note">{entry.note}</span> : null}
+                        </div>
+                      </div>
                     );
                   })
                 ) : (
@@ -831,6 +899,26 @@ export const GalleryExplorer = ({
                 </p>
               </div>
               <div className="gallery-image-modal__actions">
+                <button
+                  type="button"
+                  className={`gallery-like-button${
+                    activeImage.image.viewerHasLiked ? ' gallery-like-button--active' : ''
+                  }`}
+                  onClick={() => {
+                    void handleToggleLike(activeImage.image);
+                  }}
+                  disabled={!canLikeImages || likeMutationId === activeImage.image.id}
+                  aria-pressed={activeImage.image.viewerHasLiked}
+                  aria-label={
+                    activeImage.image.viewerHasLiked
+                      ? `Remove like from ${activeImage.image.title}`
+                      : `Like ${activeImage.image.title}`
+                  }
+                  title={canLikeImages ? 'Toggle like' : 'Sign in to like images'}
+                >
+                  <span aria-hidden="true">♥</span>
+                  <span>{activeImage.image.likeCount}</span>
+                </button>
                 {canManageActiveImage ? (
                   <>
                     <button

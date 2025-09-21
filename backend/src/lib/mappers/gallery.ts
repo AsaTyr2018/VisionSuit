@@ -1,14 +1,49 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import type { AuthenticatedUser } from '../auth';
 import { resolveStorageLocation } from '../storage';
+
+const baseGalleryImageInclude = Prisma.validator<Prisma.ImageAssetInclude>()({
+  tags: { include: { tag: true } },
+  owner: { select: { id: true, displayName: true, email: true } },
+  _count: { select: { likes: true } },
+});
+
+const baseGalleryAssetInclude = Prisma.validator<Prisma.ModelAssetInclude>()({
+  tags: { include: { tag: true } },
+  owner: { select: { id: true, displayName: true } },
+});
+
+const buildViewerGalleryImageInclude = (viewerId: string) =>
+  Prisma.validator<Prisma.ImageAssetInclude>()({
+    ...baseGalleryImageInclude,
+    likes: {
+      where: { userId: viewerId },
+      select: { userId: true },
+    },
+  });
+
+export const buildGalleryInclude = (viewerId?: string | null) =>
+  Prisma.validator<Prisma.GalleryInclude>()({
+    owner: { select: { id: true, displayName: true, email: true } },
+    entries: {
+      include: {
+        image: {
+          include: viewerId ? buildViewerGalleryImageInclude(viewerId) : baseGalleryImageInclude,
+        },
+        asset: { include: baseGalleryAssetInclude },
+      },
+      orderBy: { position: 'asc' },
+    },
+  });
 
 export type HydratedGalleryImage = Prisma.ImageAssetGetPayload<{
   include: {
     tags: { include: { tag: true } };
     owner: { select: { id: true; displayName: true; email: true } };
+    _count: { select: { likes: true } };
   };
-}>;
+}> & { likes?: { userId: string }[] };
 
 type HydratedGalleryModel = Prisma.ModelAssetGetPayload<{
   include: {
@@ -17,44 +52,51 @@ type HydratedGalleryModel = Prisma.ModelAssetGetPayload<{
   };
 }>;
 
-type HydratedGalleryEntry = Prisma.GalleryEntryGetPayload<{
-  include: {
-    image: {
-      include: {
-        tags: { include: { tag: true } };
-        owner: { select: { id: true; displayName: true; email: true } };
+type HydratedGalleryEntry =
+  Prisma.GalleryEntryGetPayload<{
+    include: {
+      image: {
+        include: {
+          tags: { include: { tag: true } };
+          owner: { select: { id: true; displayName: true; email: true } };
+          _count: { select: { likes: true } };
+        };
+      };
+      asset: {
+        include: {
+          tags: { include: { tag: true } };
+          owner: { select: { id: true; displayName: true } };
+        };
       };
     };
-    asset: {
-      include: {
-        tags: { include: { tag: true } };
-        owner: { select: { id: true; displayName: true } };
-      };
-    };
+  }> & {
+    image: HydratedGalleryImage | null;
+    asset: HydratedGalleryModel | null;
   };
-}>;
 
-export type HydratedGallery = Prisma.GalleryGetPayload<{
-  include: {
-    owner: { select: { id: true; displayName: true; email: true } };
-    entries: {
-      include: {
-        image: {
-          include: {
-            tags: { include: { tag: true } };
-            owner: { select: { id: true; displayName: true; email: true } };
+export type HydratedGallery =
+  Prisma.GalleryGetPayload<{
+    include: {
+      owner: { select: { id: true; displayName: true; email: true } };
+      entries: {
+        include: {
+          image: {
+            include: {
+              tags: { include: { tag: true } };
+              owner: { select: { id: true; displayName: true; email: true } };
+              _count: { select: { likes: true } };
+            };
           };
-        };
-        asset: {
-          include: {
-            tags: { include: { tag: true } };
-            owner: { select: { id: true; displayName: true } };
+          asset: {
+            include: {
+              tags: { include: { tag: true } };
+              owner: { select: { id: true; displayName: true } };
+            };
           };
         };
       };
     };
-  };
-}>;
+  }> & { entries: HydratedGalleryEntry[] };
 
 export const canViewResource = (
   viewer: AuthenticatedUser | undefined,
@@ -77,8 +119,14 @@ export const canViewResource = (
   return viewer.id === ownerId;
 };
 
-export const mapGalleryImageAsset = (image: HydratedGalleryImage) => {
+export const mapGalleryImageAsset = (
+  image: HydratedGalleryImage,
+  options: { viewerId?: string | null } = {},
+) => {
   const storage = resolveStorageLocation(image.storagePath);
+  const viewerId = options.viewerId;
+  const likeCount = image._count?.likes ?? 0;
+  const viewerHasLiked = viewerId ? (image.likes ?? []).some((entry) => entry.userId === viewerId) : false;
 
   return {
     id: image.id,
@@ -103,6 +151,8 @@ export const mapGalleryImageAsset = (image: HydratedGalleryImage) => {
     tags: image.tags.map(({ tag }) => tag),
     createdAt: image.createdAt,
     updatedAt: image.updatedAt,
+    likeCount,
+    viewerHasLiked,
   };
 };
 
@@ -112,6 +162,7 @@ export const mapGallery = (
 ) => {
   const cover = resolveStorageLocation(gallery.coverImage);
   const viewer = options.viewer;
+  const viewerId = viewer?.id ?? null;
 
   return {
     id: gallery.id,
@@ -168,7 +219,7 @@ export const mapGallery = (
               }
             : null,
           imageAsset: entry.image && (options.includePrivate || canViewImage)
-            ? mapGalleryImageAsset(entry.image)
+            ? mapGalleryImageAsset(entry.image, { viewerId })
             : null,
         };
       }),

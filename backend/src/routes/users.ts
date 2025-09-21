@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 
-import type { User } from '@prisma/client';
+import type { Prisma, User } from '@prisma/client';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
@@ -21,7 +21,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   displayName: z.string().min(2).max(160),
   password: z.string().min(8),
-  role: z.enum(['CURATOR', 'ADMIN']).default('CURATOR'),
+  role: z.enum(['USER', 'CURATOR', 'ADMIN']).default('CURATOR'),
   bio: z.string().max(600).optional(),
 });
 
@@ -29,7 +29,7 @@ const updateUserSchema = z.object({
   email: z.string().email().optional(),
   displayName: z.string().min(2).max(160).optional(),
   password: z.string().min(8).optional(),
-  role: z.enum(['CURATOR', 'ADMIN']).optional(),
+  role: z.enum(['USER', 'CURATOR', 'ADMIN']).optional(),
   bio: z.string().max(600).nullable().optional(),
   isActive: z.boolean().optional(),
 });
@@ -224,7 +224,11 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
     const isAdmin = viewer?.role === 'ADMIN';
     const includePrivate = isAuditView || isAdmin || viewer?.id === id;
 
-    const [models, galleries, imageCount] = await Promise.all([
+    const likeWhere: Prisma.ImageLikeWhereInput = includePrivate
+      ? { image: { ownerId: id } }
+      : { image: { ownerId: id, isPublic: true } };
+
+    const [models, galleries, imageCount, receivedLikes] = await Promise.all([
       prisma.modelAsset.findMany({
         where: {
           ownerId: id,
@@ -256,6 +260,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
           ...(includePrivate ? {} : { isPublic: true }),
         },
       }),
+      prisma.imageLike.count({ where: likeWhere }),
     ]);
 
     const mappedModels = models.map((model) => {
@@ -344,6 +349,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
           modelCount,
           galleryCount,
           imageCount,
+          receivedLikeCount: receivedLikes,
         },
         models: mappedModels,
         galleries: mappedGalleries,

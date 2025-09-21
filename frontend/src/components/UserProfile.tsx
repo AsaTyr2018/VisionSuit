@@ -32,7 +32,15 @@ const formatDate = (value: string) => {
   }
 };
 
-const formatRole = (role: UserProfileResponse['role']) => (role === 'ADMIN' ? 'Administrator' : 'Curator');
+const formatRole = (role: UserProfileResponse['role']) => {
+  if (role === 'ADMIN') {
+    return 'Administrator';
+  }
+  if (role === 'CURATOR') {
+    return 'Curator';
+  }
+  return 'Member';
+};
 
 const getInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).slice(0, 2);
@@ -348,6 +356,16 @@ export const UserProfile = ({
             <div>
               <span className="profile-view__stat-value">{profile.stats.imageCount}</span>
               <span className="profile-view__stat-label">Images</span>
+            </div>
+            <div>
+              <span
+                className={`profile-view__stat-value${
+                  profile.stats.receivedLikeCount > 0 ? ' profile-view__stat-value--likes' : ''
+                }`}
+              >
+                {profile.stats.receivedLikeCount}
+              </span>
+              <span className="profile-view__stat-label">Received likes</span>
             </div>
           </section>
 

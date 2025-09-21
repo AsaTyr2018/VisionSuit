@@ -4,7 +4,7 @@ export interface Tag {
   category?: string | null;
 }
 
-export type UserRole = 'CURATOR' | 'ADMIN';
+export type UserRole = 'USER' | 'CURATOR' | 'ADMIN';
 
 export interface User {
   id: string;
@@ -93,6 +93,7 @@ export interface UserProfile {
     modelCount: number;
     galleryCount: number;
     imageCount: number;
+    receivedLikeCount: number;
   };
   models: UserProfileModelSummary[];
   galleries: UserProfileGallerySummary[];
@@ -178,6 +179,8 @@ export interface ImageAsset {
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
+   likeCount: number;
+   viewerHasLiked: boolean;
 }
 
 export interface GalleryEntry {
