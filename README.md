@@ -94,7 +94,7 @@ cd backend
 npm run generator:sync-base-models
 ```
 
-The helper script cross-references the configured bucket, creates public `checkpoint` model assets for any missing entries, and refreshes ownership/metadata for existing records so curators immediately see the freshly added base models inside the On-Site Generator picker.
+The helper script cross-references the configured bucket, creates public `checkpoint` model assets for any missing entries, and refreshes ownership/metadata for existing records so curators immediately see the freshly added base models inside the On-Site Generator picker. Ensure the MinIO or S3 credentials supplied to the backend include permission to list objects in the configured bucket—the generator enumerates `comfyui-models` directly during every load.
 
 After completion the stack is ready for development or evaluation. Use `./dev-start.sh` for a combined watch mode when coding locally.
 

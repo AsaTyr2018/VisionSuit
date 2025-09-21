@@ -12,7 +12,6 @@ const generatorRouter = Router();
 
 const generatorBaseModelBucket = appConfig.generator.baseModelBucket.trim();
 const normalizedGeneratorBaseBucket = generatorBaseModelBucket.toLowerCase();
-
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: {
     user: { select: { id: true; displayName: true; role: true } };
