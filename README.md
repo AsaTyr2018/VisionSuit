@@ -177,6 +177,17 @@ The PowerShell helper mirrors the Linux workflow: it logs in once, picks a rando
    Upgrade via `nvm` if the version is below 18.
 4. Open `http://<your-server-ip>:5173` to explore live filters for LoRA models and curated galleries.
 
+### Allowing external domains in Vite
+
+Vite blocks unknown hosts by default when the dev server is reachable from the internet. Use the helper to register additional
+domains:
+
+```bash
+node scripts/add-allowed-host.mjs example.com
+```
+
+Replace `example.com` with the domain you need to allow. The script normalizes the domain, updates `frontend/allowed-hosts.json`, and keeps the list sorted. Restart the Vite dev server after adding a new host so the updated allow list takes effect.
+
 ## Upload Pipeline
 
 1. **Authentication** – Every upload requires a valid JWT. Missing or expired tokens respond with `401/403` immediately.
