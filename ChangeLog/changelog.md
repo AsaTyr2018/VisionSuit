@@ -586,3 +586,8 @@
 - **General**: Prevented the GPU workflow validator from spamming jq errors when the ComfyUI API emits non-JSON responses during queue polling.
 - **Technical Changes**: Added a reusable `jq_safe` helper that type-checks queue and history payloads before parsing, guarded every jq lookup, and refreshed the GPU worker plus root README sections to note the resilience.
 - **Data Changes**: None; the scripts only inspect HTTP responses and print metadata.
+
+## 116 – ComfyUI API-format validation workflow
+- **General**: Fixed GPU workflow validation runs that previously failed on ComfyUI by supplying an API-format prompt.
+- **Technical Changes**: Replaced `gpuworker/workflows/validation.json` with a direct ComfyUI prompt map and updated both READMEs to stress exporting workflows via **Save (API Format)** before posting them with `test-run-workflow.sh`.
+- **Data Changes**: Workflow JSON now stores node parameters in API layout while still referencing the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` LoRA.

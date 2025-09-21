@@ -51,7 +51,7 @@ Each test script reads `/etc/comfyui/minio.env`, honours optional `MINIO_*_PREFI
 
 ### API-driven workflow validation
 
-Operators can run workflows without the ComfyUI web UI by calling `scripts/test-run-workflow.sh`. The helper reads `/etc/comfyui/minio.env`, posts the selected workflow JSON to the configured ComfyUI API, polls the queue until completion, and prints the generated asset identifiers. Optional flags let you target remote hosts, change the polling interval, or trigger `test-export-outputs` automatically to download the results. The runner now ignores any non-JSON queue or history responses so transient HTML or numeric payloads no longer spam `jq` errors during polling. A prebuilt SDXL workflow tailored for automation ships in `workflows/validation.json` (base model: `calicomixPonyXL_v20.safetensors`, LoRA: `DoomGirl.safetensors`).
+Operators can run workflows without the ComfyUI web UI by calling `scripts/test-run-workflow.sh`. The helper reads `/etc/comfyui/minio.env`, posts the selected workflow JSON (exported via ComfyUI’s **Save (API Format)** action) to the configured ComfyUI API, polls the queue until completion, and prints the generated asset identifiers. Optional flags let you target remote hosts, change the polling interval, or trigger `test-export-outputs` automatically to download the results. The runner now ignores any non-JSON queue or history responses so transient HTML or numeric payloads no longer spam `jq` errors during polling. A prebuilt SDXL workflow tailored for automation ships in `workflows/validation.json` (base model: `calicomixPonyXL_v20.safetensors`, LoRA: `DoomGirl.safetensors`).
 
 Example:
 
