@@ -117,4 +117,10 @@ export const appConfig = {
     autoCreateBuckets: toBoolean(process.env.MINIO_AUTO_CREATE_BUCKETS, true),
     publicUrl: deriveMinioPublicUrl(),
   },
+  generator: {
+    baseModelBucket:
+      process.env.GENERATOR_BASE_MODEL_BUCKET?.trim() && process.env.GENERATOR_BASE_MODEL_BUCKET.trim().length > 0
+        ? process.env.GENERATOR_BASE_MODEL_BUCKET.trim()
+        : 'comfyui-models',
+  },
 };

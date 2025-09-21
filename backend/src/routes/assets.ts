@@ -1,15 +1,6 @@
 import crypto from 'node:crypto';
 
-import {
-  Prisma,
-  ImageAsset,
-  ImageComment,
-  ModelAsset,
-  ModelComment,
-  ModelVersion,
-  Tag,
-  User,
-} from '@prisma/client';
+import { Prisma, ImageAsset, ImageComment, ModelComment, Tag, User } from '@prisma/client';
 import type { Express, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
@@ -20,13 +11,8 @@ import { requireAuth, requireCurator } from '../lib/middleware/auth';
 import { extractModelMetadataFromFile } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
 import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
+import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
-
-type HydratedModelAsset = ModelAsset & {
-  tags: { tag: Tag }[];
-  owner: Pick<User, 'id' | 'displayName' | 'email'>;
-  versions: ModelVersion[];
-};
 
 type HydratedImageAsset = ImageAsset & {
   tags: { tag: Tag }[];
@@ -75,58 +61,6 @@ const buildCommentInclude = (viewerId?: string | null) => ({
       }
     : {}),
 });
-
-type MappedModelVersion = {
-  id: string;
-  version: string;
-  storagePath: string;
-  storageBucket: string | null;
-  storageObject: string | null;
-  previewImage: string | null;
-  previewImageBucket: string | null;
-  previewImageObject: string | null;
-  fileSize: number | null;
-  checksum: string | null;
-  metadata: unknown;
-  createdAt: Date;
-  updatedAt: Date;
-  isPrimary: boolean;
-};
-
-const mapModelVersion = (
-  version: {
-    id: string;
-    version: string;
-    storagePath: string;
-    previewImage?: string | null;
-    fileSize?: number | null;
-    checksum?: string | null;
-    metadata?: Prisma.JsonValue | null;
-    createdAt: Date;
-    updatedAt: Date;
-  },
-  options: { isPrimary?: boolean } = {},
-): MappedModelVersion => {
-  const storage = resolveStorageLocation(version.storagePath);
-  const preview = resolveStorageLocation(version.previewImage);
-
-  return {
-    id: version.id,
-    version: version.version,
-    storagePath: storage.url ?? version.storagePath,
-    storageBucket: storage.bucket,
-    storageObject: storage.objectName,
-    previewImage: preview.url ?? version.previewImage ?? null,
-    previewImageBucket: preview.bucket,
-    previewImageObject: preview.objectName,
-    fileSize: version.fileSize ?? null,
-    checksum: version.checksum ?? null,
-    metadata: version.metadata ?? null,
-    createdAt: version.createdAt,
-    updatedAt: version.updatedAt,
-    isPrimary: Boolean(options.isPrimary),
-  };
-};
 
 const mapCommentAuthor = (author: CommentAuthor) => ({
   id: author.id,
@@ -182,118 +116,6 @@ const fetchImageComment = async (
     where: { id: commentId, imageId },
     include: buildCommentInclude(viewerId),
   });
-
-const parseNumericVersion = (value: string) => {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return null;
-  }
-
-  const numeric = Number(trimmed);
-  return Number.isFinite(numeric) ? numeric : null;
-};
-
-const compareVersionLabels = (a: string, b: string) => {
-  const numericA = parseNumericVersion(a);
-  const numericB = parseNumericVersion(b);
-
-  if (numericA !== null && numericB !== null && numericA !== numericB) {
-    return numericA - numericB;
-  }
-
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-};
-
-const sortVersionsForDisplay = (a: MappedModelVersion, b: MappedModelVersion) => {
-  if (a.isPrimary && !b.isPrimary) {
-    return -1;
-  }
-  if (b.isPrimary && !a.isPrimary) {
-    return 1;
-  }
-
-  if (a.isPrimary && b.isPrimary) {
-    return 0;
-  }
-
-  return compareVersionLabels(a.version, b.version);
-};
-
-const getVersionRecency = (entry: MappedModelVersion) => {
-  const created = new Date(entry.createdAt).getTime();
-  const updated = new Date(entry.updatedAt).getTime();
-  return Math.max(created, updated);
-};
-
-const sortVersionsByCreatedAtDesc = (a: MappedModelVersion, b: MappedModelVersion) =>
-  getVersionRecency(b) - getVersionRecency(a);
-
-const mapModelAsset = (asset: HydratedModelAsset) => {
-  const primaryVersionSource = asset.versions.find((entry) => entry.storagePath === asset.storagePath);
-  const additionalVersionSources = asset.versions.filter((entry) => entry.storagePath !== asset.storagePath);
-
-  const primaryVersion = mapModelVersion(
-    {
-      id: asset.id,
-      version: asset.version,
-      storagePath: asset.storagePath,
-      previewImage: asset.previewImage,
-      fileSize: asset.fileSize,
-      checksum: asset.checksum,
-      metadata: asset.metadata,
-      createdAt: primaryVersionSource?.createdAt ?? asset.createdAt,
-      updatedAt: primaryVersionSource?.updatedAt ?? asset.updatedAt,
-    },
-    { isPrimary: true },
-  );
-
-  const mappedAdditionalVersions = additionalVersionSources.map((entry) =>
-    mapModelVersion(
-      {
-        id: entry.id,
-        version: entry.version,
-        storagePath: entry.storagePath,
-        previewImage: entry.previewImage,
-        fileSize: entry.fileSize,
-        checksum: entry.checksum,
-        metadata: entry.metadata,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
-      },
-      { isPrimary: false },
-    ),
-  );
-
-  const combinedVersions = [primaryVersion, ...mappedAdditionalVersions];
-  const orderedVersions = [...combinedVersions].sort(sortVersionsForDisplay);
-  const latestVersion = [...combinedVersions].sort(sortVersionsByCreatedAtDesc)[0] ?? primaryVersion;
-
-  return {
-    id: asset.id,
-    slug: asset.slug,
-    title: asset.title,
-    description: asset.description,
-    trigger: asset.trigger,
-    isPublic: asset.isPublic,
-    version: latestVersion.version,
-    fileSize: latestVersion.fileSize,
-    checksum: latestVersion.checksum,
-    storagePath: latestVersion.storagePath,
-    storageBucket: latestVersion.storageBucket,
-    storageObject: latestVersion.storageObject,
-    previewImage: latestVersion.previewImage,
-    previewImageBucket: latestVersion.previewImageBucket,
-    previewImageObject: latestVersion.previewImageObject,
-    metadata: latestVersion.metadata,
-    owner: asset.owner,
-    tags: asset.tags.map(({ tag }) => tag),
-    createdAt: asset.createdAt,
-    updatedAt: asset.updatedAt,
-    versions: orderedVersions,
-    latestVersionId: latestVersion.id,
-    primaryVersionId: primaryVersion.id,
-  };
-};
 
 const mapImageAsset = (asset: HydratedImageAsset, options: { viewerId?: string | null } = {}) => {
   const storage = resolveStorageLocation(asset.storagePath);
