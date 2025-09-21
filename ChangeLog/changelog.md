@@ -520,3 +520,8 @@
 - **General**: Let administrators review private images inline without downloading files manually.
 - **Technical Changes**: Accepted access tokens supplied via query parameters in the storage proxy middleware and taught the front-end storage resolver to append the persisted auth token so `<img>` requests authenticate transparently.
 - **Data Changes**: None; authentication flow only.
+
+## 104 – Intelligent preview cache tokens (commit TBD)
+- **General**: Sped up gallery and model browsing by keeping recent imagery hot in the browser while still refreshing instantly when assets change.
+- **Technical Changes**: Added cache-aware storage resolvers that append short-lived tokens based on `updatedAt` timestamps, updated all preview consumers to use the smarter resolver, and documented the behavior in the README.
+- **Data Changes**: None; cache keys derive from existing metadata.

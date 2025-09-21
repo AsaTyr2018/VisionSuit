@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { ApiError, api } from '../lib/api';
-import { resolveStorageUrl } from '../lib/storage';
+import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
 import type { Gallery, ImageAsset, ModelAsset, RankTier, RankingSettings, User } from '../types/api';
 import { UserCreationDialog, type AsyncActionResult } from './UserCreationDialog';
 
@@ -405,7 +405,12 @@ export const AdminPanel = ({
     }
 
     const previewUrl =
-      resolveStorageUrl(activeModel.previewImage, activeModel.previewImageBucket, activeModel.previewImageObject) ??
+      resolveCachedStorageUrl(
+        activeModel.previewImage,
+        activeModel.previewImageBucket,
+        activeModel.previewImageObject,
+        { updatedAt: activeModel.updatedAt, cacheKey: activeModel.id },
+      ) ??
       activeModel.previewImage ??
       null;
     const downloadUrl =
@@ -1380,10 +1385,15 @@ export const AdminPanel = ({
             ) : (
               <div className="admin-model-grid" role="list">
                 {filteredModels.map((model) => {
-                  const previewUrl =
-                    resolveStorageUrl(model.previewImage, model.previewImageBucket, model.previewImageObject) ??
-                    model.previewImage ??
-                    null;
+                    const previewUrl =
+                      resolveCachedStorageUrl(
+                        model.previewImage,
+                        model.previewImageBucket,
+                        model.previewImageObject,
+                        { updatedAt: model.updatedAt, cacheKey: model.id },
+                      ) ??
+                      model.previewImage ??
+                      null;
                   const isActive = activeModelId === model.id;
 
                   return (
@@ -1609,10 +1619,11 @@ export const AdminPanel = ({
                           version.storageObject,
                         ) ?? version.storagePath;
                       const versionPreviewUrl =
-                        resolveStorageUrl(
+                        resolveCachedStorageUrl(
                           version.previewImage,
                           version.previewImageBucket,
                           version.previewImageObject,
+                          { updatedAt: version.updatedAt, cacheKey: version.id },
                         ) ?? version.previewImage ?? null;
                       const versionUpdatedLabel = new Date(version.updatedAt).toLocaleDateString('en-US');
                       const versionFileSizeLabel = formatFileSize(version.fileSize);
@@ -1746,8 +1757,11 @@ export const AdminPanel = ({
             ) : (
               <div className="admin-image-grid" role="list">
                 {filteredImages.map((image) => {
-                  const previewUrl =
-                    resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+                    const previewUrl =
+                      resolveCachedStorageUrl(image.storagePath, image.storageBucket, image.storageObject, {
+                        updatedAt: image.updatedAt,
+                        cacheKey: image.id,
+                      }) ?? image.storagePath;
                   const metadataEntries = [
                     image.metadata?.seed ? { label: 'Seed', value: image.metadata.seed } : null,
                     image.metadata?.model ? { label: 'Model', value: image.metadata.model } : null,

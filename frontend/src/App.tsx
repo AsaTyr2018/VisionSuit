@@ -11,7 +11,7 @@ import { UserProfile as UserProfileView } from './components/UserProfile';
 import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
-import { resolveStorageUrl } from './lib/storage';
+import { resolveCachedStorageUrl } from './lib/storage';
 import type {
   Gallery,
   ImageAsset,
@@ -561,7 +561,12 @@ export const App = () => {
 
   const modelTiles = latestModels.map((asset) => {
     const previewUrl =
-      resolveStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject) ?? asset.previewImage;
+      resolveCachedStorageUrl(
+        asset.previewImage,
+        asset.previewImageBucket,
+        asset.previewImageObject,
+        { updatedAt: asset.updatedAt, cacheKey: asset.id },
+      ) ?? asset.previewImage;
     const modelType = asset.tags.find((tag) => tag.category === 'model-type');
     const regularTags = asset.tags.filter((tag) => tag.id !== modelType?.id);
     const visibleTags = regularTags.slice(0, 5);
@@ -628,7 +633,10 @@ export const App = () => {
 
   const imageTiles = latestImages.map((image) => {
     const imageUrl =
-      resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+      resolveCachedStorageUrl(image.storagePath, image.storageBucket, image.storageObject, {
+        updatedAt: image.updatedAt,
+        cacheKey: image.id,
+      }) ?? image.storagePath;
     const visibleTags = image.tags.slice(0, 5);
     const remainingTagCount = image.tags.length - visibleTags.length;
     const matchedGallery = galleries.find((gallery) =>
