@@ -445,3 +445,8 @@
 - **General**: Unblocked local migrations by ensuring the new model version table setup skips recreating already-provisioned structures.
 - **Technical Changes**: Updated the `add_asset_visibility` Prisma migration to conditionally create the `ModelVersion` table and associated indexes when they are missing.
 - **Data Changes**: None; existing `ModelVersion` rows remain untouched.
+
+## 091 – Admin visibility restoration
+- **General**: Restored comprehensive moderation access so administrators always see every model, gallery, and image without toggling audit mode in the workspace.
+- **Technical Changes**: Let admin requests bypass `isPublic` filters across asset and gallery listings, ensured gallery serialization includes private entries for admins, and allowed admin profile views to include private uploads while leaving audit mode behavior intact.
+- **Data Changes**: None; visibility rules operate on existing records only.

@@ -380,9 +380,12 @@ export const assetsRouter = Router();
 assetsRouter.get('/models', async (req, res, next) => {
   try {
     const viewer = req.user;
-    const visibilityFilter: Prisma.ModelAssetWhereInput = viewer
-      ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
-      : { isPublic: true };
+    const isAdmin = viewer?.role === 'ADMIN';
+    const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
+      ? {}
+      : viewer
+        ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
+        : { isPublic: true };
 
     const assets = await prisma.modelAsset.findMany({
       where: visibilityFilter,
@@ -403,9 +406,12 @@ assetsRouter.get('/models', async (req, res, next) => {
 assetsRouter.get('/images', async (req, res, next) => {
   try {
     const viewer = req.user;
-    const visibilityFilter: Prisma.ImageAssetWhereInput = viewer
-      ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
-      : { isPublic: true };
+    const isAdmin = viewer?.role === 'ADMIN';
+    const visibilityFilter: Prisma.ImageAssetWhereInput = isAdmin
+      ? {}
+      : viewer
+        ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
+        : { isPublic: true };
 
     const images = await prisma.imageAsset.findMany({
       where: visibilityFilter,

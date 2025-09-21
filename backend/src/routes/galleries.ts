@@ -210,6 +210,7 @@ const updateGallerySchema = z.object({
 galleriesRouter.get('/', async (req, res, next) => {
   try {
     const viewer = req.user;
+    const isAdmin = viewer?.role === 'ADMIN';
     const galleries = await prisma.gallery.findMany({
       include: {
         owner: { select: { id: true, displayName: true, email: true } },
@@ -234,19 +235,27 @@ galleriesRouter.get('/', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    const visibleGalleries = galleries.filter((gallery) => {
-      if (gallery.isPublic) {
-        return true;
-      }
+    const visibleGalleries = isAdmin
+      ? galleries
+      : galleries.filter((gallery) => {
+          if (gallery.isPublic) {
+            return true;
+          }
 
-      if (!viewer) {
-        return false;
-      }
+          if (!viewer) {
+            return false;
+          }
 
-      return gallery.ownerId === viewer.id;
-    });
+          return gallery.ownerId === viewer.id;
+        });
 
-    const mapOptions: { viewer?: AuthenticatedUser } = viewer ? { viewer } : {};
+    const mapOptions: { viewer?: AuthenticatedUser; includePrivate?: boolean } = {};
+    if (viewer) {
+      mapOptions.viewer = viewer;
+    }
+    if (isAdmin) {
+      mapOptions.includePrivate = true;
+    }
     res.json(visibleGalleries.map((gallery) => mapGallery(gallery, mapOptions)));
   } catch (error) {
     next(error);
