@@ -67,9 +67,24 @@ export interface RankTier {
 
 export type GeneratorAccessMode = 'ADMIN_ONLY' | 'MEMBERS';
 
+export type GeneratorBaseModelType = 'SD1.5' | 'SDXL' | 'PonyXL';
+
+export interface GeneratorBaseModelConfig {
+  type: GeneratorBaseModelType;
+  name: string;
+  filename: string;
+}
+
+export interface GeneratorBaseModelOption extends GeneratorBaseModelConfig {
+  id: string;
+  asset: ModelAsset | null;
+  isMissing: boolean;
+}
+
 export interface GeneratorSettings {
   id?: string | number;
   accessMode: GeneratorAccessMode;
+  baseModels: GeneratorBaseModelConfig[];
   createdAt?: string;
   updatedAt?: string;
 }
