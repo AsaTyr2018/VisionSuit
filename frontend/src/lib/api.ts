@@ -1,5 +1,6 @@
 import type {
   AuthResponse,
+  AssetComment,
   Gallery,
   ImageAsset,
   MetaStats,
@@ -289,6 +290,56 @@ export const api = {
   updateModelVersion: putModelVersion,
   promoteModelVersion,
   deleteModelVersion,
+  getModelComments: (modelId: string, token?: string | null) =>
+    request<{ comments: AssetComment[] }>(`/api/assets/models/${modelId}/comments`, {}, token ?? undefined).then(
+      (response) => response.comments,
+    ),
+  createModelComment: (modelId: string, content: string, token: string) =>
+    request<{ comment: AssetComment }>(
+      `/api/assets/models/${modelId}/comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      },
+      token,
+    ).then((response) => response.comment),
+  likeModelComment: (modelId: string, commentId: string, token: string) =>
+    request<{ comment: AssetComment }>(
+      `/api/assets/models/${modelId}/comments/${commentId}/like`,
+      { method: 'POST' },
+      token,
+    ).then((response) => response.comment),
+  unlikeModelComment: (modelId: string, commentId: string, token: string) =>
+    request<{ comment: AssetComment }>(
+      `/api/assets/models/${modelId}/comments/${commentId}/like`,
+      { method: 'DELETE' },
+      token,
+    ).then((response) => response.comment),
+  getImageComments: (imageId: string, token?: string | null) =>
+    request<{ comments: AssetComment[] }>(`/api/assets/images/${imageId}/comments`, {}, token ?? undefined).then(
+      (response) => response.comments,
+    ),
+  createImageComment: (imageId: string, content: string, token: string) =>
+    request<{ comment: AssetComment }>(
+      `/api/assets/images/${imageId}/comments`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      },
+      token,
+    ).then((response) => response.comment),
+  likeImageComment: (imageId: string, commentId: string, token: string) =>
+    request<{ comment: AssetComment }>(
+      `/api/assets/images/${imageId}/comments/${commentId}/like`,
+      { method: 'POST' },
+      token,
+    ).then((response) => response.comment),
+  unlikeImageComment: (imageId: string, commentId: string, token: string) =>
+    request<{ comment: AssetComment }>(
+      `/api/assets/images/${imageId}/comments/${commentId}/like`,
+      { method: 'DELETE' },
+      token,
+    ).then((response) => response.comment),
   likeImageAsset,
   unlikeImageAsset,
   login: (email: string, password: string) =>

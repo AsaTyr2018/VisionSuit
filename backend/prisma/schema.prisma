@@ -29,6 +29,10 @@ model User {
   assets      ModelAsset[] @relation("AssetOwner")
   images      ImageAsset[] @relation("ImageOwner")
   imageLikes ImageLike[]
+  modelComments ModelComment[]
+  modelCommentLikes ModelCommentLike[]
+  imageComments ImageComment[]
+  imageCommentLikes ImageCommentLike[]
   uploadDrafts UploadDraft[]
   rankingState UserRankingState?
 }
@@ -65,6 +69,7 @@ model ModelAsset {
   tags         AssetTag[]
   galleryItems GalleryEntry[] @relation("GalleryModel")
   versions     ModelVersion[]
+  comments     ModelComment[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 }
@@ -106,6 +111,7 @@ model ImageAsset {
   ownerId        String
   owner          User           @relation("ImageOwner", fields: [ownerId], references: [id])
   likes          ImageLike[]
+  comments       ImageComment[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 }
@@ -120,6 +126,58 @@ model ImageLike {
 
   @@id([userId, imageId])
   @@index([imageId])
+}
+
+model ModelComment {
+  id        String   @id @default(cuid())
+  modelId   String
+  model     ModelAsset @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  likes     ModelCommentLike[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([modelId])
+}
+
+model ModelCommentLike {
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment ModelComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
+  @@index([userId])
+}
+
+model ImageComment {
+  id        String   @id @default(cuid())
+  imageId   String
+  image     ImageAsset @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content   String
+  likes     ImageCommentLike[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([imageId])
+}
+
+model ImageCommentLike {
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment ImageComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
+  @@index([userId])
 }
 
 model GalleryEntry {

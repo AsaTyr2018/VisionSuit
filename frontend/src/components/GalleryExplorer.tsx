@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
-import type { Gallery, ImageAsset, ModelAsset, User } from '../types/api';
+import type { AssetComment, Gallery, ImageAsset, ModelAsset, User } from '../types/api';
 
 import { api, ApiError } from '../lib/api';
 import { resolveCachedStorageUrl } from '../lib/storage';
@@ -8,6 +8,7 @@ import { resolveCachedStorageUrl } from '../lib/storage';
 import { FilterChip } from './FilterChip';
 import { GalleryEditDialog } from './GalleryEditDialog';
 import { ImageAssetEditDialog } from './ImageAssetEditDialog';
+import { CommentSection } from './CommentSection';
 
 interface GalleryExplorerProps {
   galleries: Gallery[];
@@ -89,6 +90,20 @@ const collectImageMetadataStrings = (metadata?: ImageAsset['metadata']) => {
   if (metadata.sampler) values.add(metadata.sampler);
   if (metadata.seed) values.add(metadata.seed);
   return Array.from(values);
+};
+
+const formatApiErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiError) {
+    const details = (error.details ?? []).filter((entry) => entry && entry.length > 0).join(' ');
+    const message = [error.message, details].filter(Boolean).join(' ').trim();
+    return message.length > 0 ? message : fallback;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return fallback;
 };
 
 const getGalleryEntries = (gallery: Gallery) => {
@@ -226,6 +241,11 @@ export const GalleryExplorer = ({
   const [imageModalError, setImageModalError] = useState<string | null>(null);
   const [imageDeletionId, setImageDeletionId] = useState<string | null>(null);
   const [likeMutationId, setLikeMutationId] = useState<string | null>(null);
+  const [imageComments, setImageComments] = useState<AssetComment[]>([]);
+  const [isImageCommentsLoading, setIsImageCommentsLoading] = useState(false);
+  const [imageCommentError, setImageCommentError] = useState<string | null>(null);
+  const [isImageCommentSubmitting, setIsImageCommentSubmitting] = useState(false);
+  const [imageCommentLikeMutationId, setImageCommentLikeMutationId] = useState<string | null>(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -316,6 +336,15 @@ export const GalleryExplorer = ({
 
   const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
   const canLikeImages = useMemo(() => Boolean(authToken && currentUser), [authToken, currentUser]);
+  const activeImageIdValue = activeImage?.image.id ?? null;
+  const imageCommentsAnchorId = useMemo(
+    () => (activeImageIdValue ? `image-comments-${activeImageIdValue}` : 'image-comments'),
+    [activeImageIdValue],
+  );
+  const imageCommentCountLabel = useMemo(
+    () => (isImageCommentsLoading ? 'Comments' : `Comments (${imageComments.length})`),
+    [isImageCommentsLoading, imageComments.length],
+  );
 
   useEffect(() => {
     if (activeGalleryId && !galleries.some((gallery) => gallery.id === activeGalleryId)) {
@@ -357,8 +386,118 @@ export const GalleryExplorer = ({
       setImageModalError(null);
       setImageDeletionId(null);
       setLikeMutationId(null);
+      setImageComments([]);
+      setImageCommentError(null);
+      setIsImageCommentsLoading(false);
+      setIsImageCommentSubmitting(false);
+      setImageCommentLikeMutationId(null);
     }
   }, [activeImage]);
+
+  useEffect(() => {
+    const imageId = activeImage?.image.id ?? null;
+
+    if (!imageId) {
+      return;
+    }
+
+    let isActive = true;
+
+    const loadComments = async () => {
+      setImageComments([]);
+      setIsImageCommentsLoading(true);
+      setImageCommentError(null);
+      setIsImageCommentSubmitting(false);
+      setImageCommentLikeMutationId(null);
+
+      try {
+        const response = await api.getImageComments(imageId, authToken ?? null);
+        if (isActive) {
+          setImageComments(response);
+        }
+      } catch (error) {
+        if (isActive) {
+          setImageCommentError(formatApiErrorMessage(error, 'Kommentare konnten nicht geladen werden.'));
+          setImageComments([]);
+        }
+      } finally {
+        if (isActive) {
+          setIsImageCommentsLoading(false);
+        }
+      }
+    };
+
+    void loadComments();
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeImage?.image.id, authToken]);
+
+  const reloadImageComments = useCallback(async () => {
+    if (!activeImageIdValue) {
+      return;
+    }
+
+    setIsImageCommentsLoading(true);
+    setImageCommentError(null);
+
+    try {
+      const response = await api.getImageComments(activeImageIdValue, authToken ?? null);
+      setImageComments(response);
+    } catch (error) {
+      setImageCommentError(formatApiErrorMessage(error, 'Kommentare konnten nicht geladen werden.'));
+      setImageComments([]);
+    } finally {
+      setIsImageCommentsLoading(false);
+    }
+  }, [activeImageIdValue, authToken]);
+
+  const handleSubmitImageComment = useCallback(
+    async (content: string) => {
+      if (!activeImageIdValue || !authToken || !canLikeImages) {
+        throw new Error('Anmeldung erforderlich, um zu kommentieren.');
+      }
+
+      setIsImageCommentSubmitting(true);
+      setImageCommentError(null);
+
+      try {
+        const created = await api.createImageComment(activeImageIdValue, content, authToken);
+        setImageComments((current) => [...current, created]);
+      } catch (error) {
+        setImageCommentError(formatApiErrorMessage(error, 'Kommentar konnte nicht gespeichert werden.'));
+        throw error;
+      } finally {
+        setIsImageCommentSubmitting(false);
+      }
+    },
+    [activeImageIdValue, authToken, canLikeImages],
+  );
+
+  const handleToggleImageCommentLike = useCallback(
+    async (comment: AssetComment) => {
+      if (!activeImageIdValue || !authToken) {
+        return;
+      }
+
+      setImageCommentLikeMutationId(comment.id);
+      setImageCommentError(null);
+
+      try {
+        const updated = comment.viewerHasLiked
+          ? await api.unlikeImageComment(activeImageIdValue, comment.id, authToken)
+          : await api.likeImageComment(activeImageIdValue, comment.id, authToken);
+
+        setImageComments((current) => current.map((entry) => (entry.id === updated.id ? updated : entry)));
+      } catch (error) {
+        setImageCommentError(formatApiErrorMessage(error, 'Kommentarlikes konnten nicht aktualisiert werden.'));
+      } finally {
+        setImageCommentLikeMutationId(null);
+      }
+    },
+    [activeImageIdValue, authToken],
+  );
 
   const visibleGalleries = useMemo(() => filteredGalleries.slice(0, visibleLimit), [filteredGalleries, visibleLimit]);
 
@@ -924,6 +1063,12 @@ export const GalleryExplorer = ({
                   <span aria-hidden="true">♥</span>
                   <span>{activeImage.image.likeCount}</span>
                 </button>
+                <a
+                  href={`#${imageCommentsAnchorId}`}
+                  className="gallery-image-modal__comments-link"
+                >
+                  {imageCommentCountLabel}
+                </a>
                 {canManageActiveImage ? (
                   <>
                     <button
@@ -984,6 +1129,21 @@ export const GalleryExplorer = ({
                 </dl>
               </div>
             </div>
+            <CommentSection
+              anchorId={imageCommentsAnchorId}
+              title="Comments"
+              comments={imageComments}
+              isLoading={isImageCommentsLoading}
+              isSubmitting={isImageCommentSubmitting}
+              error={imageCommentError}
+              onRetry={activeImageIdValue ? reloadImageComments : undefined}
+              onSubmit={canLikeImages ? handleSubmitImageComment : undefined}
+              onToggleLike={handleToggleImageCommentLike}
+              likeMutationId={imageCommentLikeMutationId}
+              canComment={canLikeImages}
+              canLike={canLikeImages}
+              emptyLabel="No comments yet. Start the discussion."
+            />
           </div>
         </div>
       ) : null}

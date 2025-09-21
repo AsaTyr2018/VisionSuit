@@ -530,3 +530,8 @@
 - **General**: Hid the model download button from guests so only signed-in members can fetch safetensors.
 - **Technical Changes**: Updated the asset explorer to require USER-or-higher roles before rendering the download link and added README guidance about the new requirement.
 - **Data Changes**: None.
+
+## 106 – Comment threads for models & gallery images
+- **General**: Opened persistent discussions on modelcards and gallery imagery with inline like toggles for every response.
+- **Technical Changes**: Added Prisma tables for model/image comments plus likes, exposed REST endpoints for loading, posting, and reacting to comments, wired new API helpers, built a reusable CommentSection component with anchors in both explorers, and refreshed styling plus README highlights for the quick comment links.
+- **Data Changes**: Introduced the `ModelComment`, `ModelCommentLike`, `ImageComment`, and `ImageCommentLike` tables via Prisma migration.
