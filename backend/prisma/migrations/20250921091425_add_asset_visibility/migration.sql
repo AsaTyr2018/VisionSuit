@@ -1,5 +1,5 @@
--- CreateTable
-CREATE TABLE "ModelVersion" (
+-- Guarded create to avoid conflicts if the table was provisioned manually
+CREATE TABLE IF NOT EXISTS "ModelVersion" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "modelId" TEXT NOT NULL,
     "version" TEXT NOT NULL,
@@ -104,8 +104,7 @@ ALTER TABLE "new_UserRankingState" RENAME TO "UserRankingState";
 PRAGMA foreign_keys=ON;
 PRAGMA defer_foreign_keys=OFF;
 
--- CreateIndex
-CREATE UNIQUE INDEX "ModelVersion_storagePath_key" ON "ModelVersion"("storagePath");
+CREATE UNIQUE INDEX IF NOT EXISTS "ModelVersion_storagePath_key" ON "ModelVersion"("storagePath");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ModelVersion_modelId_version_key" ON "ModelVersion"("modelId", "version");
+CREATE UNIQUE INDEX IF NOT EXISTS "ModelVersion_modelId_version_key" ON "ModelVersion"("modelId", "version");
