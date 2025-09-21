@@ -32,6 +32,8 @@ The installer publishes a small toolkit into `/usr/local/bin` so the worker can 
 - `sync-loras` – downloads the latest LoRA adapters from MinIO into the worker's local cache.
 - `upload-outputs` – pushes freshly rendered outputs from the worker back into the configured MinIO bucket.
 
+All synchronization helpers now target ComfyUI's native directories (`/opt/comfyui/models/checkpoints`, `/opt/comfyui/models/loras`, and `/opt/comfyui/output`) so downloaded assets are immediately visible to the running worker without additional symlinks.
+
 All helpers rely on the values stored in `/etc/comfyui/minio.env`. Update that file or export the variables inline to override destinations or prefixes.
 
 ## Test validation scripts

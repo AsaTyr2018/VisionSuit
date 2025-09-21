@@ -14,7 +14,7 @@ fi
 : "${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in $ENV_FILE or the environment}"
 : "${MINIO_OUTPUTS_BUCKET:?Set MINIO_OUTPUTS_BUCKET in $ENV_FILE or the environment}"
 
-SOURCE_DIR="${1:-${OUTPUT_ROOT:-/var/lib/comfyui/outputs}}"
+SOURCE_DIR="${1:-${OUTPUT_ROOT:-/opt/comfyui/output}}"
 PREFIX="${MINIO_OUTPUTS_PREFIX:-}" 
 REGION="${MINIO_REGION:-us-east-1}"
 SCHEME_FLAG=()

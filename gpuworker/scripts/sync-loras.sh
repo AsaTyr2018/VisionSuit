@@ -14,7 +14,7 @@ fi
 : "${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in $ENV_FILE or the environment}"
 : "${MINIO_LORAS_BUCKET:?Set MINIO_LORAS_BUCKET in $ENV_FILE or the environment}"
 
-TARGET_DIR="${1:-${LORA_ROOT:-/var/lib/comfyui/loras}}"
+TARGET_DIR="${1:-${LORA_ROOT:-/opt/comfyui/models/loras}}"
 PREFIX="${MINIO_LORAS_PREFIX:-}"
 REGION="${MINIO_REGION:-us-east-1}"
 SCHEME_FLAG=()
