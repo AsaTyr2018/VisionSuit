@@ -999,6 +999,9 @@ export const AssetExplorer = ({
     [activeVersion?.metadata],
   );
 
+  const canDownloadModel =
+    currentUser?.role === 'USER' || currentUser?.role === 'CURATOR' || currentUser?.role === 'ADMIN';
+
   const modelDownloadUrl = useMemo(() => {
     if (!activeVersion) {
       return null;
@@ -1009,6 +1012,8 @@ export const AssetExplorer = ({
       activeVersion.storagePath
     );
   }, [activeVersion]);
+
+  const downloadUnavailableLabel = canDownloadModel ? 'Download not available' : 'Sign in to download';
 
   useEffect(() => {
     if (!isTagDialogOpen) {
@@ -1476,7 +1481,7 @@ export const AssetExplorer = ({
                         </div>
                       )}
                       <div className="asset-detail__preview-actions">
-                        {modelDownloadUrl ? (
+                        {canDownloadModel && modelDownloadUrl ? (
                           <a
                             className="asset-detail__download asset-detail__action"
                             href={modelDownloadUrl}
@@ -1488,7 +1493,7 @@ export const AssetExplorer = ({
                           </a>
                         ) : (
                           <span className="asset-detail__download asset-detail__download--disabled asset-detail__action">
-                            Download not available
+                            {downloadUnavailableLabel}
                           </span>
                         )}
                         <div className="asset-detail__gallery-links">

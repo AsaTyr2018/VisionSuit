@@ -525,3 +525,8 @@
 - **General**: Sped up gallery and model browsing by keeping recent imagery hot in the browser while still refreshing instantly when assets change.
 - **Technical Changes**: Added cache-aware storage resolvers that append short-lived tokens based on `updatedAt` timestamps, updated all preview consumers to use the smarter resolver, and documented the behavior in the README.
 - **Data Changes**: None; cache keys derive from existing metadata.
+
+## 105 – Role-gated model downloads
+- **General**: Hid the model download button from guests so only signed-in members can fetch safetensors.
+- **Technical Changes**: Updated the asset explorer to require USER-or-higher roles before rendering the download link and added README guidance about the new requirement.
+- **Data Changes**: None.
