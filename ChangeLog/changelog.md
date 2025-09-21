@@ -435,3 +435,8 @@
 - **General**: Simplified the admin model overview to focus on previews and names while moving detailed editing into the mainframe workspace.
 - **Technical Changes**: Reworked the `AdminPanel` model tab to highlight grid cards with a Manage action, introduced a dedicated mainframe form/versions layout, refreshed selection handling, and updated styling to support the new structure.
 - **Data Changes**: None; presentation and client-side workflow updates only.
+
+## 089 – Private visibility with curator audits
+- **General**: Locked down private models, images, and collections so they’re only visible to their owners, while giving administrators an explicit Audit switch on curator profiles to moderate hidden uploads on demand.
+- **Technical Changes**: Added optional auth middleware, Prisma `isPublic` flags for models and images, request-level filtering across asset and gallery endpoints, profile visibility signalling, audit-aware gallery serialization, and refreshed the React profile view with an Audit control, privacy notices, and private badges.
+- **Data Changes**: Introduced a Prisma migration that persists the new `isPublic` columns for `ModelAsset` and `ImageAsset` records.

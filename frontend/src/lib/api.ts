@@ -262,9 +262,9 @@ const deleteModelVersion = async (token: string, modelId: string, versionId: str
 
 export const api = {
   getStats: () => request<MetaStats>('/api/meta/stats'),
-  getModelAssets: () => request<ModelAsset[]>('/api/assets/models'),
-  getGalleries: () => request<Gallery[]>('/api/galleries'),
-  getImageAssets: () => request<ImageAsset[]>('/api/assets/images'),
+  getModelAssets: (token?: string) => request<ModelAsset[]>('/api/assets/models', {}, token),
+  getGalleries: (token?: string) => request<Gallery[]>('/api/galleries', {}, token),
+  getImageAssets: (token?: string) => request<ImageAsset[]>('/api/assets/images', {}, token),
   getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
   createUploadDraft: postUploadDraft,
   createModelVersion: postModelVersion,
@@ -277,7 +277,15 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   getCurrentUser: (token: string) => request<{ user: User }>('/api/auth/me', {}, token),
-  getUserProfile: (userId: string) => request<{ profile: UserProfile }>(`/api/users/${userId}/profile`),
+  getUserProfile: (userId: string, options?: { token?: string; audit?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.audit) {
+      params.set('audit', '1');
+    }
+
+    const path = params.size > 0 ? `/api/users/${userId}/profile?${params.toString()}` : `/api/users/${userId}/profile`;
+    return request<{ profile: UserProfile }>(path, {}, options?.token);
+  },
   getUsers: (token: string) => request<{ users: User[] }>('/api/users', {}, token),
   createUser: (token: string, payload: { email: string; displayName: string; password: string; role: string; bio?: string }) =>
     request<{ user: User }>(

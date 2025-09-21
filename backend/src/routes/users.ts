@@ -266,22 +266,44 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
       return;
     }
 
+    const viewer = req.user;
+    const auditParam = `${req.query.audit ?? ''}`.toLowerCase();
+    const wantsAudit = auditParam === '1' || auditParam === 'true';
+    const isAuditView = Boolean(viewer && viewer.role === 'ADMIN' && wantsAudit);
+    const includePrivate = isAuditView || viewer?.id === id;
+
     const [models, galleries, imageCount] = await Promise.all([
       prisma.modelAsset.findMany({
-        where: { ownerId: id },
+        where: {
+          ownerId: id,
+          ...(includePrivate ? {} : { isPublic: true }),
+        },
         orderBy: { updatedAt: 'desc' },
         include: {
           tags: { include: { tag: true } },
         },
       }),
       prisma.gallery.findMany({
-        where: { ownerId: id },
+        where: {
+          ownerId: id,
+          ...(includePrivate ? {} : { isPublic: true }),
+        },
         orderBy: { updatedAt: 'desc' },
         include: {
-          entries: { select: { id: true, imageId: true, assetId: true } },
+          entries: {
+            include: {
+              image: { select: { id: true, isPublic: true } },
+              asset: { select: { id: true, isPublic: true } },
+            },
+          },
         },
       }),
-      prisma.imageAsset.count({ where: { ownerId: id } }),
+      prisma.imageAsset.count({
+        where: {
+          ownerId: id,
+          ...(includePrivate ? {} : { isPublic: true }),
+        },
+      }),
     ]);
 
     const mappedModels = models.map((model) => {
@@ -292,6 +314,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         slug: model.slug,
         version: model.version,
         description: model.description,
+        isPublic: model.isPublic,
         previewImage: preview.url ?? model.previewImage ?? null,
         previewImageBucket: preview.bucket,
         previewImageObject: preview.objectName,
@@ -303,15 +326,21 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
 
     const mappedGalleries = galleries.map((gallery) => {
       const cover = resolveStorageLocation(gallery.coverImage);
-      const entryCount = gallery.entries.length;
+      let entryCount = 0;
       let imageEntryCount = 0;
       let modelEntryCount = 0;
 
       gallery.entries.forEach((entry) => {
-        if (entry.imageId) {
+        const hasImage = entry.image ? (includePrivate || entry.image.isPublic) : false;
+        const hasAsset = entry.asset ? (includePrivate || entry.asset.isPublic) : false;
+
+        if (hasImage || hasAsset) {
+          entryCount += 1;
+        }
+        if (hasImage) {
           imageEntryCount += 1;
         }
-        if (entry.assetId) {
+        if (hasAsset) {
           modelEntryCount += 1;
         }
       });
@@ -366,6 +395,10 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         },
         models: mappedModels,
         galleries: mappedGalleries,
+        visibility: {
+          includePrivate,
+          audit: isAuditView,
+        },
       },
     });
   } catch (error) {

@@ -57,6 +57,7 @@ model ModelAsset {
   storagePath  String       @unique
   previewImage String?
   metadata     Json?
+  isPublic     Boolean      @default(true)
   ownerId      String
   owner        User         @relation("AssetOwner", fields: [ownerId], references: [id])
   tags         AssetTag[]
@@ -98,6 +99,7 @@ model ImageAsset {
   cfgScale       Float?
   steps          Int?
   tags           ImageTag[]
+  isPublic       Boolean        @default(true)
   galleries      GalleryEntry[] @relation("GalleryImage")
   ownerId        String
   owner          User           @relation("ImageOwner", fields: [ownerId], references: [id])

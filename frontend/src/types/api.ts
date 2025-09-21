@@ -54,6 +54,7 @@ export interface UserProfileModelSummary {
   slug: string;
   version: string;
   description?: string | null;
+  isPublic: boolean;
   previewImage?: string | null;
   previewImageBucket?: string | null;
   previewImageObject?: string | null;
@@ -95,6 +96,10 @@ export interface UserProfile {
   };
   models: UserProfileModelSummary[];
   galleries: UserProfileGallerySummary[];
+  visibility?: {
+    includePrivate: boolean;
+    audit: boolean;
+  };
 }
 
 export interface ModelVersion {
@@ -120,6 +125,7 @@ export interface ModelAsset {
   title: string;
   description?: string | null;
   trigger?: string | null;
+  isPublic: boolean;
   version: string;
   fileSize?: number | null;
   checksum?: string | null;
@@ -155,6 +161,7 @@ export interface ImageAsset {
   id: string;
   title: string;
   description?: string | null;
+  isPublic: boolean;
   dimensions?: { width: number; height: number };
   fileSize?: number | null;
   storagePath: string;

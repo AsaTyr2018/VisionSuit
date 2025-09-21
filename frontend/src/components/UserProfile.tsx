@@ -16,6 +16,9 @@ interface UserProfileProps {
   onRetry?: () => void;
   onOpenModel?: (modelId: string) => void;
   onOpenGallery?: (galleryId: string) => void;
+  canAudit?: boolean;
+  isAuditActive?: boolean;
+  onToggleAudit?: () => void;
 }
 
 const formatDate = (value: string) => {
@@ -56,7 +59,10 @@ const renderModelCard = (
           {previewUrl ? <img src={previewUrl} alt={model.title} loading="lazy" /> : <span>No preview</span>}
         </div>
         <div className="profile-view__model-body">
-          <h3>{model.title}</h3>
+          <div className="profile-view__model-header">
+            <h3>{model.title}</h3>
+            {!model.isPublic ? <span className="profile-view__badge profile-view__badge--private">Private</span> : null}
+          </div>
           <p>Version {model.version}</p>
           <p className="profile-view__model-updated">Updated {formatDate(model.updatedAt)}</p>
           {tagList.length > 0 ? (
@@ -86,7 +92,10 @@ const renderModelCard = (
         {previewUrl ? <img src={previewUrl} alt={model.title} loading="lazy" /> : <span>No preview</span>}
       </div>
       <div className="profile-view__model-body">
-        <h3>{model.title}</h3>
+        <div className="profile-view__model-header">
+          <h3>{model.title}</h3>
+          {!model.isPublic ? <span className="profile-view__badge profile-view__badge--private">Private</span> : null}
+        </div>
         <p>Version {model.version}</p>
         <p className="profile-view__model-updated">Updated {formatDate(model.updatedAt)}</p>
         {tagList.length > 0 ? (
@@ -204,6 +213,9 @@ export const UserProfile = ({
   onRetry,
   onOpenModel,
   onOpenGallery,
+  canAudit,
+  isAuditActive,
+  onToggleAudit,
 }: UserProfileProps) => {
   const avatarUrl = profile ? resolveAvatarUrl(profile.avatarUrl, profile.id) : null;
   const initials = profile ? getInitials(profile.displayName) : '?';
@@ -277,6 +289,17 @@ export const UserProfile = ({
               Refresh profile
             </button>
           ) : null}
+          {canAudit && onToggleAudit ? (
+            <button
+              type="button"
+              className={`profile-view__action profile-view__action--audit${isAuditActive ? ' profile-view__action--active' : ''}`}
+              onClick={onToggleAudit}
+              aria-pressed={isAuditActive ? 'true' : 'false'}
+              disabled={isLoading}
+            >
+              {isAuditActive ? 'Exit audit' : 'Audit'}
+            </button>
+          ) : null}
           {onBack ? (
             <button type="button" className="profile-view__action profile-view__action--primary" onClick={onBack}>
               Back
@@ -284,6 +307,20 @@ export const UserProfile = ({
           ) : null}
         </div>
       </header>
+
+      {profile?.visibility?.audit ? (
+        <div className="profile-view__notice profile-view__notice--audit" role="status">
+          Audit mode active. Private uploads are temporarily visible to administrators.
+        </div>
+      ) : profile?.visibility && !profile.visibility.includePrivate ? (
+        <div className="profile-view__notice" role="status">
+          Showing public uploads only. Private items remain hidden by curator preference.
+        </div>
+      ) : profile?.visibility?.includePrivate ? (
+        <div className="profile-view__notice" role="status">
+          Private uploads are included because you own this profile.
+        </div>
+      ) : null}
 
       {isLoading && !profile ? <div className="profile-view__status">Loading profile…</div> : null}
       {error ? <div className="profile-view__error">{error}</div> : null}

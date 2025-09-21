@@ -5,6 +5,7 @@ import morgan from 'morgan';
 
 import { appConfig } from './config';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from './lib/uploadLimits';
+import { attachOptionalUser } from './lib/middleware/auth';
 import { router } from './routes';
 
 export const createApp = () => {
@@ -23,6 +24,7 @@ export const createApp = () => {
     });
   });
 
+  app.use('/api', attachOptionalUser);
   app.use('/api', router);
 
   app.use((req, res) => {
