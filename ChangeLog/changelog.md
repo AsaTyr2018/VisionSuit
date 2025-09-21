@@ -621,3 +621,8 @@
 - **General**: Clarified the On-Site Generator by limiting the base-model list to real ComfyUI checkpoints and surfacing clickable trigger hints from the selected LoRAs inside the prompt step.
 - **Technical Changes**: Hardened base-model detection against LoRA heuristics, added a non-LoRA fallback when no bucket match exists, extracted trigger phrases from model metadata, wired a click-to-insert handler on the prompt step, refreshed the generator styles, and updated the README highlight.
 - **Data Changes**: None; UI-only improvements leveraging existing model metadata.
+
+## 123 – Generator MinIO-backed base-model feed
+- **General**: Ensured the On-Site Generator surfaces only real ComfyUI checkpoints by reading the dedicated MinIO bucket instead of relying on heuristics that exposed LoRA assets.
+- **Technical Changes**: Added a backend `/api/generator/base-models` endpoint driven by the new `GENERATOR_BASE_MODEL_BUCKET` config, refactored mapping utilities for reuse, fetched and rendered the base-model list on the client with loading/error states, updated styles, and refreshed documentation plus env templates.
+- **Data Changes**: None; changes are configuration-driven with no schema updates.

@@ -7704,6 +7704,22 @@ button {
   gap: 0.6rem;
 }
 
+.generator-field__status,
+.generator-field__empty,
+.generator-field__error {
+  margin: 0.1rem 0 0;
+  font-size: 0.9rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.generator-field__error {
+  color: #fecaca;
+}
+
+.generator-field__empty {
+  color: rgba(148, 163, 184, 0.7);
+}
+
 .generator-field label {
   font-weight: 600;
   color: #e2e8f0;

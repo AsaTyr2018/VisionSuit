@@ -2,11 +2,16 @@ import { Prisma, GeneratorAccessMode } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
-import { resolveStorageLocation } from '../lib/storage';
+import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
+import { resolveStorageLocation, storageClient } from '../lib/storage';
 
 const generatorRouter = Router();
+
+const generatorBaseModelBucket = appConfig.generator.baseModelBucket.trim();
+const normalizedGeneratorBaseBucket = generatorBaseModelBucket.toLowerCase();
 
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: {
@@ -91,6 +96,68 @@ const generatorRequestSchema = z.object({
   steps: z.coerce.number().int().min(1).max(200).optional(),
   width: z.coerce.number().int().min(256).max(2048),
   height: z.coerce.number().int().min(256).max(2048),
+});
+
+generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
+  try {
+    if (!generatorBaseModelBucket) {
+      res.json([]);
+      return;
+    }
+
+    const objectNames = new Set<string>();
+
+    try {
+      const stream = storageClient.listObjects(generatorBaseModelBucket, '', true);
+      for await (const item of stream) {
+        if (item.name) {
+          objectNames.add(item.name);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to enumerate generator base-model bucket', error);
+      res.status(502).json({ message: 'Could not list base models from storage.' });
+      return;
+    }
+
+    const viewer = req.user!;
+    const isAdmin = viewer.role === 'ADMIN';
+    const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
+      ? {}
+      : { OR: [{ ownerId: viewer.id }, { isPublic: true }] };
+
+    const assets = (await prisma.modelAsset.findMany({
+      where: visibilityFilter,
+      include: {
+        tags: { include: { tag: true } },
+        owner: { select: { id: true, displayName: true, email: true } },
+        versions: { orderBy: { createdAt: 'desc' } },
+      },
+    })) as HydratedModelAsset[];
+
+    const baseModels = assets
+      .map(mapModelAsset)
+      .filter((asset) => {
+        if (!asset.storageBucket || asset.storageBucket.toLowerCase() !== normalizedGeneratorBaseBucket) {
+          return false;
+        }
+
+        if (!asset.storageObject) {
+          return false;
+        }
+
+        if (objectNames.size === 0) {
+          return true;
+        }
+
+        return objectNames.has(asset.storageObject);
+      })
+      .sort((a, b) => a.title.localeCompare(b.title));
+
+    res.json(baseModels);
+  } catch (error) {
+    next(error);
+  }
 });
 
 generatorRouter.get('/settings', async (_req, res, next) => {

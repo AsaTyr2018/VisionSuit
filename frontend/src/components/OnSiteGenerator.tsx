@@ -117,75 +117,6 @@ const isLikelyLora = (asset: ModelAsset) => {
   return false;
 };
 
-const isLikelyBaseModel = (asset: ModelAsset) => {
-  if (isLikelyLora(asset)) {
-    return false;
-  }
-
-  const assetBucket = asset.storageBucket?.trim().toLowerCase();
-  if (assetBucket && normalizedBaseModelBucket && assetBucket === normalizedBaseModelBucket) {
-    return true;
-  }
-
-  const typeLabel = describeModelType(asset).toLowerCase();
-  if (typeLabel.includes('checkpoint') || typeLabel.includes('base')) {
-    return true;
-  }
-  if (typeLabel.includes('lora')) {
-    return false;
-  }
-
-  const metadata = asset.metadata as Record<string, unknown> | undefined;
-  if (metadata) {
-    const format = metadata['format'] ?? metadata['type'];
-    if (typeof format === 'string') {
-      const normalizedFormat = format.toLowerCase();
-      if (normalizedFormat.includes('lora')) {
-        return false;
-      }
-      if (
-        normalizedFormat.includes('checkpoint') ||
-        normalizedFormat.includes('model') ||
-        normalizedFormat.includes('safetensor')
-      ) {
-        return true;
-      }
-    }
-
-    const architecture = metadata['architecture'];
-    if (typeof architecture === 'string') {
-      const normalizedArchitecture = architecture.toLowerCase();
-      if (normalizedArchitecture.includes('lora')) {
-        return false;
-      }
-      if (
-        normalizedArchitecture.includes('checkpoint') ||
-        normalizedArchitecture.includes('diffusion') ||
-        normalizedArchitecture.includes('model')
-      ) {
-        return true;
-      }
-    }
-
-    const baseCandidates: Array<string | undefined> = [
-      metadata['baseModel'] as string | undefined,
-      metadata['model'] as string | undefined,
-      metadata['modelName'] as string | undefined,
-      metadata['model_type'] as string | undefined,
-    ];
-
-    if (
-      baseCandidates.some(
-        (entry) => typeof entry === 'string' && entry.trim().length > 0 && !/lora/i.test(entry),
-      )
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
 const normalizeStrength = (value: number) => {
   if (Number.isNaN(value)) {
     return 1;
@@ -227,43 +158,83 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [history, setHistory] = useState<GeneratorRequestSummary[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [baseModels, setBaseModels] = useState<ModelAsset[]>([]);
+  const [isBaseModelsLoading, setIsBaseModelsLoading] = useState(false);
+  const [baseModelError, setBaseModelError] = useState<string | null>(null);
 
-  const baseModelOptions = useMemo(() => {
-    const candidates = models.filter(isLikelyBaseModel);
-    if (candidates.length > 0) {
-      return candidates.sort((a, b) => a.title.localeCompare(b.title));
-    }
+  useEffect(() => {
+    let isMounted = true;
 
-    const fallback = models.filter((asset) => !isLikelyLora(asset));
-    if (fallback.length > 0) {
-      return fallback.sort((a, b) => a.title.localeCompare(b.title));
-    }
+    const loadBaseModels = async () => {
+      if (!token) {
+        setBaseModels([]);
+        setBaseModelError(null);
+        return;
+      }
 
-    return [...models].sort((a, b) => a.title.localeCompare(b.title));
-  }, [models]);
+      try {
+        setIsBaseModelsLoading(true);
+        setBaseModelError(null);
+        const entries = await api.getGeneratorBaseModels(token);
+        if (!isMounted) {
+          return;
+        }
+        setBaseModels(entries);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+        console.error('Failed to load generator base models', error);
+        const message = error instanceof ApiError ? error.message : 'Could not load base models from storage.';
+        setBaseModels([]);
+        setBaseModelError(message);
+      } finally {
+        if (isMounted) {
+          setIsBaseModelsLoading(false);
+        }
+      }
+    };
+
+    loadBaseModels();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  const baseModelOptions = useMemo(
+    () => baseModels.slice().sort((a, b) => a.title.localeCompare(b.title)),
+    [baseModels],
+  );
 
   const loraOptions = useMemo(() => {
-    const candidates = models.filter(isLikelyLora);
+    const baseModelIds = new Set(baseModelOptions.map((asset) => asset.id));
+    const candidates = models.filter((asset) => isLikelyLora(asset) && !baseModelIds.has(asset.id));
     if (candidates.length > 0) {
       return candidates.sort((a, b) => a.title.localeCompare(b.title));
     }
 
     return models
-      .filter((asset) => asset.id !== selectedBaseModelId)
+      .filter((asset) => asset.id !== selectedBaseModelId && !baseModelIds.has(asset.id))
       .sort((a, b) => a.title.localeCompare(b.title));
-  }, [models, selectedBaseModelId]);
+  }, [models, selectedBaseModelId, baseModelOptions]);
 
   const loraLookup = useMemo(() => new Map(models.map((asset) => [asset.id, asset])), [models]);
 
   useEffect(() => {
-    if (!selectedBaseModelId && baseModelOptions.length > 0) {
+    if (baseModelOptions.length === 0) {
+      setSelectedBaseModelId('');
+      return;
+    }
+
+    if (!selectedBaseModelId || !baseModelOptions.some((asset) => asset.id === selectedBaseModelId)) {
       setSelectedBaseModelId(baseModelOptions[0].id);
     }
   }, [baseModelOptions, selectedBaseModelId]);
 
   const selectedBaseModel = useMemo(
-    () => models.find((asset) => asset.id === selectedBaseModelId) ?? null,
-    [models, selectedBaseModelId],
+    () => baseModelOptions.find((asset) => asset.id === selectedBaseModelId) ?? null,
+    [baseModelOptions, selectedBaseModelId],
   );
 
   const filteredLoras = useMemo(() => {
@@ -507,7 +478,31 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   );
 
   const renderBaseModelPreview = () => {
+    if (isBaseModelsLoading) {
+      return (
+        <div className="generator-preview generator-preview--empty">
+          <p>Loading base model metadata…</p>
+        </div>
+      );
+    }
+
+    if (baseModelError) {
+      return (
+        <div className="generator-preview generator-preview--empty">
+          <p>{baseModelError}</p>
+        </div>
+      );
+    }
+
     if (!selectedBaseModel) {
+      if (baseModelOptions.length === 0) {
+        return (
+          <div className="generator-preview generator-preview--empty">
+            <p>Upload checkpoints to the {generatorBaseModelBucket} bucket to unlock the On-Site Generator.</p>
+          </div>
+        );
+      }
+
       return (
         <div className="generator-preview generator-preview--empty">
           <p>Select a base model to display its metadata and cover art.</p>
@@ -516,9 +511,9 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     }
 
     const previewUrl = resolveCachedStorageUrl(
+      selectedBaseModel.previewImage,
       selectedBaseModel.previewImageBucket,
       selectedBaseModel.previewImageObject,
-      selectedBaseModel.previewImage,
     );
 
     return (
@@ -814,13 +809,28 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               id="generator-base-model"
               value={selectedBaseModelId}
               onChange={(event) => setSelectedBaseModelId(event.target.value)}
+              disabled={isBaseModelsLoading || baseModelOptions.length === 0}
             >
+              {baseModelOptions.length === 0 ? (
+                <option value="">
+                  {isBaseModelsLoading ? 'Loading base models…' : 'No base models available'}
+                </option>
+              ) : null}
               {baseModelOptions.map((asset) => (
                 <option key={asset.id} value={asset.id}>
                   {asset.title} — {describeModelType(asset)}
                 </option>
               ))}
             </select>
+            {isBaseModelsLoading ? (
+              <p className="generator-field__status">Loading base models from storage…</p>
+            ) : null}
+            {baseModelError ? <p className="generator-field__error">{baseModelError}</p> : null}
+            {!isBaseModelsLoading && baseModelOptions.length === 0 && !baseModelError ? (
+              <p className="generator-field__empty">
+                No checkpoints detected in the {generatorBaseModelBucket} bucket.
+              </p>
+            ) : null}
           </div>
           {renderBaseModelPreview()}
           {renderLoraSelection()}

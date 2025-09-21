@@ -87,7 +87,7 @@ During execution the installer:
 4. Provisions MinIO credentials, configures buckets, and launches the `visionsuit-minio` container.
 5. Offers optional execution of `npm run prisma:migrate`, `npm run seed`, and `npm run create-admin` for initial data.
 
-Base checkpoints for the On-Site Generator live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `frontend/.env` by setting `VITE_GENERATOR_BASE_MODEL_BUCKET` so the generator UI continues to list only the real ComfyUI base models.
+Base checkpoints for the On-Site Generator live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `backend/.env` with `GENERATOR_BASE_MODEL_BUCKET` and inside `frontend/.env` via `VITE_GENERATOR_BASE_MODEL_BUCKET` so the generator UI continues to list only the real ComfyUI base models.
 
 After completion the stack is ready for development or evaluation. Use `./dev-start.sh` for a combined watch mode when coding locally.
 
