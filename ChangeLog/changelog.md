@@ -611,3 +611,8 @@
 - **General**: Introduced a VisionSuit-native On-Site Generator view with a guided prompt builder, LoRA mixer, and per-user request history alongside an admin toggle that controls who can see the feature.
 - **Technical Changes**: Added generator settings/request tables and routes to the backend, wired new API helpers, created the React wizard plus admin configuration tab, and expanded global styling for the generator UI.
 - **Data Changes**: New Prisma models store generator visibility and submitted requests; migrations update the SQLite schema accordingly.
+
+## 121 – On-Site generator base-model bucket filter
+- **General**: Corrected the generator's base-model picker so it mirrors the ComfyUI checkpoints stored in MinIO.
+- **Technical Changes**: Added a configurable `VITE_GENERATOR_BASE_MODEL_BUCKET` defaulting to `comfyui-models`, prioritized bucket matching over heuristic tag guesses in the wizard, and updated documentation plus `.env` templates.
+- **Data Changes**: None; the change only touches configuration defaults and client-side filtering.
