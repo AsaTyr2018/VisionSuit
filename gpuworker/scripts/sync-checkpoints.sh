@@ -14,7 +14,7 @@ fi
 : "${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY in $ENV_FILE or the environment}"
 : "${MINIO_MODELS_BUCKET:?Set MINIO_MODELS_BUCKET in $ENV_FILE or the environment}"
 
-DEFAULT_MODEL_ROOT="${MODEL_ROOT:-/var/lib/comfyui/models}"
+DEFAULT_MODEL_ROOT="${MODEL_ROOT:-/opt/comfyui/models}"
 DEFAULT_MODEL_ROOT="${DEFAULT_MODEL_ROOT%/}"
 TARGET_DIR="${1:-$DEFAULT_MODEL_ROOT/checkpoints}"
 PREFIX="${MINIO_MODELS_PREFIX:-}"

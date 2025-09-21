@@ -596,3 +596,8 @@
 - **General**: Equipped GPU render nodes with a direct command to mirror required checkpoints ahead of validation runs.
 - **Technical Changes**: Added a MinIO-backed `sync-checkpoints` utility, registered it with the installer, pre-created the checkpoints directory, and expanded the workflow tester to surface missing assets with actionable guidance.
 - **Data Changes**: Refreshed the primary README and GPU worker guide to document the new helper and the need to sync checkpoints alongside LoRAs.
+
+## 118 – ComfyUI asset path alignment
+- **General**: Ensured GPU workers drop synchronized assets where ComfyUI actually loads them.
+- **Technical Changes**: Pointed the installer and MinIO helper scripts at `/opt/comfyui/models` and `/opt/comfyui/output`, refreshed documentation, and kept legacy overrides intact through environment variables.
+- **Data Changes**: None; directories only change location defaults.
