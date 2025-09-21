@@ -21,7 +21,11 @@ SERVICE_FILE="${SERVICE_FILE:-/etc/systemd/system/comfyui.service}"
 MINIO_ENV_FILE="${MINIO_ENV_FILE:-/etc/comfyui/minio.env}"
 MINIO_ENV_DIR="$(dirname "$MINIO_ENV_FILE")"
 TORCH_PACKAGE_SPEC="${TORCH_PACKAGE_SPEC:-torch torchvision torchaudio}"
-TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
+CUDA_TORCH_INDEX_URL="${CUDA_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu121}"
+ROCM_TORCH_INDEX_URL="${ROCM_TORCH_INDEX_URL:-https://download.pytorch.org/whl/rocm5.6}"
+CPU_TORCH_INDEX_URL="${CPU_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+TORCH_INDEX_URL="${TORCH_INDEX_URL:-$CUDA_TORCH_INDEX_URL}"
+GPU_VENDOR="${GPU_VENDOR:-unknown}"
 SCRIPTS_SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts"
 SCRIPT_NAMES=(generate-model-manifest.sh sync-loras.sh upload-outputs.sh)
 MINIO_TARGET_ENDPOINT="${MINIO_ENDPOINT:-}"
@@ -52,7 +56,151 @@ install_packages() {
     unzip \
     jq \
     awscli \
-    pkg-config
+    pkg-config \
+    pciutils \
+    lsb-release \
+    gnupg
+
+  if apt-cache show ubuntu-drivers-common >/dev/null 2>&1; then
+    apt-get install -y --no-install-recommends ubuntu-drivers-common
+  else
+    log "WARNING: ubuntu-drivers-common not available in APT sources; NVIDIA driver recommendations will use the default fallback."
+  fi
+}
+
+detect_gpu_vendor() {
+  if [[ "$GPU_VENDOR" != "unknown" ]]; then
+    log "GPU vendor preset to $GPU_VENDOR; skipping auto-detection"
+    return
+  fi
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    GPU_VENDOR="nvidia"
+    log "Detected NVIDIA GPU via nvidia-smi"
+    return
+  fi
+
+  if command -v rocminfo >/dev/null 2>&1 || command -v rocm-smi >/dev/null 2>&1; then
+    GPU_VENDOR="amd"
+    log "Detected AMD GPU via ROCm utilities"
+    return
+  fi
+
+  if command -v lspci >/dev/null 2>&1; then
+    if lspci | grep -qi 'NVIDIA'; then
+      GPU_VENDOR="nvidia"
+      log "Detected NVIDIA GPU via lspci"
+      return
+    fi
+    if lspci | grep -Eqi 'VGA.*(AMD|ATI)|3D.*(AMD|ATI)|Display.*(AMD|ATI)'; then
+      GPU_VENDOR="amd"
+      log "Detected AMD GPU via lspci"
+      return
+    fi
+  fi
+
+  GPU_VENDOR="none"
+  log "No supported discrete GPU detected"
+}
+
+install_nvidia_driver() {
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    log "NVIDIA driver already present (nvidia-smi detected)"
+    return
+  fi
+
+  log "Installing NVIDIA GPU driver"
+  local recommended_driver=""
+  if command -v ubuntu-drivers >/dev/null 2>&1; then
+    recommended_driver="$(ubuntu-drivers devices 2>/dev/null | awk '/recommended/ {print $3; exit}')"
+  fi
+
+  if [[ -n "$recommended_driver" ]]; then
+    log "Installing recommended driver: $recommended_driver"
+    if ! apt-get install -y "$recommended_driver"; then
+      log "WARNING: Failed to install $recommended_driver. Falling back to nvidia-driver-535."
+      if ! apt-get install -y nvidia-driver-535; then
+        log "WARNING: Failed to install nvidia-driver-535 as a fallback. Please install NVIDIA drivers manually."
+      fi
+    fi
+  else
+    log "Falling back to default NVIDIA driver package (nvidia-driver-535)"
+    if ! apt-get install -y nvidia-driver-535; then
+      log "WARNING: Failed to install nvidia-driver-535. Please install NVIDIA drivers manually."
+    fi
+  fi
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    log "NVIDIA driver installation complete"
+  else
+    log "WARNING: NVIDIA driver installation did not expose nvidia-smi. Reboot or manual intervention may be required."
+  fi
+}
+
+add_amd_repositories() {
+  local release="$(lsb_release -cs 2>/dev/null || echo jammy)"
+  case "$release" in
+    jammy|focal|noble)
+      ;;
+    *)
+      log "WARNING: AMD repositories do not officially list $release. Falling back to jammy packages."
+      release="jammy"
+      ;;
+  esac
+  local keyring="/usr/share/keyrings/amd-rocm.gpg"
+  if [[ ! -f "$keyring" ]]; then
+    log "Adding AMD ROCm repository key"
+    wget -qO- https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor >"$keyring"
+  fi
+
+  cat <<EOF >/etc/apt/sources.list.d/amdgpu.list
+deb [arch=amd64 signed-by=$keyring] https://repo.radeon.com/amdgpu/latest/ubuntu $release main
+EOF
+
+  cat <<EOF >/etc/apt/sources.list.d/rocm.list
+deb [arch=amd64 signed-by=$keyring] https://repo.radeon.com/rocm/apt/debian/ $release main
+EOF
+
+  apt-get update -y
+}
+
+install_amd_driver() {
+  if command -v rocminfo >/dev/null 2>&1 || command -v rocm-smi >/dev/null 2>&1; then
+    log "AMD ROCm runtime already present"
+    return
+  fi
+
+  log "Installing AMD GPU driver and ROCm runtime"
+  add_amd_repositories
+
+  if ! apt-get install -y --no-install-recommends amdgpu-dkms hip-runtime-amd rocm-hip-runtime rocminfo; then
+    log "WARNING: Failed to install AMD ROCm packages. Verify repository support for your distribution."
+  else
+    log "AMD ROCm runtime installation complete"
+  fi
+}
+
+configure_torch_runtime() {
+  case "$GPU_VENDOR" in
+    nvidia)
+      TORCH_INDEX_URL="$CUDA_TORCH_INDEX_URL"
+      log "Configuring PyTorch wheels for NVIDIA GPUs via $TORCH_INDEX_URL"
+      install_nvidia_driver
+      ;;
+    amd)
+      TORCH_INDEX_URL="$ROCM_TORCH_INDEX_URL"
+      log "Configuring PyTorch wheels for AMD GPUs via $TORCH_INDEX_URL"
+      install_amd_driver
+      ;;
+    none)
+      TORCH_INDEX_URL="$CPU_TORCH_INDEX_URL"
+      log "No discrete GPU detected. Installing CPU-only PyTorch wheels via $TORCH_INDEX_URL"
+      ;;
+    *)
+      TORCH_INDEX_URL="$CPU_TORCH_INDEX_URL"
+      log "Unable to detect GPU vendor. Defaulting to CPU PyTorch wheels via $TORCH_INDEX_URL"
+      ;;
+  esac
 }
 
 ensure_user() {
@@ -217,6 +365,8 @@ EOF2
 
 main() {
   install_packages
+  detect_gpu_vendor
+  configure_torch_runtime
   ensure_user
   clone_repo
   setup_python
