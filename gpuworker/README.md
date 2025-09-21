@@ -28,6 +28,7 @@ Reboot the machine after driver installation if `nvidia-smi` or `rocminfo` remai
 The installer publishes a small toolkit into `/usr/local/bin` so the worker can stay synchronized with MinIO:
 
 - `generate-model-manifest` – produces a JSON manifest of available base-model checkpoints from MinIO for ComfyUI's dropdowns.
+- `sync-checkpoints` – downloads base-model checkpoints from MinIO into the worker's local cache.
 - `sync-loras` – downloads the latest LoRA adapters from MinIO into the worker's local cache.
 - `upload-outputs` – pushes freshly rendered outputs from the worker back into the configured MinIO bucket.
 
@@ -51,7 +52,7 @@ Each test script reads `/etc/comfyui/minio.env`, honours optional `MINIO_*_PREFI
 
 ### API-driven workflow validation
 
-Operators can run workflows without the ComfyUI web UI by calling `scripts/test-run-workflow.sh`. The helper reads `/etc/comfyui/minio.env`, posts the selected workflow JSON (exported via ComfyUI’s **Save (API Format)** action) to the configured ComfyUI API, polls the queue until completion, and prints the generated asset identifiers. Optional flags let you target remote hosts, change the polling interval, or trigger `test-export-outputs` automatically to download the results. The runner now ignores any non-JSON queue or history responses so transient HTML or numeric payloads no longer spam `jq` errors during polling. A prebuilt SDXL workflow tailored for automation ships in `workflows/validation.json` (base model: `calicomixPonyXL_v20.safetensors`, LoRA: `DoomGirl.safetensors`).
+Operators can run workflows without the ComfyUI web UI by calling `scripts/test-run-workflow.sh`. The helper reads `/etc/comfyui/minio.env`, posts the selected workflow JSON (exported via ComfyUI’s **Save (API Format)** action) to the configured ComfyUI API, polls the queue until completion, and prints the generated asset identifiers. Optional flags let you target remote hosts, change the polling interval, or trigger `test-export-outputs` automatically to download the results. Run `sync-checkpoints` and `sync-loras` beforehand so the referenced assets are present locally. The runner now ignores any non-JSON queue or history responses so transient HTML or numeric payloads no longer spam `jq` errors during polling. A prebuilt SDXL workflow tailored for automation ships in `workflows/validation.json` (base model: `calicomixPonyXL_v20.safetensors`, LoRA: `DoomGirl.safetensors`).
 
 Example:
 

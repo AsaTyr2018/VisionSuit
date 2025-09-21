@@ -145,7 +145,41 @@ if ! PROMPT_ID=$(jq_safe "$QUEUE_RESPONSE" -r '
 fi
 
 if [[ -z "$PROMPT_ID" ]]; then
-  echo "Failed to retrieve prompt ID from response: $QUEUE_RESPONSE" >&2
+  VALIDATION_TYPE=""
+  if ! VALIDATION_TYPE=$(jq_safe "$QUEUE_RESPONSE" -r 'if type == "object" and (.error? | type) == "object" then .error.type // empty else empty'); then
+    VALIDATION_TYPE=""
+  fi
+
+  if [[ "$VALIDATION_TYPE" == "prompt_outputs_failed_validation" ]]; then
+    echo "Workflow validation failed when queuing prompt." >&2
+
+    if MISSING_CKPTS=$(jq_safe "$QUEUE_RESPONSE" -r '[ (.node_errors // {}) | to_entries[] | .value as $node | ($node.class_type // "") as $class | if $class == "CheckpointLoaderSimple" then ($node.errors // []) | map(select(.type == "value_not_in_list") | .extra_info.received_value) else empty end ] | add // [] | unique | .[]'); then
+      if [[ -n "$MISSING_CKPTS" ]]; then
+        echo "Missing checkpoints:" >&2
+        while IFS= read -r ckpt; do
+          [[ -z "$ckpt" ]] && continue
+          printf '  - %s\n' "$ckpt" >&2
+        done <<< "$MISSING_CKPTS"
+        echo "Run 'sync-checkpoints' to download these models from MinIO or adjust the workflow to reference available checkpoints." >&2
+      fi
+    fi
+
+    if MISSING_LORAS=$(jq_safe "$QUEUE_RESPONSE" -r '[ (.node_errors // {}) | to_entries[] | .value as $node | ($node.class_type // "") as $class | if $class == "LoraLoader" then ($node.errors // []) | map(select(.type == "value_not_in_list") | .extra_info.received_value) else empty end ] | add // [] | unique | .[]'); then
+      if [[ -n "$MISSING_LORAS" ]]; then
+        echo "Missing LoRA adapters:" >&2
+        while IFS= read -r lora; do
+          [[ -z "$lora" ]] && continue
+          printf '  - %s\n' "$lora" >&2
+        done <<< "$MISSING_LORAS"
+        echo "Ensure 'sync-loras' has pulled these adapters locally or update the workflow selection." >&2
+      fi
+    fi
+
+    echo "Raw response: $QUEUE_RESPONSE" >&2
+  else
+    echo "Failed to retrieve prompt ID from response: $QUEUE_RESPONSE" >&2
+  fi
+
   exit 1
 fi
 
