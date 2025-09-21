@@ -490,3 +490,8 @@
 - **General**: Ensured curator avatars load on public domains by rewriting leftover MinIO links to flow through the API proxy.
 - **Technical Changes**: Taught the storage resolver to map HTTP MinIO URLs back to bucket/object pairs so avatar serialization always emits `/api/users/:id/avatar`, and refreshed the README highlight around the hardened avatar delivery.
 - **Data Changes**: None; existing avatar records are reinterpreted at runtime without touching persisted values.
+
+## 099 – Avatar loopback rewrite (commit TBD)
+- **General**: Ensured curator avatars never leak loopback URLs when profiles are loaded externally.
+- **Technical Changes**: Taught the avatar resolver to reroute any localhost or 127.0.0.0/8 links through the configured API base so the frontend serves same-origin assets.
+- **Data Changes**: None.

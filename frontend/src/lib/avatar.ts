@@ -2,6 +2,23 @@ import { buildApiUrl } from '../config';
 
 const hasScheme = (value: string) => /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
 
+const isLoopbackHostname = (hostname: string) => {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (normalized === 'localhost' || normalized === '::1' || normalized === '0.0.0.0') {
+    return true;
+  }
+
+  if (normalized.startsWith('127.')) {
+    return true;
+  }
+
+  return false;
+};
+
 export const resolveAvatarUrl = (value: string | null | undefined, userId?: string | null) => {
   if (!value) {
     return null;
@@ -21,6 +38,20 @@ export const resolveAvatarUrl = (value: string | null | undefined, userId?: stri
   }
 
   if (hasScheme(trimmed)) {
+    try {
+      const parsed = new URL(trimmed);
+      if (isLoopbackHostname(parsed.hostname)) {
+        const route = `${parsed.pathname}${parsed.search}`;
+        const normalizedRoute = route.startsWith('/') ? route : `/${route}`;
+        return buildApiUrl(normalizedRoute);
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('Failed to parse avatar URL', error);
+      }
+      return trimmed;
+    }
+
     return trimmed;
   }
 
