@@ -460,3 +460,8 @@
 - **General**: Finalized curator-facing deletion and gallery linking so model and collection maintenance works without admin support.
 - **Technical Changes**: Regenerated the Prisma client, tightened gallery mapper typings, restored missing backend type imports, and verified linting for both backend and frontend workspaces.
 - **Data Changes**: None; the feature operates on existing Prisma models.
+
+## 093 – Model explorer initialization guard
+- **General**: Prevented the model explorer from crashing when opening the page by initializing gallery linking state safely.
+- **Technical Changes**: Reordered the gallery memoization and effect in `frontend/src/components/AssetExplorer.tsx` so React never references `linkableGalleries` before it is computed.
+- **Data Changes**: None; client-side state management only.
