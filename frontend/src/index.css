@@ -7953,6 +7953,74 @@ button {
   gap: 1.5rem;
 }
 
+.generator-prompts__triggers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.65);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.35);
+}
+
+.generator-prompts__triggers h3 {
+  margin: 0 0 0.15rem;
+  font-size: 1rem;
+  color: #f8fafc;
+}
+
+.generator-prompts__triggers p {
+  margin: 0;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 0.9rem;
+}
+
+.generator-prompts__trigger-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.generator-prompts__trigger-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.generator-prompts__trigger-title {
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.95rem;
+}
+
+.generator-prompts__trigger-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.generator-prompts__trigger-buttons button {
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: rgba(37, 99, 235, 0.2);
+  color: #bfdbfe;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.generator-prompts__trigger-buttons button:hover,
+.generator-prompts__trigger-buttons button:focus-visible {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: rgba(59, 130, 246, 0.35);
+  color: #e0f2fe;
+}
+
 .generator-parameters {
   display: grid;
   gap: 1.5rem;

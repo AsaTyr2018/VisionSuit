@@ -616,3 +616,8 @@
 - **General**: Corrected the generator's base-model picker so it mirrors the ComfyUI checkpoints stored in MinIO.
 - **Technical Changes**: Added a configurable `VITE_GENERATOR_BASE_MODEL_BUCKET` defaulting to `comfyui-models`, prioritized bucket matching over heuristic tag guesses in the wizard, and updated documentation plus `.env` templates.
 - **Data Changes**: None; the change only touches configuration defaults and client-side filtering.
+
+## 122 – Generator base picker & trigger helper
+- **General**: Clarified the On-Site Generator by limiting the base-model list to real ComfyUI checkpoints and surfacing clickable trigger hints from the selected LoRAs inside the prompt step.
+- **Technical Changes**: Hardened base-model detection against LoRA heuristics, added a non-LoRA fallback when no bucket match exists, extracted trigger phrases from model metadata, wired a click-to-insert handler on the prompt step, refreshed the generator styles, and updated the README highlight.
+- **Data Changes**: None; UI-only improvements leveraging existing model metadata.

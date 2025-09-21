@@ -38,33 +38,52 @@ const describeModelType = (asset: ModelAsset) =>
 
 const normalizedBaseModelBucket = generatorBaseModelBucket.trim().toLowerCase();
 
-const isLikelyBaseModel = (asset: ModelAsset) => {
-  const assetBucket = asset.storageBucket?.trim().toLowerCase();
-  if (assetBucket && normalizedBaseModelBucket && assetBucket === normalizedBaseModelBucket) {
-    return true;
-  }
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  const typeLabel = describeModelType(asset).toLowerCase();
-  if (typeLabel.includes('checkpoint') || typeLabel.includes('base') || typeLabel.includes('model')) {
-    return true;
-  }
-  if (typeLabel.includes('lora')) {
-    return false;
-  }
+const extractTriggerPhrases = (asset: ModelAsset): string[] => {
+  const phrases = new Set<string>();
+
+  const addPhrase = (phrase: string | null | undefined) => {
+    if (!phrase) {
+      return;
+    }
+    const trimmed = phrase.trim();
+    if (trimmed.length > 0) {
+      phrases.add(trimmed);
+    }
+  };
+
+  addPhrase(asset.trigger ?? undefined);
 
   const metadata = asset.metadata as Record<string, unknown> | undefined;
-  const baseCandidates: Array<string | undefined> = metadata
-    ? [
-        metadata['baseModel'] as string | undefined,
-        metadata['model'] as string | undefined,
-        metadata['modelName'] as string | undefined,
-        metadata['model_type'] as string | undefined,
-      ]
-    : [];
-  return baseCandidates.some((entry) => typeof entry === 'string' && entry.trim().length > 0);
+  if (metadata) {
+    const triggerKeys = ['trigger', 'triggerWord', 'triggerWords'];
+    for (const key of triggerKeys) {
+      const value = metadata[key];
+      if (typeof value === 'string') {
+        value
+          .split(/[,\n]/)
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+          .forEach((entry) => phrases.add(entry));
+      } else if (Array.isArray(value)) {
+        value
+          .filter((entry): entry is string => typeof entry === 'string')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+          .forEach((entry) => phrases.add(entry));
+      }
+    }
+  }
+
+  return Array.from(phrases);
 };
 
 const isLikelyLora = (asset: ModelAsset) => {
+  if (typeof asset.trigger === 'string' && asset.trigger.trim().length > 0) {
+    return true;
+  }
+
   const assetBucket = asset.storageBucket?.trim().toLowerCase();
   if (assetBucket && normalizedBaseModelBucket && assetBucket === normalizedBaseModelBucket) {
     return false;
@@ -80,9 +99,90 @@ const isLikelyLora = (asset: ModelAsset) => {
 
   const metadata = asset.metadata as Record<string, unknown> | undefined;
   const format = metadata?.['format'] ?? metadata?.['type'];
-  if (typeof format === 'string' && format.toLowerCase().includes('lora')) {
+  if (typeof format === 'string') {
+    const normalizedFormat = format.toLowerCase();
+    if (normalizedFormat.includes('lora')) {
+      return true;
+    }
+    if (normalizedFormat.includes('checkpoint') || normalizedFormat.includes('model')) {
+      return false;
+    }
+  }
+
+  const architecture = metadata?.['architecture'];
+  if (typeof architecture === 'string' && architecture.toLowerCase().includes('lora')) {
     return true;
   }
+
+  return false;
+};
+
+const isLikelyBaseModel = (asset: ModelAsset) => {
+  if (isLikelyLora(asset)) {
+    return false;
+  }
+
+  const assetBucket = asset.storageBucket?.trim().toLowerCase();
+  if (assetBucket && normalizedBaseModelBucket && assetBucket === normalizedBaseModelBucket) {
+    return true;
+  }
+
+  const typeLabel = describeModelType(asset).toLowerCase();
+  if (typeLabel.includes('checkpoint') || typeLabel.includes('base')) {
+    return true;
+  }
+  if (typeLabel.includes('lora')) {
+    return false;
+  }
+
+  const metadata = asset.metadata as Record<string, unknown> | undefined;
+  if (metadata) {
+    const format = metadata['format'] ?? metadata['type'];
+    if (typeof format === 'string') {
+      const normalizedFormat = format.toLowerCase();
+      if (normalizedFormat.includes('lora')) {
+        return false;
+      }
+      if (
+        normalizedFormat.includes('checkpoint') ||
+        normalizedFormat.includes('model') ||
+        normalizedFormat.includes('safetensor')
+      ) {
+        return true;
+      }
+    }
+
+    const architecture = metadata['architecture'];
+    if (typeof architecture === 'string') {
+      const normalizedArchitecture = architecture.toLowerCase();
+      if (normalizedArchitecture.includes('lora')) {
+        return false;
+      }
+      if (
+        normalizedArchitecture.includes('checkpoint') ||
+        normalizedArchitecture.includes('diffusion') ||
+        normalizedArchitecture.includes('model')
+      ) {
+        return true;
+      }
+    }
+
+    const baseCandidates: Array<string | undefined> = [
+      metadata['baseModel'] as string | undefined,
+      metadata['model'] as string | undefined,
+      metadata['modelName'] as string | undefined,
+      metadata['model_type'] as string | undefined,
+    ];
+
+    if (
+      baseCandidates.some(
+        (entry) => typeof entry === 'string' && entry.trim().length > 0 && !/lora/i.test(entry),
+      )
+    ) {
+      return true;
+    }
+  }
+
   return false;
 };
 
@@ -133,6 +233,12 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     if (candidates.length > 0) {
       return candidates.sort((a, b) => a.title.localeCompare(b.title));
     }
+
+    const fallback = models.filter((asset) => !isLikelyLora(asset));
+    if (fallback.length > 0) {
+      return fallback.sort((a, b) => a.title.localeCompare(b.title));
+    }
+
     return [...models].sort((a, b) => a.title.localeCompare(b.title));
   }, [models]);
 
@@ -183,6 +289,22 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       .filter((entry): entry is { asset: ModelAsset; strength: number } => Boolean(entry));
   }, [loraSelections, loraLookup]);
 
+  const selectedLoraTriggerEntries = useMemo(() => {
+    return selectedLorAsDetailed
+      .map(({ asset }) => {
+        const triggers = extractTriggerPhrases(asset);
+        if (triggers.length === 0) {
+          return null;
+        }
+        return {
+          id: asset.id,
+          title: asset.title,
+          triggers,
+        };
+      })
+      .filter((entry): entry is { id: string; title: string; triggers: string[] } => Boolean(entry));
+  }, [selectedLorAsDetailed]);
+
   const isLoraSelected = useCallback(
     (id: string) => loraSelections.some((selection) => selection.id === id),
     [loraSelections],
@@ -207,6 +329,27 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     setLoraSelections((current) =>
       current.map((entry) => (entry.id === id ? { ...entry, strength: normalizeStrength(value) } : entry)),
     );
+  }, []);
+
+  const handleInsertTrigger = useCallback((trigger: string) => {
+    const normalizedTrigger = trigger.trim();
+    if (!normalizedTrigger) {
+      return;
+    }
+
+    setPrompt((current) => {
+      const pattern = new RegExp(`(^|\\s)${escapeRegExp(normalizedTrigger)}(\\s|$)`, 'i');
+      if (pattern.test(current)) {
+        return current;
+      }
+
+      if (current.trim().length === 0) {
+        return normalizedTrigger;
+      }
+
+      const needsSpace = /\S$/.test(current);
+      return `${current}${needsSpace ? ' ' : ''}${normalizedTrigger}`;
+    });
   }, []);
 
   const fetchHistory = useCallback(async () => {
@@ -478,6 +621,32 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
 
   const renderPromptStep = () => (
     <div className="generator-prompts">
+      {selectedLoraTriggerEntries.length > 0 ? (
+        <aside className="generator-prompts__triggers" aria-live="polite">
+          <div>
+            <h3>LoRA trigger suggestions</h3>
+            <p>Click a trigger phrase to add it to your prompt.</p>
+          </div>
+          <ul className="generator-prompts__trigger-list">
+            {selectedLoraTriggerEntries.map((entry) => (
+              <li key={entry.id} className="generator-prompts__trigger-item">
+                <span className="generator-prompts__trigger-title">{entry.title}</span>
+                <div className="generator-prompts__trigger-buttons">
+                  {entry.triggers.map((trigger) => (
+                    <button
+                      key={`${entry.id}-${trigger}`}
+                      type="button"
+                      onClick={() => handleInsertTrigger(trigger)}
+                    >
+                      {trigger}
+                    </button>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
       <div className="generator-field">
         <label htmlFor="generator-prompt">Prompt</label>
         <textarea
