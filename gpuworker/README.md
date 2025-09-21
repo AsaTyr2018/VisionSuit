@@ -32,3 +32,19 @@ The installer publishes a small toolkit into `/usr/local/bin` so the worker can 
 - `upload-outputs` – pushes freshly rendered outputs from the worker back into the configured MinIO bucket.
 
 All helpers rely on the values stored in `/etc/comfyui/minio.env`. Update that file or export the variables inline to override destinations or prefixes.
+
+## Test validation scripts
+
+When VisionSuit has not yet been wired to the worker you can still verify connectivity with the purpose-built test helpers (copied to `/usr/local/bin` alongside the other utilities):
+
+- `test-create-buckets` – ensures the configured checkpoint, LoRA, and output buckets exist (creating them when missing).
+- `test-upload-models` – uploads local checkpoint and/or LoRA files into MinIO so ComfyUI can discover them. Example:
+  ```bash
+  test-upload-models --models ~/Downloads/checkpoints --loras ~/Downloads/loras
+  ```
+- `test-export-outputs` – downloads renders from MinIO to a local folder for manual inspection. Example:
+  ```bash
+  test-export-outputs ~/tmp/comfyui-outputs
+  ```
+
+Each test script reads `/etc/comfyui/minio.env`, honours optional `MINIO_*_PREFIX` values, and requires the AWS CLI to be installed.
