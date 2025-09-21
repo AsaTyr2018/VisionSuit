@@ -56,5 +56,5 @@ Operators can run workflows without the ComfyUI web UI by calling `scripts/test-
 Example:
 
 ```bash
-scripts/test-run-workflow.sh --workflow workflows/validation.json --host comfyui.local --export-dir ~/tmp/comfyui-run
+scripts/test-run-workflow.sh --workflow ~/flows/validation.json --host comfyui.local --export-dir ~/tmp/comfyui-run
 ```

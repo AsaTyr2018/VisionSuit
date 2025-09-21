@@ -576,7 +576,9 @@
 - **Technical Changes**: Introduced `gpuworker/scripts/test-run-workflow.sh` to source MinIO credentials, post workflows to `/prompt`, poll queue/history endpoints, report asset identifiers, and optionally call `test-export-outputs`.
 - **Data Changes**: Reads existing MinIO environment variables and touches only ComfyUI’s HTTP API plus optional MinIO downloads; no repository data is persisted.
 
-## 033 – SDXL workflow validation pack
+## 114 – SDXL workflow validation pack (Testing only)
 - **General**: Delivered an automation-focused SDXL validation workflow that pairs with the ComfyUI API runner for hands-free checks.
 - **Technical Changes**: Added `gpuworker/workflows/validation.json` capturing the calicomixPonyXL base plus DoomGirl LoRA pipeline and updated the GPU worker README with usage guidance and paths.
 - **Data Changes**: New workflow JSON references the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` adapter for validation renders.
+
+
