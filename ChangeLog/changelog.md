@@ -495,3 +495,8 @@
 - **General**: Ensured curator avatars never leak loopback URLs when profiles are loaded externally.
 - **Technical Changes**: Taught the avatar resolver to reroute any localhost or 127.0.0.0/8 links through the configured API base so the frontend serves same-origin assets.
 - **Data Changes**: None.
+
+## 033 – On-site generator planning
+- **General**: Documented the ComfyUI-based on-site image generator concept with architecture, workflow pipeline, and rollout phases, and linked the plan in the README roadmap.
+- **Technical Changes**: Added `docs/on-site-image-generator-plan.md` detailing service topology, pipeline stages, storage strategy, and operational guidance; updated README to reference the new plan.
+- **Data Changes**: None; planning documentation only.
