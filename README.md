@@ -35,6 +35,8 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 VisionSuit is evolving toward a richer community layer featuring reactions, threaded discussions, collaborative collections, and creator recognition systems. The [Community Features Plan](docs/community-features-plan.md) outlines the phased rollout, technical architecture, and moderation safeguards that will guide this expansion while preserving the curated gallery experience. A complementary [feasibility analysis](docs/community-features-plan-analysis.md) captures the current engineering effort required for each capability. Severity-bucketed content programs are captured in the companion plans for [Project Silverleaf](docs/community-update-plans/project-silverleaf-low-severity.md), [Project Ironquill](docs/community-update-plans/project-ironquill-medium-severity.md), and [Project Novashield](docs/community-update-plans/project-novashield-high-severity.md).
 
+An [On-Site Image Generator Project Plan](docs/on-site-image-generator-plan.md) details how a headless ComfyUI service, MinIO-hosted models, and curated review tooling will deliver in-platform rendering with governed moderation and retention workflows.
+
 ## Architecture Overview
 
 | Layer | Purpose & Key Technologies |
