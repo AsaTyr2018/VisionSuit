@@ -18,6 +18,23 @@ enum GeneratorAccessMode {
   MEMBERS
 }
 
+enum ModerationStatus {
+  ACTIVE
+  FLAGGED
+  REMOVED
+}
+
+enum ModerationEntityType {
+  MODEL
+  IMAGE
+}
+
+enum ModerationActionType {
+  FLAGGED
+  APPROVED
+  REMOVED
+}
+
 model User {
   id          String       @id @default(cuid())
   email       String       @unique
@@ -41,6 +58,10 @@ model User {
   uploadDrafts UploadDraft[]
   rankingState UserRankingState?
   generatorRequests GeneratorRequest[]
+  flaggedModels ModelAsset[] @relation("ModelAssetFlagger")
+  flaggedImages ImageAsset[] @relation("ImageAssetFlagger")
+  moderationActions ModerationLog[] @relation("ModerationLogActor")
+  moderationNotices ModerationLog[] @relation("ModerationLogRecipient")
 }
 
 model Gallery {
@@ -79,6 +100,10 @@ model ModelAsset {
   generatorRequests GeneratorRequest[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+  moderationStatus ModerationStatus @default(ACTIVE)
+  flaggedAt    DateTime?
+  flaggedById  String?
+  flaggedBy    User?        @relation("ModelAssetFlagger", fields: [flaggedById], references: [id])
 }
 
 model ModelVersion {
@@ -121,6 +146,10 @@ model ImageAsset {
   comments       ImageComment[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+  moderationStatus ModerationStatus @default(ACTIVE)
+  flaggedAt      DateTime?
+  flaggedById    String?
+  flaggedBy      User?           @relation("ImageAssetFlagger", fields: [flaggedById], references: [id])
 }
 
 model ImageLike {
@@ -296,6 +325,20 @@ model GeneratorRequest {
 
   user      User       @relation(fields: [userId], references: [id])
   baseModel ModelAsset @relation(fields: [baseModelId], references: [id])
+}
+
+model ModerationLog {
+  id            String                 @id @default(cuid())
+  entityType    ModerationEntityType
+  entityId      String
+  action        ModerationActionType
+  message       String?
+  actorId       String?
+  actor         User?                  @relation("ModerationLogActor", fields: [actorId], references: [id])
+  targetUserId  String?
+  targetUser    User?                  @relation("ModerationLogRecipient", fields: [targetUserId], references: [id])
+  createdAt     DateTime               @default(now())
+  @@index([entityType, entityId])
 }
 
 model RankTier {

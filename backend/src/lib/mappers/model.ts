@@ -5,6 +5,7 @@ import { resolveStorageLocation } from '../storage';
 export type HydratedModelAsset = ModelAsset & {
   tags: { tag: Tag }[];
   owner: Pick<User, 'id' | 'displayName' | 'email'>;
+  flaggedBy?: Pick<User, 'id' | 'displayName' | 'email'> | null;
   versions: ModelVersion[];
 };
 
@@ -169,5 +170,14 @@ export const mapModelAsset = (asset: HydratedModelAsset) => {
     versions: orderedVersions,
     latestVersionId: latestVersion.id,
     primaryVersionId: primaryVersion.id,
+    moderationStatus: asset.moderationStatus,
+    flaggedAt: asset.flaggedAt,
+    flaggedBy: asset.flaggedBy
+      ? {
+          id: asset.flaggedBy.id,
+          displayName: asset.flaggedBy.displayName,
+          email: asset.flaggedBy.email,
+        }
+      : null,
   };
 };

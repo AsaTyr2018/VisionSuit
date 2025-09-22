@@ -9,6 +9,7 @@ import type {
   GeneratorSettings,
   ImageAsset,
   MetaStats,
+  ModerationQueue,
   ModelAsset,
   RankTier,
   RankingSettings,
@@ -522,6 +523,15 @@ export const api = {
       },
       token,
     ),
+  flagModelAsset: (token: string, id: string, payload?: { reason?: string }) =>
+    request<{ model: ModelAsset }>(
+      `/api/assets/models/${id}/flag`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+      token,
+    ),
   deleteModelAsset: (token: string, id: string) => request(`/api/assets/models/${id}`, { method: 'DELETE' }, token),
   bulkDeleteModelAssets: (token: string, ids: string[]) =>
     request<{ deleted: string[] }>(
@@ -560,6 +570,15 @@ export const api = {
       },
       token,
     ),
+  flagImageAsset: (token: string, id: string, payload?: { reason?: string }) =>
+    request<{ image: ImageAsset }>(
+      `/api/assets/images/${id}/flag`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+      token,
+    ),
   deleteImageAsset: (token: string, id: string) => request(`/api/assets/images/${id}`, { method: 'DELETE' }, token),
   bulkDeleteImageAssets: (token: string, ids: string[]) =>
     request<{ deleted: string[] }>(
@@ -593,6 +612,37 @@ export const api = {
       token,
     ),
   deleteGallery: (token: string, id: string) => request(`/api/galleries/${id}`, { method: 'DELETE' }, token),
+  getModerationQueue: (token: string) => request<ModerationQueue>(`/api/assets/moderation/queue`, {}, token),
+  approveModelModeration: (token: string, id: string) =>
+    request<{ model: ModelAsset }>(
+      `/api/assets/models/${id}/moderation/approve`,
+      { method: 'POST' },
+      token,
+    ),
+  removeModelModeration: (token: string, id: string, payload?: { reason?: string }) =>
+    request<{ removed: string }>(
+      `/api/assets/models/${id}/moderation/remove`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+      token,
+    ),
+  approveImageModeration: (token: string, id: string) =>
+    request<{ image: ImageAsset }>(
+      `/api/assets/images/${id}/moderation/approve`,
+      { method: 'POST' },
+      token,
+    ),
+  removeImageModeration: (token: string, id: string, payload?: { reason?: string }) =>
+    request<{ removed: string }>(
+      `/api/assets/images/${id}/moderation/remove`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+      token,
+    ),
   getRankingSettings: (token: string) => request<{ settings: RankingSettings }>(`/api/rankings/settings`, {}, token),
   updateRankingSettings: (
     token: string,

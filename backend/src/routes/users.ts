@@ -237,6 +237,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         orderBy: { updatedAt: 'desc' },
         include: {
           tags: { include: { tag: true } },
+          flaggedBy: { select: { id: true, displayName: true, email: true } },
         },
       }),
       prisma.gallery.findMany({
@@ -278,6 +279,15 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         updatedAt: model.updatedAt,
         createdAt: model.createdAt,
         tags: model.tags.map(({ tag }) => tag),
+        moderationStatus: model.moderationStatus,
+        flaggedAt: model.flaggedAt,
+        flaggedBy: model.flaggedBy
+          ? {
+              id: model.flaggedBy.id,
+              displayName: model.flaggedBy.displayName,
+              email: model.flaggedBy.email,
+            }
+          : null,
       };
     });
 

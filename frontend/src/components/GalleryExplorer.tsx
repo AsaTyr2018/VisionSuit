@@ -247,6 +247,8 @@ export const GalleryExplorer = ({
   const [isImageCommentSubmitting, setIsImageCommentSubmitting] = useState(false);
   const [imageCommentLikeMutationId, setImageCommentLikeMutationId] = useState<string | null>(null);
   const [isImageCommentPanelOpen, setIsImageCommentPanelOpen] = useState(false);
+  const [isFlaggingImage, setIsFlaggingImage] = useState(false);
+  const [imageFlagFeedback, setImageFlagFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
@@ -338,10 +340,33 @@ export const GalleryExplorer = ({
   const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
   const canLikeImages = useMemo(() => Boolean(authToken && currentUser), [authToken, currentUser]);
   const activeImageIdValue = activeImage?.image.id ?? null;
+  const activeImageModerationStatus = activeImage?.image.moderationStatus ?? null;
   const imageCommentsAnchorId = useMemo(
     () => (activeImageIdValue ? `image-comments-${activeImageIdValue}` : 'image-comments'),
     [activeImageIdValue],
   );
+
+  const activeImagePreviewUrl = activeImage
+    ?
+        resolveCachedStorageUrl(
+          activeImage.image.storagePath,
+          activeImage.image.storageBucket,
+          activeImage.image.storageObject,
+          { updatedAt: activeImage.image.updatedAt, cacheKey: activeImage.image.id },
+        ) ?? activeImage.image.storagePath
+    : null;
+
+  const activeImageOverlayClasses = [
+    'gallery-image-modal__media',
+    activeImage?.image.moderationStatus === 'FLAGGED' ? 'moderation-overlay' : '',
+    activeImage?.image.moderationStatus === 'FLAGGED' && currentUser?.role !== 'ADMIN'
+      ? 'moderation-overlay--blurred'
+      : activeImage?.image.moderationStatus === 'FLAGGED'
+        ? 'moderation-overlay--visible'
+        : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const imageCommentToggleLabel = useMemo(() => {
     const countSuffix = isImageCommentsLoading ? '' : ` (${imageComments.length})`;
     return `${isImageCommentPanelOpen ? 'Hide comments' : 'Show comments'}${countSuffix}`;
@@ -411,6 +436,8 @@ export const GalleryExplorer = ({
       setIsImageCommentsLoading(false);
       setIsImageCommentSubmitting(false);
       setImageCommentLikeMutationId(null);
+      setImageFlagFeedback(null);
+      setIsFlaggingImage(false);
     }
   }, [activeImage]);
 
@@ -453,6 +480,15 @@ export const GalleryExplorer = ({
       isActive = false;
     };
   }, [activeImage?.image.id, authToken]);
+
+  useEffect(() => {
+    if (!activeImageIdValue) {
+      return;
+    }
+
+    setImageFlagFeedback(null);
+    setIsFlaggingImage(false);
+  }, [activeImageIdValue, activeImageModerationStatus]);
 
   const reloadImageComments = useCallback(async () => {
     if (!activeImageIdValue) {
@@ -517,6 +553,35 @@ export const GalleryExplorer = ({
       }
     },
     [activeImageIdValue, authToken],
+  );
+
+  const handleFlagImage = useCallback(
+    async (image: ImageAsset) => {
+      if (!authToken) {
+        setImageFlagFeedback({ type: 'error', message: 'Sign in to flag images for moderation.' });
+        return;
+      }
+
+      const note = window.prompt('Optional note for the moderation team:', '');
+      const reason = note && note.trim().length > 0 ? { reason: note.trim() } : undefined;
+
+      setIsFlaggingImage(true);
+      setImageFlagFeedback(null);
+
+      try {
+        const response = await api.flagImageAsset(authToken, image.id, reason);
+        onImageUpdated?.(response.image);
+        setImageFlagFeedback({ type: 'success', message: 'Image submitted for moderation review.' });
+      } catch (error) {
+        setImageFlagFeedback({
+          type: 'error',
+          message: formatApiErrorMessage(error, 'Moderationsanfrage konnte nicht gesendet werden.'),
+        });
+      } finally {
+        setIsFlaggingImage(false);
+      }
+    },
+    [authToken, onImageUpdated],
   );
 
   const visibleGalleries = useMemo(() => filteredGalleries.slice(0, visibleLimit), [filteredGalleries, visibleLimit]);
@@ -993,15 +1058,26 @@ export const GalleryExplorer = ({
                         entry.image.storageObject,
                         { updatedAt: entry.image.updatedAt, cacheKey: entry.image.id },
                       ) ?? entry.image.storagePath;
+                    const isFlagged = entry.image.moderationStatus === 'FLAGGED';
+                    const shouldObscure = isFlagged && currentUser?.role !== 'ADMIN';
+                    const thumbClasses = [
+                      'gallery-detail__thumb-trigger',
+                      isFlagged ? 'moderation-overlay' : '',
+                      isFlagged && !shouldObscure ? 'moderation-overlay--visible' : '',
+                      shouldObscure ? 'moderation-overlay--blurred' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
                     return (
                       <div key={entry.entryId} role="listitem" className="gallery-detail__thumb">
                         <button
                           type="button"
-                          className="gallery-detail__thumb-trigger"
+                          className={thumbClasses}
                           onClick={() => setActiveImage(entry)}
                           aria-label={`View ${entry.image.title}`}
                         >
                           <img src={imageUrl} alt={entry.image.title} loading="lazy" />
+                          {isFlagged ? <span className="moderation-overlay__label">In audit</span> : null}
                         </button>
                         <div className="gallery-detail__thumb-footer">
                           <button
@@ -1116,6 +1192,18 @@ export const GalleryExplorer = ({
                     </button>
                   </>
                 ) : null}
+                {authToken && activeImage.image.moderationStatus !== 'FLAGGED' ? (
+                  <button
+                    type="button"
+                    className="gallery-image-modal__flag"
+                    onClick={() => {
+                      void handleFlagImage(activeImage.image);
+                    }}
+                    disabled={isFlaggingImage}
+                  >
+                    {isFlaggingImage ? 'Sending…' : 'Flag image'}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="gallery-image-modal__close"
@@ -1125,6 +1213,14 @@ export const GalleryExplorer = ({
                   ×
                 </button>
               </div>
+              {imageFlagFeedback ? (
+                <p
+                  className={`gallery-image-modal__flag-feedback gallery-image-modal__flag-feedback--${imageFlagFeedback.type}`}
+                  role="status"
+                >
+                  {imageFlagFeedback.message}
+                </p>
+              ) : null}
               {imageModalError ? (
                 <p className="gallery-image-modal__error" role="alert">
                   {imageModalError}
@@ -1132,18 +1228,18 @@ export const GalleryExplorer = ({
               ) : null}
             </header>
             <div className="gallery-image-modal__body">
-              <div className="gallery-image-modal__media">
-                <img
-                  src={
-                    resolveCachedStorageUrl(
-                      activeImage.image.storagePath,
-                      activeImage.image.storageBucket,
-                      activeImage.image.storageObject,
-                      { updatedAt: activeImage.image.updatedAt, cacheKey: activeImage.image.id },
-                    ) ?? activeImage.image.storagePath
-                  }
-                  alt={activeImage.image.title}
-                />
+              {activeImage.image.moderationStatus === 'FLAGGED' ? (
+                <p className="gallery-image-modal__moderation-note" role="status">
+                  Flagged for moderation
+                  {activeImage.image.flaggedBy ? ` by ${activeImage.image.flaggedBy.displayName}` : ''}. Administrators are
+                  reviewing this image.
+                </p>
+              ) : null}
+              <div className={activeImageOverlayClasses}>
+                <img src={activeImagePreviewUrl ?? activeImage.image.storagePath} alt={activeImage.image.title} />
+                {activeImage.image.moderationStatus === 'FLAGGED' ? (
+                  <span className="moderation-overlay__label">In audit</span>
+                ) : null}
               </div>
               <div className="gallery-image-modal__meta">
                 <div className="gallery-image-modal__meta-scroll">

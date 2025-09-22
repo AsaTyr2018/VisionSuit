@@ -26,6 +26,14 @@ export interface CommentAuthor {
   avatarUrl: string | null;
 }
 
+export type ModerationStatus = 'ACTIVE' | 'FLAGGED' | 'REMOVED';
+
+export interface ModerationActorSummary {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
 export interface AssetComment {
   id: string;
   content: string;
@@ -139,6 +147,9 @@ export interface UserProfileModelSummary {
   updatedAt: string;
   createdAt: string;
   tags: Tag[];
+  moderationStatus: ModerationStatus;
+  flaggedAt?: string | null;
+  flaggedBy?: ModerationActorSummary | null;
 }
 
 export interface UserProfileGallerySummary {
@@ -226,6 +237,9 @@ export interface ModelAsset {
   primaryVersionId: string;
   createdAt: string;
   updatedAt: string;
+  moderationStatus: ModerationStatus;
+  flaggedAt?: string | null;
+  flaggedBy?: ModerationActorSummary | null;
 }
 
 export interface ImageAssetMetadata {
@@ -257,8 +271,11 @@ export interface ImageAsset {
   tags: Tag[];
   createdAt: string;
   updatedAt: string;
-   likeCount: number;
-   viewerHasLiked: boolean;
+  likeCount: number;
+  viewerHasLiked: boolean;
+  moderationStatus: ModerationStatus;
+  flaggedAt?: string | null;
+  flaggedBy?: ModerationActorSummary | null;
 }
 
 export interface GalleryEntry {
@@ -293,6 +310,11 @@ export interface MetaStats {
   imageCount: number;
   galleryCount: number;
   tagCount: number;
+}
+
+export interface ModerationQueue {
+  models: ModelAsset[];
+  images: ImageAsset[];
 }
 
 export type ServiceHealthStatus = 'online' | 'offline' | 'degraded';

@@ -513,6 +513,8 @@ export const AssetExplorer = ({
   const [commentError, setCommentError] = useState<string | null>(null);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const [commentLikeMutationId, setCommentLikeMutationId] = useState<string | null>(null);
+  const [isFlaggingModel, setIsFlaggingModel] = useState(false);
+  const [flagFeedback, setFlagFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -559,6 +561,11 @@ export const AssetExplorer = ({
   useEffect(() => {
     setTriggerCopyStatus('idle');
   }, [activeAssetId, activeVersionId]);
+
+  useEffect(() => {
+    setFlagFeedback(null);
+    setIsFlaggingModel(false);
+  }, [activeAsset?.id, activeAsset?.moderationStatus]);
 
   useEffect(() => {
     if (!activeAsset) {
@@ -925,6 +932,29 @@ export const AssetExplorer = ({
     return activeAsset.versions.find((version) => version.id === targetId) ?? activeAsset.versions[0] ?? null;
   }, [activeAsset, activeVersionId]);
 
+  const activePreviewUrl = activeVersion?.previewImage
+    ?
+        resolveCachedStorageUrl(
+          activeVersion.previewImage,
+          activeVersion.previewImageBucket,
+          activeVersion.previewImageObject,
+          { updatedAt: activeVersion.updatedAt, cacheKey: activeVersion.id },
+        ) ?? activeVersion.previewImage
+    : null;
+
+  const activePreviewClasses = [
+    'asset-detail__preview',
+    activePreviewUrl ? '' : 'asset-detail__preview--empty',
+    activeAsset?.moderationStatus === 'FLAGGED' ? 'moderation-overlay' : '',
+    activeAsset?.moderationStatus === 'FLAGGED' && currentUser?.role !== 'ADMIN'
+      ? 'moderation-overlay--blurred'
+      : activeAsset?.moderationStatus === 'FLAGGED'
+        ? 'moderation-overlay--visible'
+        : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   const tagsHeadingId = `asset-detail-tags-${activeAssetId ?? 'unknown'}`;
   const metadataHeadingId = `asset-detail-metadata-${activeAssetId ?? 'unknown'}`;
 
@@ -969,6 +999,32 @@ export const AssetExplorer = ({
       setIsDeleting(false);
     }
   }, [activeAsset, authToken, closeDetail, onAssetDeleted]);
+
+  const handleFlagModel = useCallback(async () => {
+    if (!authToken || !activeAsset) {
+      setFlagFeedback({ type: 'error', message: 'Sign in to flag models for moderation.' });
+      return;
+    }
+
+    const note = window.prompt('Optional note for the moderation team:', '');
+    const reason = note && note.trim().length > 0 ? { reason: note.trim() } : undefined;
+
+    setIsFlaggingModel(true);
+    setFlagFeedback(null);
+
+    try {
+      const response = await api.flagModelAsset(authToken, activeAsset.id, reason);
+      onAssetUpdated?.(response.model);
+      setFlagFeedback({ type: 'success', message: 'Model submitted for moderation review.' });
+    } catch (error) {
+      setFlagFeedback({
+        type: 'error',
+        message: formatApiErrorMessage(error, 'Moderationsanfrage konnte nicht gesendet werden.'),
+      });
+    } finally {
+      setIsFlaggingModel(false);
+    }
+  }, [authToken, activeAsset, onAssetUpdated]);
 
   const handleLinkGallery = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -1379,6 +1435,17 @@ export const AssetExplorer = ({
                 }) ?? asset.previewImage ?? undefined;
               const modelType = asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA';
               const isActive = activeAssetId === asset.id;
+              const isFlagged = asset.moderationStatus === 'FLAGGED';
+              const shouldObscure = isFlagged && currentUser?.role !== 'ADMIN';
+              const previewClasses = [
+                'asset-tile__preview',
+                previewUrl ? '' : 'asset-tile__preview--empty',
+                isFlagged ? 'moderation-overlay' : '',
+                isFlagged && !shouldObscure ? 'moderation-overlay--visible' : '',
+                shouldObscure ? 'moderation-overlay--blurred' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
               return (
                 <article
                   key={asset.id}
@@ -1397,12 +1464,13 @@ export const AssetExplorer = ({
                     }
                   }}
                 >
-                  <div className={`asset-tile__preview${previewUrl ? '' : ' asset-tile__preview--empty'}`}>
+                  <div className={previewClasses}>
                     {previewUrl ? (
                       <img src={previewUrl} alt={`Preview of ${asset.title}`} loading="lazy" />
                     ) : (
                       <span>No preview</span>
                     )}
+                    {isFlagged ? <span className="moderation-overlay__label">In audit</span> : null}
                   </div>
                   <div className="asset-tile__body">
                     <div className="asset-tile__headline">
@@ -1520,16 +1588,43 @@ export const AssetExplorer = ({
                       </button>
                     </>
                   ) : null}
+                  {authToken && activeAsset && activeAsset.moderationStatus !== 'FLAGGED' ? (
+                    <button
+                      type="button"
+                      className="asset-detail__flag"
+                      onClick={() => {
+                        void handleFlagModel();
+                      }}
+                      disabled={isFlaggingModel}
+                    >
+                      {isFlaggingModel ? 'Sending…' : 'Flag for moderation'}
+                    </button>
+                  ) : null}
                   <button type="button" className="asset-detail__close" onClick={closeDetail}>
                     Back to model list
                   </button>
                 </div>
+                {flagFeedback ? (
+                  <p
+                    className={`asset-detail__flag-feedback asset-detail__flag-feedback--${flagFeedback.type}`}
+                    role="status"
+                  >
+                    {flagFeedback.message}
+                  </p>
+                ) : null}
               </header>
 
 
               <div className="asset-detail__layout">
                 <div className="asset-detail__main">
                   <div className="asset-detail__summary">
+                    {activeAsset.moderationStatus === 'FLAGGED' ? (
+                      <div className="asset-detail__moderation-note" role="status">
+                        Flagged for moderation
+                        {activeAsset.flaggedBy ? ` by ${activeAsset.flaggedBy.displayName}` : ''}. Administrators are reviewing
+                        this model.
+                      </div>
+                    ) : null}
                     <div className="asset-detail__info">
                       <table className="asset-detail__info-table">
                         <tbody>
@@ -1599,25 +1694,19 @@ export const AssetExplorer = ({
                     </div>
 
                     <div className="asset-detail__preview-card">
-                      {activeVersion?.previewImage ? (
-                        <div className="asset-detail__preview">
+                      <div className={activePreviewClasses}>
+                        {activePreviewUrl ? (
                           <img
-                            src={
-                              resolveCachedStorageUrl(
-                                activeVersion.previewImage,
-                                activeVersion.previewImageBucket,
-                                activeVersion.previewImageObject,
-                                { updatedAt: activeVersion.updatedAt, cacheKey: activeVersion.id },
-                              ) ?? activeVersion.previewImage
-                            }
+                            src={activePreviewUrl}
                             alt={`Preview von ${activeAsset.title} – Version ${activeVersion?.version ?? ''}`}
                           />
-                        </div>
-                      ) : (
-                        <div className="asset-detail__preview asset-detail__preview--empty">
+                        ) : (
                           <span>No preview available.</span>
-                        </div>
-                      )}
+                        )}
+                        {activeAsset?.moderationStatus === 'FLAGGED' ? (
+                          <span className="moderation-overlay__label">In audit</span>
+                        ) : null}
+                      </div>
                       <div className="asset-detail__preview-actions">
                         {canDownloadModel && modelDownloadUrl ? (
                           <a

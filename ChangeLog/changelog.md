@@ -318,6 +318,11 @@
 - **Technical Changes**: Introduced thumbnail resolution helpers, expandable edit sections, condensed metadata badges, subtle action buttons, and refreshed README guidance to describe the new workflow.
 - **Data Changes**: None; presentation-only adjustments.
 
+## 064 – [Addition] Moderation workflow foundation
+- **General**: Introduced end-to-end asset moderation with member flagging, admin queue review, and audit overlays so sensitive content stays obscured for non-admins.
+- **Technical Changes**: Expanded Prisma with moderation enums/logging, implemented flag, queue, approve, and remove endpoints, exposed moderation metadata on profiles, enhanced the React API client and explorers with blur overlays plus feedback messaging, and added a Moderation tab with queue actions and styles in the admin panel alongside updated README guidance.
+- **Data Changes**: Added the `ModerationLog` model and new moderation status/flag columns on model and image assets, including relations to the user who flagged the content.
+
 ## 064 – [Fix] Admin search event pooling fix
 - **General**: Restored admin panel filters so typing in search fields no longer crashes the interface.
 - **Technical Changes**: Captured input and select values before enqueuing state updates throughout `AdminPanel.tsx` to avoid React's SyntheticEvent pooling from clearing `currentTarget`.
@@ -697,3 +702,7 @@
 - **Technical Changes**: Made the dialog tolerate missing owner lists by defaulting to an empty array and wired the asset explorer to pass its curated owner options into the component.
 - **Data Changes**: None.
 
+## 138 – [Addition] Moderation workflow and admin queue
+- **General**: Introduced end-to-end moderation so members can flag problematic models or renders while administrators triage them without disrupting the main library.
+- **Technical Changes**: Added moderation enums, status fields, and logs to the Prisma schema with new backend routes for flagging, approving, and removing assets; extended mappers and user profile responses; wired frontend explorers, home tiles, and the new Administration → Moderation tab with blur overlays, queue actions, and API helpers; and layered supporting CSS for audit indicators.
+- **Data Changes**: Prisma migration adds moderation status metadata to model/image assets and a `ModerationLog` table for future notification history.
