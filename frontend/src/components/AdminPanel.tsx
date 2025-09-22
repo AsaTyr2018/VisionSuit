@@ -15,7 +15,7 @@ import type {
   ModelAsset,
   RankTier,
   RankingSettings,
-  AdultTagSummary,
+  AdultSafetyKeyword,
   User,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
@@ -349,10 +349,12 @@ export const AdminPanel = ({
   const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
   const [userDialogInitialRole, setUserDialogInitialRole] = useState<User['role']>('CURATOR');
   const [roleSummary, setRoleSummary] = useState<User['role'] | null>(null);
-  const [adultTags, setAdultTags] = useState<AdultTagSummary[]>([]);
-  const [isAdultTagsLoading, setIsAdultTagsLoading] = useState(false);
-  const [adultTagError, setAdultTagError] = useState<string | null>(null);
-  const [activeAdultTagUpdate, setActiveAdultTagUpdate] = useState<string | null>(null);
+  const [adultKeywords, setAdultKeywords] = useState<AdultSafetyKeyword[]>([]);
+  const [isAdultKeywordsLoading, setIsAdultKeywordsLoading] = useState(false);
+  const [adultKeywordError, setAdultKeywordError] = useState<string | null>(null);
+  const [newAdultKeyword, setNewAdultKeyword] = useState('');
+  const [isCreatingAdultKeyword, setIsCreatingAdultKeyword] = useState(false);
+  const [activeAdultKeywordRemoval, setActiveAdultKeywordRemoval] = useState<string | null>(null);
 
   const [userFilter, setUserFilter] = useState<{ query: string; role: FilterValue<User['role']>; status: FilterValue<UserStatusFilter> }>(
     { query: '', role: 'all', status: 'all' },
@@ -601,72 +603,94 @@ export const AdminPanel = ({
 
   const resetStatus = () => setStatus(null);
 
-  const loadAdultTags = useCallback(async () => {
+  const loadAdultKeywords = useCallback(async () => {
     if (!token) {
-      setAdultTags([]);
+      setAdultKeywords([]);
       return;
     }
 
-    setIsAdultTagsLoading(true);
-    setAdultTagError(null);
+    setIsAdultKeywordsLoading(true);
+    setAdultKeywordError(null);
     try {
-      const response = await api.getAdultTags(token);
-      setAdultTags(response.tags);
+      const response = await api.getAdultSafetyKeywords(token);
+      setAdultKeywords(response.keywords);
     } catch (error) {
       const message =
         error instanceof ApiError
           ? error.message
-          : 'Failed to load adult tag configuration. Please try again.';
-      setAdultTagError(message);
-      setAdultTags([]);
+          : 'Failed to load adult keyword configuration. Please try again.';
+      setAdultKeywordError(message);
+      setAdultKeywords([]);
     } finally {
-      setIsAdultTagsLoading(false);
+      setIsAdultKeywordsLoading(false);
     }
   }, [token]);
 
-  const handleAdultTagToggle = useCallback(
-    async (tag: AdultTagSummary, nextValue: boolean) => {
+  const handleAddAdultKeyword = useCallback(async () => {
+    if (!token) {
+      setAdultKeywordError('Authentication required to add safety keywords.');
+      return;
+    }
+
+    const value = newAdultKeyword.trim();
+    if (value.length === 0) {
+      setAdultKeywordError('Enter a keyword before adding it.');
+      return;
+    }
+
+    setIsCreatingAdultKeyword(true);
+    setAdultKeywordError(null);
+    try {
+      await api.createAdultSafetyKeyword(token, value);
+      setStatus({ type: 'success', message: `Added prompt keyword "${value}".` });
+      setNewAdultKeyword('');
+      await loadAdultKeywords();
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to add the adult safety keyword. Please try again.';
+      setAdultKeywordError(message);
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsCreatingAdultKeyword(false);
+    }
+  }, [token, newAdultKeyword, loadAdultKeywords]);
+
+  const handleDeleteAdultKeyword = useCallback(
+    async (keyword: AdultSafetyKeyword) => {
       if (!token) {
-        setAdultTagError('Authentication required to update tag safety.');
+        setAdultKeywordError('Authentication required to remove safety keywords.');
         return;
       }
 
-      setActiveAdultTagUpdate(tag.id);
-      setAdultTagError(null);
+      setActiveAdultKeywordRemoval(keyword.id);
+      setAdultKeywordError(null);
       try {
-        await api.updateAdultTag(token, tag.id, nextValue);
-        setStatus({
-          type: 'success',
-          message: nextValue
-            ? `Marked #${tag.label} as adult. Linked assets are being re-evaluated.`
-            : `Marked #${tag.label} as safe. Linked assets are being re-evaluated.`,
-        });
-        await loadAdultTags();
+        await api.deleteAdultSafetyKeyword(token, keyword.id);
+        setStatus({ type: 'success', message: `Removed prompt keyword "${keyword.label}".` });
+        await loadAdultKeywords();
       } catch (error) {
         const message =
-          error instanceof ApiError
-            ? error.message
-            : 'Failed to update the adult designation for this tag.';
+          error instanceof ApiError ? error.message : 'Failed to remove the adult safety keyword. Please try again.';
+        setAdultKeywordError(message);
         setStatus({ type: 'error', message });
-        setAdultTagError(message);
       } finally {
-        setActiveAdultTagUpdate(null);
+        setActiveAdultKeywordRemoval(null);
       }
     },
-    [token, loadAdultTags],
+    [token, loadAdultKeywords],
   );
 
   useEffect(() => {
     if (activeTab === 'safety') {
-      loadAdultTags().catch((error) => console.error('Failed to load adult tag configuration', error));
+      loadAdultKeywords().catch((error) => console.error('Failed to load adult keyword configuration', error));
     }
-  }, [activeTab, loadAdultTags]);
+  }, [activeTab, loadAdultKeywords]);
 
   useEffect(() => {
-    if (activeTab !== 'safety' && adultTagError) {
-      setAdultTagError(null);
+    if (activeTab !== 'safety' && adultKeywordError) {
+      setAdultKeywordError(null);
     }
-  }, [activeTab, adultTagError]);
+  }, [activeTab, adultKeywordError]);
 
   const handleApproveModel = async (model: ModelAsset) => {
     resetStatus();
@@ -1995,54 +2019,71 @@ export const AdminPanel = ({
         <div className="admin__panel">
           <section className="admin__section">
             <div className="admin__section-intro">
-              <h3>Adult tag controls</h3>
-              <p>Designate which tags classify linked models and images as adult-only.</p>
+              <h3>Adult prompt keywords</h3>
+              <p>Configure prompt keywords that automatically flag images as adult when detected in metadata.</p>
             </div>
-            {adultTagError ? (
-              <p className="admin__status admin__status--error" role="alert">{adultTagError}</p>
+            {adultKeywordError ? (
+              <p className="admin__status admin__status--error" role="alert">{adultKeywordError}</p>
             ) : null}
             {status && status.message && activeTab === 'safety' ? (
               <p className={`admin__status admin__status--${status.type}`} role="status">{status.message}</p>
             ) : null}
-            {isAdultTagsLoading ? (
+            <form
+              className="adult-keyword-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAddAdultKeyword();
+              }}
+            >
+              <label className="adult-keyword-form__field">
+                <span>New keyword</span>
+                <input
+                  type="text"
+                  value={newAdultKeyword}
+                  onChange={(event) => setNewAdultKeyword(event.currentTarget.value)}
+                  placeholder="e.g. explicit content phrase"
+                  disabled={isCreatingAdultKeyword || isAdultKeywordsLoading}
+                />
+              </label>
+              <button
+                type="submit"
+                className="button button--primary"
+                disabled={isCreatingAdultKeyword || newAdultKeyword.trim().length === 0}
+              >
+                {isCreatingAdultKeyword ? 'Adding…' : 'Add keyword'}
+              </button>
+            </form>
+            {isAdultKeywordsLoading ? (
               <p className="admin__loading" role="status">
-                Loading tag configuration…
+                Loading keyword configuration…
               </p>
-            ) : adultTags.length === 0 ? (
-              <p className="admin__empty">No tags have been recorded yet.</p>
+            ) : adultKeywords.length === 0 ? (
+              <p className="admin__empty">No adult keywords configured yet. Add one to start scanning prompts.</p>
             ) : (
-              <table className="adult-tag-table">
+              <table className="adult-keyword-table">
                 <thead>
                   <tr>
-                    <th scope="col">Tag</th>
-                    <th scope="col">Category</th>
-                    <th scope="col">Usage</th>
-                    <th scope="col">Adult only</th>
+                    <th scope="col">Keyword</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Updated</th>
+                    <th scope="col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {adultTags.map((tag) => (
-                    <tr key={tag.id}>
-                      <th scope="row">#{tag.label}</th>
-                      <td>{tag.category ?? '—'}</td>
-                      <td className="adult-tag-usage">
-                        <span>
-                          <strong>{tag.imageCount}</strong> images
-                        </span>
-                        <span>
-                          <strong>{tag.modelCount}</strong> models
-                        </span>
-                      </td>
+                  {adultKeywords.map((keyword) => (
+                    <tr key={keyword.id}>
+                      <th scope="row">{keyword.label}</th>
+                      <td>{new Date(keyword.createdAt).toLocaleDateString('en-US')}</td>
+                      <td>{new Date(keyword.updatedAt).toLocaleDateString('en-US')}</td>
                       <td>
-                        <label className="adult-tag-toggle">
-                          <input
-                            type="checkbox"
-                            checked={tag.isAdult}
-                            onChange={(event) => handleAdultTagToggle(tag, event.currentTarget.checked)}
-                            disabled={activeAdultTagUpdate === tag.id}
-                          />
-                          <span>{tag.isAdult ? 'Adult' : 'Safe'}</span>
-                        </label>
+                        <button
+                          type="button"
+                          className="button button--ghost"
+                          onClick={() => handleDeleteAdultKeyword(keyword)}
+                          disabled={activeAdultKeywordRemoval === keyword.id}
+                        >
+                          {activeAdultKeywordRemoval === keyword.id ? 'Removing…' : 'Remove'}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -2050,8 +2091,8 @@ export const AdminPanel = ({
               </table>
             )}
             <p className="admin__footnote">
-              Toggling a tag triggers metadata re-evaluation for linked models and images. Adult entries remain hidden for guests
-              and members who disable adult content in their preferences.
+              Keywords are matched against prompt metadata for every upload. Any match marks the asset as adult-only for safe
+              browsing controls.
             </p>
           </section>
         </div>

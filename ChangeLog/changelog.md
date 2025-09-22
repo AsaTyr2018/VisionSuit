@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Addition] Adult prompt keyword safety
+- **General**: Introduced configurable prompt keywords so adult detection inspects metadata instead of relying on user-assigned tags.
+- **Technical Changes**: Added the `AdultSafetyKeyword` Prisma model and migration, exposed keyword CRUD endpoints with updated backend detection logic, refreshed the admin safety panel UI plus API client and styles for keyword management, and documented the workflow in the README.
+- **Data Changes**: Added the `AdultSafetyKeyword` table to persist managed prompt keywords.
+
 ## 033 – [Addition] Curator asset lifecycle tools
 - **General**: Empowered curators and admins to fully manage models, collections, and images with safe deletion workflows and flexible gallery links.
 - **Technical Changes**: Added a backend endpoint for linking models to galleries, refreshed the model explorer with irreversible delete confirmations and link management UI, expanded the gallery explorer with delete actions, updated shared styles, and extended the API client plus app state handlers.

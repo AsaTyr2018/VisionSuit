@@ -323,13 +323,11 @@ export interface Gallery {
   entries: GalleryEntry[];
 }
 
-export interface AdultTagSummary {
+export interface AdultSafetyKeyword {
   id: string;
   label: string;
-  category?: string | null;
-  isAdult: boolean;
-  imageCount: number;
-  modelCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface MetaStats {

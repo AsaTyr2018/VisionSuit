@@ -10,6 +10,7 @@ import { usersRouter } from './users';
 import { rankingsRouter } from './rankings';
 import { generatorRouter } from './generator';
 import { tagsRouter } from './tags';
+import { safetyRouter } from './safety';
 
 export const router = Router();
 
@@ -23,3 +24,4 @@ router.use('/users', usersRouter);
 router.use('/rankings', rankingsRouter);
 router.use('/generator', generatorRouter);
 router.use('/tags', tagsRouter);
+router.use('/safety', safetyRouter);

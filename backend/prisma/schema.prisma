@@ -397,3 +397,10 @@ model UserRankingState {
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id])
 }
+
+model AdultSafetyKeyword {
+  id        String   @id @default(cuid())
+  label     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
