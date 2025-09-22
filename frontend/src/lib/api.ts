@@ -498,6 +498,7 @@ export const api = {
       trigger: string | null;
       tags: string[];
       ownerId: string;
+      isPublic: boolean;
     }>,
   ) =>
     request<ModelAsset>(
@@ -541,6 +542,7 @@ export const api = {
       negativePrompt: string | null;
       tags: string[];
       ownerId: string;
+      isPublic: boolean;
       metadata: {
         seed?: string | null;
         model?: string | null;

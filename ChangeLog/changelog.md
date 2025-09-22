@@ -676,3 +676,8 @@
 - **General**: Streamlined model and image editing inside the admin console with tabbed dialogs, quick owner reassignment, and contextual sidebars that keep critical metadata in view.
 - **Technical Changes**: Reworked the `ModelAssetEditDialog` and `ImageAssetEditDialog` components with accessible tab navigation, owner selection, and summary rails, updated the admin panel to pass curator options, and introduced supporting styles for the new layout.
 - **Data Changes**: None; edits only modify front-end workflows and reuse existing API endpoints.
+
+## 134 – [Fix] Admin asset overview cleanup
+- **General**: Restored a clean Administration → Models & Images overview with focused cards, dedicated detail pages, and the long-missing visibility controls.
+- **Technical Changes**: Replaced the density toggles with thumbnail grids, added modal preview support, introduced model/image detail layouts, wired visibility toggles via the API payloads, refreshed admin styling, and updated the README to match the streamlined flow.
+- **Data Changes**: None; the change only touches front-end rendering and existing endpoints.
