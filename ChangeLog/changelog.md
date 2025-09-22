@@ -713,7 +713,16 @@
 - **Technical Changes**: Filtered flagged assets in public listings for non-admins, added shared moderation helpers, rendered audit placeholders across the home tiles, explorers, gallery detail views, and curator profiles, and refreshed README guidance.
 - **Data Changes**: None; visibility logic only.
 
-## 140 – [Fix] Windows bulk import parameter order
+## 140 – [Addition] Moderation tiles and collection safeguards
+- **General**: Reimagined the Administration → Moderation queue with tile-based cards and an expanded review dialog that surfaces reporters, reasons, and report counts while automatically hiding linked collections during investigations.
+- **Technical Changes**: Added Prisma-backed model/image moderation report tables, updated flag endpoints to record every report, refreshed the moderation queue API payloads, rebuilt the admin queue UI with card grids and a decision modal that enforces typed rejection notes, and extended styling for the new layout.
+- **Data Changes**: Introduced `ModelModerationReport` and `ImageModerationReport` tables and ensured flagged models temporarily hide their collections while revoked models fully delete associated collections.
+
+## 141 – [Addition] Moderation queue comfort refinements
+- **General**: Softened the moderation workspace with a cozy tile grid that highlights who reported an asset, why it was flagged, and how often, while surfacing a clear hold notice on collections affected by moderation.
+- **Technical Changes**: Summarized moderation reports into reporter/reason chips inside the admin queue and detail dialog, refreshed the tile styling, enforced rejection reasons server-side, exposed `isUnderModeration` from the gallery mapper, and added a gallery detail notice so curators know why a collection is hidden.
+
+## 142 – [Fix] Windows bulk import parameter order
 - **General**: Resolved the Windows bulk import helper startup by promoting connection settings to script parameters.
 - **Technical Changes**: Converted server connection variables into the script-level `param` block so it loads before any assignments and continues defaulting directories and credentials.
 - **Data Changes**: None.

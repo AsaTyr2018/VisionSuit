@@ -164,6 +164,11 @@ export const mapGallery = (
   const viewer = options.viewer;
   const viewerId = viewer?.id ?? null;
   const isAdmin = viewer?.role === 'ADMIN';
+  const hasFlaggedEntry = gallery.entries.some(
+    (entry) =>
+      (entry.asset && entry.asset.moderationStatus === ModerationStatus.FLAGGED) ||
+      (entry.image && entry.image.moderationStatus === ModerationStatus.FLAGGED),
+  );
 
   return {
     id: gallery.id,
@@ -177,6 +182,7 @@ export const mapGallery = (
     owner: gallery.owner,
     createdAt: gallery.createdAt,
     updatedAt: gallery.updatedAt,
+    isUnderModeration: hasFlaggedEntry,
     entries: gallery.entries
       .filter((entry) => {
         if (options.includePrivate) {

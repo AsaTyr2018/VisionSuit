@@ -34,6 +34,17 @@ export interface ModerationActorSummary {
   email: string;
 }
 
+export interface ModerationReport {
+  id: string;
+  reason?: string | null;
+  createdAt: string;
+  reporter: {
+    id: string;
+    displayName: string;
+    email: string;
+  };
+}
+
 export interface AssetComment {
   id: string;
   content: string;
@@ -240,6 +251,7 @@ export interface ModelAsset {
   moderationStatus: ModerationStatus;
   flaggedAt?: string | null;
   flaggedBy?: ModerationActorSummary | null;
+  moderationReports?: ModerationReport[];
 }
 
 export interface ImageAssetMetadata {
@@ -276,6 +288,7 @@ export interface ImageAsset {
   moderationStatus: ModerationStatus;
   flaggedAt?: string | null;
   flaggedBy?: ModerationActorSummary | null;
+  moderationReports?: ModerationReport[];
 }
 
 export interface GalleryEntry {
@@ -295,6 +308,7 @@ export interface Gallery {
   coverImageBucket?: string | null;
   coverImageObject?: string | null;
   isPublic: boolean;
+  isUnderModeration: boolean;
   owner: {
     id: string;
     displayName: string;
