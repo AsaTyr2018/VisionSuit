@@ -27,6 +27,7 @@ export const AccountSettingsDialog = ({
 }: AccountSettingsDialogProps) => {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
+  const [showAdultContent, setShowAdultContent] = useState(false);
   const [profileStatus, setProfileStatus] = useState<StatusMessage>(null);
   const [avatarUploadStatus, setAvatarUploadStatus] = useState<StatusMessage>(null);
   const [passwordStatus, setPasswordStatus] = useState<StatusMessage>(null);
@@ -66,6 +67,7 @@ export const AccountSettingsDialog = ({
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setShowAdultContent(user.showAdultContent);
       if (avatarInputRef.current) {
         avatarInputRef.current.value = '';
       }
@@ -74,6 +76,7 @@ export const AccountSettingsDialog = ({
 
     setDisplayName(user.displayName);
     setBio(user.bio ?? '');
+    setShowAdultContent(user.showAdultContent);
     setProfileStatus(null);
     setAvatarUploadStatus(null);
     setPasswordStatus(null);
@@ -149,7 +152,7 @@ export const AccountSettingsDialog = ({
     const nextBio = normalizedBio.length === 0 ? null : normalizedBio;
 
     const currentBio = (user.bio ?? '').trim();
-    const payload: { displayName?: string; bio?: string | null } = {};
+    const payload: { displayName?: string; bio?: string | null; showAdultContent?: boolean } = {};
 
     if (trimmedName !== user.displayName) {
       payload.displayName = trimmedName;
@@ -157,6 +160,10 @@ export const AccountSettingsDialog = ({
 
     if (nextBio !== (currentBio.length === 0 ? null : currentBio)) {
       payload.bio = nextBio;
+    }
+
+    if (showAdultContent !== user.showAdultContent) {
+      payload.showAdultContent = showAdultContent;
     }
 
     if (Object.keys(payload).length === 0) {
@@ -274,6 +281,24 @@ export const AccountSettingsDialog = ({
                   disabled={isUploadingAvatar}
                 />
                 <p className="account-settings__hint">PNG, JPG, or WebP up to 5&nbsp;MB.</p>
+              </div>
+              <div className="form-field account-settings__toggle">
+                <span>Adult content visibility</span>
+                <label className="account-settings__toggle-control">
+                  <input
+                    type="checkbox"
+                    checked={showAdultContent}
+                    onChange={(event) => setShowAdultContent(event.currentTarget.checked)}
+                  />
+                  <span>
+                    {showAdultContent
+                      ? 'Show adult-rated images and models across the platform.'
+                      : 'Hide adult-rated images and models across the platform.'}
+                  </span>
+                </label>
+                <p className="account-settings__hint">
+                  Applies to explorers, galleries, dashboards, and search results.
+                </p>
               </div>
               {isUploadingAvatar ? (
                 <p className="account-settings__status" role="status">

@@ -17,6 +17,7 @@ import type {
   UserProfile,
   UserProfileRank,
   User,
+  AdultTagSummary,
 } from '../types/api';
 
 import { buildApiUrl } from '../config';
@@ -435,7 +436,19 @@ export const api = {
       },
       token,
     ),
-  updateUser: (token: string, id: string, payload: Partial<{ email: string; displayName: string; password: string; role: string; bio: string | null; isActive: boolean }>) =>
+  updateUser: (
+    token: string,
+    id: string,
+    payload: Partial<{
+      email: string;
+      displayName: string;
+      password: string;
+      role: string;
+      bio: string | null;
+      isActive: boolean;
+      showAdultContent: boolean;
+    }>,
+  ) =>
     request<{ user: User }>(
       `/api/users/${id}`,
       {
@@ -444,7 +457,11 @@ export const api = {
       },
       token,
     ),
-  updateOwnProfile: (token: string, id: string, payload: Partial<{ displayName: string; bio: string | null }>) =>
+  updateOwnProfile: (
+    token: string,
+    id: string,
+    payload: Partial<{ displayName: string; bio: string | null; showAdultContent: boolean }>,
+  ) =>
     request<{ user: User }>(
       `/api/users/${id}/profile`,
       {
@@ -486,6 +503,16 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ ids }),
+      },
+      token,
+    ),
+  getAdultTags: (token: string) => request<{ tags: AdultTagSummary[] }>('/api/tags/safety', {}, token),
+  updateAdultTag: (token: string, id: string, isAdult: boolean) =>
+    request<{ tag: AdultTagSummary }>(
+      `/api/tags/${id}/adult`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ isAdult }),
       },
       token,
     ),

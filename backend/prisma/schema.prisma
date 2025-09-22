@@ -44,6 +44,7 @@ model User {
   avatarUrl   String?
   passwordHash String      @default("")
   isActive    Boolean      @default(true)
+  showAdultContent Boolean @default(false)
   lastLoginAt DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -93,6 +94,7 @@ model ModelAsset {
   previewImage String?
   metadata     Json?
   isPublic     Boolean      @default(true)
+  isAdult      Boolean      @default(false)
   ownerId      String
   owner        User         @relation("AssetOwner", fields: [ownerId], references: [id])
   tags         AssetTag[]
@@ -142,6 +144,7 @@ model ImageAsset {
   steps          Int?
   tags           ImageTag[]
   isPublic       Boolean        @default(true)
+  isAdult        Boolean        @default(false)
   galleries      GalleryEntry[] @relation("GalleryImage")
   ownerId        String
   owner          User           @relation("ImageOwner", fields: [ownerId], references: [id])
@@ -237,6 +240,7 @@ model Tag {
   id        String     @id @default(cuid())
   label     String     @unique
   category  String?
+  isAdult   Boolean    @default(false)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   imageTags ImageTag[]

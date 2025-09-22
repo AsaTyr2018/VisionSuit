@@ -15,6 +15,7 @@ import type {
   ModelAsset,
   RankTier,
   RankingSettings,
+  AdultTagSummary,
   User,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
@@ -107,7 +108,15 @@ interface AdminPanelProps {
   onGeneratorSettingsUpdated?: (settings: GeneratorSettings) => void;
 }
 
-type AdminTab = 'users' | 'models' | 'images' | 'moderation' | 'generator' | 'galleries' | 'ranking';
+type AdminTab =
+  | 'users'
+  | 'models'
+  | 'images'
+  | 'moderation'
+  | 'generator'
+  | 'galleries'
+  | 'ranking'
+  | 'safety';
 
 type FilterValue<T extends string> = T | 'all';
 
@@ -340,6 +349,10 @@ export const AdminPanel = ({
   const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
   const [userDialogInitialRole, setUserDialogInitialRole] = useState<User['role']>('CURATOR');
   const [roleSummary, setRoleSummary] = useState<User['role'] | null>(null);
+  const [adultTags, setAdultTags] = useState<AdultTagSummary[]>([]);
+  const [isAdultTagsLoading, setIsAdultTagsLoading] = useState(false);
+  const [adultTagError, setAdultTagError] = useState<string | null>(null);
+  const [activeAdultTagUpdate, setActiveAdultTagUpdate] = useState<string | null>(null);
 
   const [userFilter, setUserFilter] = useState<{ query: string; role: FilterValue<User['role']>; status: FilterValue<UserStatusFilter> }>(
     { query: '', role: 'all', status: 'all' },
@@ -587,6 +600,73 @@ export const AdminPanel = ({
   }, [activeTab, fetchModerationQueue]);
 
   const resetStatus = () => setStatus(null);
+
+  const loadAdultTags = useCallback(async () => {
+    if (!token) {
+      setAdultTags([]);
+      return;
+    }
+
+    setIsAdultTagsLoading(true);
+    setAdultTagError(null);
+    try {
+      const response = await api.getAdultTags(token);
+      setAdultTags(response.tags);
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to load adult tag configuration. Please try again.';
+      setAdultTagError(message);
+      setAdultTags([]);
+    } finally {
+      setIsAdultTagsLoading(false);
+    }
+  }, [token]);
+
+  const handleAdultTagToggle = useCallback(
+    async (tag: AdultTagSummary, nextValue: boolean) => {
+      if (!token) {
+        setAdultTagError('Authentication required to update tag safety.');
+        return;
+      }
+
+      setActiveAdultTagUpdate(tag.id);
+      setAdultTagError(null);
+      try {
+        await api.updateAdultTag(token, tag.id, nextValue);
+        setStatus({
+          type: 'success',
+          message: nextValue
+            ? `Marked #${tag.label} as adult. Linked assets are being re-evaluated.`
+            : `Marked #${tag.label} as safe. Linked assets are being re-evaluated.`,
+        });
+        await loadAdultTags();
+      } catch (error) {
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : 'Failed to update the adult designation for this tag.';
+        setStatus({ type: 'error', message });
+        setAdultTagError(message);
+      } finally {
+        setActiveAdultTagUpdate(null);
+      }
+    },
+    [token, loadAdultTags],
+  );
+
+  useEffect(() => {
+    if (activeTab === 'safety') {
+      loadAdultTags().catch((error) => console.error('Failed to load adult tag configuration', error));
+    }
+  }, [activeTab, loadAdultTags]);
+
+  useEffect(() => {
+    if (activeTab !== 'safety' && adultTagError) {
+      setAdultTagError(null);
+    }
+  }, [activeTab, adultTagError]);
 
   const handleApproveModel = async (model: ModelAsset) => {
     resetStatus();
@@ -1607,6 +1687,7 @@ export const AdminPanel = ({
               { id: 'models', label: 'Models' },
               { id: 'images', label: 'Images' },
               { id: 'moderation', label: 'Moderation' },
+              { id: 'safety', label: 'Safety' },
               { id: 'generator', label: 'Generator' },
               { id: 'ranking', label: 'Ranking' },
               { id: 'galleries', label: 'Galleries' },
@@ -1617,6 +1698,9 @@ export const AdminPanel = ({
               type="button"
               className={`admin__tab${activeTab === tab.id ? ' admin__tab--active' : ''}`}
               onClick={() => {
+                if (activeTab === 'safety' && tab.id !== 'safety') {
+                  setAdultTagError(null);
+                }
                 setActiveTab(tab.id);
                 resetStatus();
               }}
@@ -1625,7 +1709,9 @@ export const AdminPanel = ({
             </button>
           ))}
         </nav>
-        {status ? <p className={`admin__status admin__status--${status.type}`}>{status.message}</p> : null}
+        {status && activeTab !== 'safety' ? (
+          <p className={`admin__status admin__status--${status.type}`}>{status.message}</p>
+        ) : null}
       </header>
 
       {activeTab === 'users' ? (
@@ -1901,6 +1987,72 @@ export const AdminPanel = ({
                 )}
               </div>
             </div>
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === 'safety' ? (
+        <div className="admin__panel">
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Adult tag controls</h3>
+              <p>Designate which tags classify linked models and images as adult-only.</p>
+            </div>
+            {adultTagError ? (
+              <p className="admin__status admin__status--error" role="alert">{adultTagError}</p>
+            ) : null}
+            {status && status.message && activeTab === 'safety' ? (
+              <p className={`admin__status admin__status--${status.type}`} role="status">{status.message}</p>
+            ) : null}
+            {isAdultTagsLoading ? (
+              <p className="admin__loading" role="status">
+                Loading tag configuration…
+              </p>
+            ) : adultTags.length === 0 ? (
+              <p className="admin__empty">No tags have been recorded yet.</p>
+            ) : (
+              <table className="adult-tag-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Tag</th>
+                    <th scope="col">Category</th>
+                    <th scope="col">Usage</th>
+                    <th scope="col">Adult only</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adultTags.map((tag) => (
+                    <tr key={tag.id}>
+                      <th scope="row">#{tag.label}</th>
+                      <td>{tag.category ?? '—'}</td>
+                      <td className="adult-tag-usage">
+                        <span>
+                          <strong>{tag.imageCount}</strong> images
+                        </span>
+                        <span>
+                          <strong>{tag.modelCount}</strong> models
+                        </span>
+                      </td>
+                      <td>
+                        <label className="adult-tag-toggle">
+                          <input
+                            type="checkbox"
+                            checked={tag.isAdult}
+                            onChange={(event) => handleAdultTagToggle(tag, event.currentTarget.checked)}
+                            disabled={activeAdultTagUpdate === tag.id}
+                          />
+                          <span>{tag.isAdult ? 'Adult' : 'Safe'}</span>
+                        </label>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="admin__footnote">
+              Toggling a tag triggers metadata re-evaluation for linked models and images. Adult entries remain hidden for guests
+              and members who disable adult content in their preferences.
+            </p>
           </section>
         </div>
       ) : null}

@@ -6,6 +6,7 @@ import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, slugify } from '../lib/slug';
@@ -56,7 +57,7 @@ const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category
   );
 
   if (normalized.length === 0) {
-    return [] as { id: string }[];
+    return [] as { id: string; label: string; isAdult: boolean }[];
   }
 
   return Promise.all(
@@ -65,7 +66,7 @@ const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category
         where: { label },
         update: category ? { category } : {},
         create: { label, category: category ?? null },
-        select: { id: true },
+        select: { id: true, label: true, isAdult: true },
       }),
     ),
   );
@@ -76,7 +77,7 @@ const ensureLoraTypeTag = async (tx: Prisma.TransactionClient) =>
     where: { label: 'lora' },
     update: { category: 'model-type' },
     create: { label: 'lora', category: 'model-type' },
-    select: { id: true },
+    select: { id: true, label: true, isAdult: true },
   });
 
 const resolveGallery = async (
@@ -372,12 +373,14 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
 
       const tagRecords = await ensureTags(tx, normalizedTags, payload.category);
       const tagIds = tagRecords.map((tag) => tag.id);
+      const assignedTags = [...tagRecords];
 
       if (payload.assetType === 'lora') {
         const loraTag = await ensureLoraTypeTag(tx);
         if (!tagIds.includes(loraTag.id)) {
           tagIds.push(loraTag.id);
         }
+        assignedTags.push(loraTag);
       }
 
       const draftFiles: Prisma.JsonArray = storedEntries.map((entry) => {
@@ -486,6 +489,14 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           }
         }
 
+        const modelAdult = determineAdultForModel({
+          title: payload.title,
+          description: payload.description ?? null,
+          trigger: payload.trigger ?? null,
+          metadata: modelMetadataPayload,
+          tags: assignedTags.map((tag) => ({ tag })),
+        });
+
         const modelAsset = await tx.modelAsset.create({
           data: {
             slug,
@@ -499,6 +510,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
             metadata: modelMetadataPayload,
             isPublic: payload.visibility === 'public',
+            isAdult: modelAdult,
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
@@ -547,6 +559,28 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             ? `${candidate}${candidate.endsWith('#') ? '' : ' '}#${index + 1}`.trim()
             : candidate;
 
+        const imageMetadataPayload: Prisma.JsonObject = {};
+        if (metadata?.seed) {
+          imageMetadataPayload.seed = metadata.seed;
+        }
+        if (metadata?.cfgScale != null) {
+          imageMetadataPayload.cfgScale = metadata.cfgScale;
+        }
+        if (metadata?.steps != null) {
+          imageMetadataPayload.steps = metadata.steps;
+        }
+
+        const imageAdult = determineAdultForImage({
+          title,
+          description: payload.description ?? null,
+          prompt: metadata?.prompt ?? null,
+          negativePrompt: metadata?.negativePrompt ?? null,
+          model: metadata?.model ?? null,
+          sampler: metadata?.sampler ?? null,
+          metadata: Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null,
+          tags: assignedTags.map((tag) => ({ tag })),
+        });
+
         const imageAsset = await tx.imageAsset.create({
           data: {
             title,
@@ -563,6 +597,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             cfgScale: metadata?.cfgScale ?? null,
             steps: metadata?.steps ?? null,
             isPublic: payload.visibility === 'public',
+            isAdult: imageAdult,
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),

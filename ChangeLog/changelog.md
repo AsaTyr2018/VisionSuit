@@ -746,3 +746,8 @@
 - **General**: Prevented the Administration → Moderation dialog from crashing when opening a flagged asset for review.
 - **Technical Changes**: Hoisted the moderation action matcher into a memoized callback so busy-state checks run after initialization instead of reading an uninitialized const.
 - **Data Changes**: None; runtime state handling only.
+
+## 146 – [Addition] Adult safety controls polish
+- **General**: Finalized the NSFW governance experience with a focused admin Safety tab and clear badges when adult assets surface for opted-in viewers.
+- **Technical Changes**: Suppressed duplicate status banners on the Safety tab, reset adult-tag errors when navigating away, refreshed the home tiles and explorer cards with adult badges gated by the viewer preference, and updated styling plus documentation to explain the workflow.
+- **Data Changes**: None; UI and messaging updates only.

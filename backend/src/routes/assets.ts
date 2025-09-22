@@ -18,6 +18,7 @@ import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
+import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { requireAdmin, requireAuth, requireCurator } from '../lib/middleware/auth';
 import { extractModelMetadataFromFile } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
@@ -168,6 +169,7 @@ const mapImageAsset = (asset: HydratedImageAsset, options: { viewerId?: string |
     title: asset.title,
     description: asset.description,
     isPublic: asset.isPublic,
+    isAdult: asset.isAdult,
     dimensions: asset.width && asset.height ? { width: asset.width, height: asset.height } : undefined,
     fileSize: asset.fileSize,
     storagePath: storage.url ?? asset.storagePath,
@@ -235,7 +237,7 @@ const ensureTags = async (tx: Prisma.TransactionClient, labels: string[]) =>
         where: { label },
         update: {},
         create: { label },
-        select: { id: true },
+        select: { id: true, label: true, isAdult: true },
       }),
     ),
   );
@@ -513,6 +515,7 @@ assetsRouter.get('/models', async (req, res, next) => {
   try {
     const viewer = req.user;
     const isAdmin = viewer?.role === 'ADMIN';
+    const allowAdultContent = viewer?.showAdultContent ?? false;
     const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
       ? {}
       : viewer
@@ -539,8 +542,25 @@ assetsRouter.get('/models', async (req, res, next) => {
             ],
           };
 
+    const filters: Prisma.ModelAssetWhereInput[] = [];
+
+    if (Object.keys(visibilityFilter).length > 0) {
+      filters.push(visibilityFilter);
+    }
+
+    if (!allowAdultContent) {
+      filters.push({ isAdult: false });
+    }
+
+    let where: Prisma.ModelAssetWhereInput = {};
+    if (filters.length === 1) {
+      where = filters[0] ?? {};
+    } else if (filters.length > 1) {
+      where = { AND: filters };
+    }
+
     const assets = await prisma.modelAsset.findMany({
-      where: visibilityFilter,
+      where,
       include: {
         tags: { include: { tag: true } },
         owner: { select: { id: true, displayName: true, email: true } },
@@ -560,6 +580,7 @@ assetsRouter.get('/images', async (req, res, next) => {
   try {
     const viewer = req.user;
     const isAdmin = viewer?.role === 'ADMIN';
+    const allowAdultContent = viewer?.showAdultContent ?? false;
     const visibilityFilter: Prisma.ImageAssetWhereInput = isAdmin
       ? {}
       : viewer
@@ -586,8 +607,25 @@ assetsRouter.get('/images', async (req, res, next) => {
             ],
           };
 
+    const filters: Prisma.ImageAssetWhereInput[] = [];
+
+    if (Object.keys(visibilityFilter).length > 0) {
+      filters.push(visibilityFilter);
+    }
+
+    if (!allowAdultContent) {
+      filters.push({ isAdult: false });
+    }
+
+    let where: Prisma.ImageAssetWhereInput = {};
+    if (filters.length === 1) {
+      where = filters[0] ?? {};
+    } else if (filters.length > 1) {
+      where = { AND: filters };
+    }
+
     const images = await prisma.imageAsset.findMany({
-      where: visibilityFilter,
+      where,
       include: buildImageInclude(viewer?.id),
       orderBy: { createdAt: 'desc' },
     });
@@ -2164,7 +2202,7 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         }
       }
 
-      return tx.modelAsset.update({
+      const updatedAsset = await tx.modelAsset.update({
         where: { id: asset.id },
         data,
         include: {
@@ -2173,6 +2211,28 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
           versions: { orderBy: { createdAt: 'desc' } },
         },
       });
+
+      const nextIsAdult = determineAdultForModel({
+        title: updatedAsset.title,
+        description: updatedAsset.description,
+        trigger: updatedAsset.trigger,
+        metadata: updatedAsset.metadata ?? null,
+        tags: updatedAsset.tags,
+      });
+
+      if (updatedAsset.isAdult !== nextIsAdult) {
+        return tx.modelAsset.update({
+          where: { id: updatedAsset.id },
+          data: { isAdult: nextIsAdult },
+          include: {
+            tags: { include: { tag: true } },
+            owner: { select: { id: true, displayName: true, email: true } },
+            versions: { orderBy: { createdAt: 'desc' } },
+          },
+        });
+      }
+
+      return updatedAsset;
     });
 
     res.json(mapModelAsset(updated));
@@ -2423,11 +2483,45 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
         }
       }
 
-      return tx.imageAsset.update({
+      const updatedImage = await tx.imageAsset.update({
         where: { id: image.id },
         data,
         include: buildImageInclude(req.user?.id),
       });
+
+      const metadataPayload: Prisma.JsonObject = {};
+      if (updatedImage.seed) {
+        metadataPayload.seed = updatedImage.seed;
+      }
+      if (updatedImage.cfgScale != null) {
+        metadataPayload.cfgScale = updatedImage.cfgScale;
+      }
+      if (updatedImage.steps != null) {
+        metadataPayload.steps = updatedImage.steps;
+      }
+
+      const metadataInput = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
+
+      const nextIsAdult = determineAdultForImage({
+        title: updatedImage.title,
+        description: updatedImage.description,
+        prompt: updatedImage.prompt,
+        negativePrompt: updatedImage.negativePrompt,
+        model: updatedImage.model,
+        sampler: updatedImage.sampler,
+        metadata: metadataInput,
+        tags: updatedImage.tags,
+      });
+
+      if (updatedImage.isAdult !== nextIsAdult) {
+        return tx.imageAsset.update({
+          where: { id: updatedImage.id },
+          data: { isAdult: nextIsAdult },
+          include: buildImageInclude(req.user?.id),
+        });
+      }
+
+      return updatedImage;
     });
 
     res.json(mapImageAsset(updated, { viewerId: req.user?.id }));
