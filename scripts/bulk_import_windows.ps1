@@ -7,11 +7,10 @@
   Configure the connection variables below before running the script.
 #>
 
-$ServerIp = "192.168.1.10"
-$ServerUsername = "admin@example.com"
-$ServerPort = 4000
-
 param(
+  [string]$ServerIp = "192.168.1.10",
+  [string]$ServerUsername = "admin@example.com",
+  [int]$ServerPort = 4000,
   [string]$LorasDirectory = "./loras",
   [string]$ImagesDirectory = "./images"
 )

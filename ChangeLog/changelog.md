@@ -198,6 +198,7 @@
 - **Technical Changes**: Migrated to `/:bucket/*`, shared handler logic, and explained the fix while awaiting final commit ID.
 - **Data Changes**: None.
 
+
 ## 040 – [Addition] Streamlined installer (da2500c)
 - **General**: Tuned the installer for production hosts with automatic IP detection.
 - **Technical Changes**: Added smart IP/port prompts, synchronized `.env` files, injected MinIO defaults, and refreshed README installation guidance.
@@ -711,3 +712,8 @@
 - **General**: Tightened moderation UX so flagged models and renders vanish for the community while creators receive a clear “In Audit” placeholder entry.
 - **Technical Changes**: Filtered flagged assets in public listings for non-admins, added shared moderation helpers, rendered audit placeholders across the home tiles, explorers, gallery detail views, and curator profiles, and refreshed README guidance.
 - **Data Changes**: None; visibility logic only.
+
+## 140 – [Fix] Windows bulk import parameter order
+- **General**: Resolved the Windows bulk import helper startup by promoting connection settings to script parameters.
+- **Technical Changes**: Converted server connection variables into the script-level `param` block so it loads before any assignments and continues defaulting directories and credentials.
+- **Data Changes**: None.
