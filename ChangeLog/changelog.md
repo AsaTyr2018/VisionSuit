@@ -686,3 +686,9 @@
 - **General**: Improved the admin workspace by widening the model edit dialog and replacing the image metadata chips with a model-focused picker.
 - **Technical Changes**: Added an XL layout modifier to the model edit dialog, wired the component to use the larger width, introduced a metadata-derived model datalist with filtering logic, updated image filter state management, and refreshed documentation to describe the new picker.
 - **Data Changes**: None.
+
+## 136 – [Fix] Model edit dialog layout tuning
+- **General**: Sharpened the Administration → Model edit dialog so the expanded layout matches the surrounding workspace.
+- **Technical Changes**: Limited extra-large edit dialogs to half-width with responsive bounds and centered the tab list for clearer navigation.
+- **Data Changes**: None.
+
