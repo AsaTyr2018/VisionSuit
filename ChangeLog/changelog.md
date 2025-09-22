@@ -651,3 +651,8 @@
 - **General**: Stopped the admin generator settings view from crashing when legacy rows contain invalid JSON.
 - **Technical Changes**: Added a sanitization fallback for generator settings, retrying reads after normalizing bad `baseModels` payloads.
 - **Data Changes**: Automatically rewrites malformed generator `baseModels` entries to an empty array when encountered.
+
+## 129 – Generator base-model JSON parsing
+- **General**: Restored the On-Site Generator base-model list so curated admin entries surface for users again.
+- **Technical Changes**: Normalized generator settings reads to decode string and buffer payloads before schema validation, keeping alignment with the stored database format and logging parse failures for diagnostics.
+- **Data Changes**: None; existing generator settings rows are read without mutation.

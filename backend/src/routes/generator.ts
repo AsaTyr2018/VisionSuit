@@ -21,8 +21,44 @@ type GeneratorBaseModelConfig = z.infer<typeof generatorBaseModelConfigSchema>;
 
 const generatorBaseModelSettingsSchema = z.array(generatorBaseModelConfigSchema).max(32).default([]);
 
+const normalizeGeneratorBaseModelSource = (value: unknown): unknown => {
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch (error) {
+      console.warn('Failed to parse generator baseModels JSON string.', error);
+      return [];
+    }
+  }
+
+  if (Buffer.isBuffer(value)) {
+    const asString = value.toString('utf-8').trim();
+    if (asString.length === 0) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(asString);
+    } catch (error) {
+      console.warn('Failed to parse generator baseModels buffer payload.', error);
+      return [];
+    }
+  }
+
+  return value;
+};
+
 const parseGeneratorBaseModels = (value: unknown): GeneratorBaseModelConfig[] => {
-  const parsed = generatorBaseModelSettingsSchema.safeParse(value ?? []);
+  const parsed = generatorBaseModelSettingsSchema.safeParse(normalizeGeneratorBaseModelSource(value));
   if (!parsed.success) {
     return [];
   }
@@ -32,6 +68,19 @@ const parseGeneratorBaseModels = (value: unknown): GeneratorBaseModelConfig[] =>
     name: entry.name.trim(),
     filename: entry.filename.trim(),
   }));
+};
+
+const extractSettingsBaseModels = (settings: unknown): unknown => {
+  if (!settings || typeof settings !== 'object') {
+    return [];
+  }
+
+  if ('baseModels' in settings) {
+    const payload = (settings as { baseModels?: unknown }).baseModels;
+    return payload ?? [];
+  }
+
+  return [];
 };
 
 const extractObjectKey = (value: string | null | undefined): string | null => {
@@ -125,7 +174,7 @@ const ensureSettings = async () => {
     }
   }
 
-  return prisma.generatorSettings.create({ data: { baseModels: [] } });
+  return prisma.generatorSettings.create({ data: {} });
 };
 
 const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
@@ -197,7 +246,7 @@ const generatorRequestSchema = z.object({
 generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
   try {
     const settings = await ensureSettings();
-    const configured = parseGeneratorBaseModels(settings.baseModels);
+    const configured = parseGeneratorBaseModels(extractSettingsBaseModels(settings));
 
     if (configured.length === 0) {
       res.json([]);
@@ -272,7 +321,7 @@ generatorRouter.get('/settings', async (_req, res, next) => {
       settings: {
         id: settings.id,
         accessMode: settings.accessMode,
-        baseModels: parseGeneratorBaseModels(settings.baseModels),
+        baseModels: parseGeneratorBaseModels(extractSettingsBaseModels(settings)),
         createdAt: settings.createdAt.toISOString(),
         updatedAt: settings.updatedAt.toISOString(),
       },
@@ -296,14 +345,17 @@ generatorRouter.put('/settings', requireAuth, requireAdmin, async (req, res, nex
     const current = await ensureSettings();
     const updated = await prisma.generatorSettings.update({
       where: { id: current.id },
-      data: { accessMode: parsed.data.accessMode, baseModels: parsed.data.baseModels },
+      data: {
+        accessMode: parsed.data.accessMode,
+        baseModels: parsed.data.baseModels,
+      } as unknown as Prisma.GeneratorSettingsUpdateInput,
     });
 
     res.json({
       settings: {
         id: updated.id,
         accessMode: updated.accessMode,
-        baseModels: parseGeneratorBaseModels(updated.baseModels),
+        baseModels: parseGeneratorBaseModels(extractSettingsBaseModels(updated)),
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },
