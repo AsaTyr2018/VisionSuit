@@ -62,6 +62,8 @@ model User {
   flaggedImages ImageAsset[] @relation("ImageAssetFlagger")
   moderationActions ModerationLog[] @relation("ModerationLogActor")
   moderationNotices ModerationLog[] @relation("ModerationLogRecipient")
+  modelModerationReports ModelModerationReport[]
+  imageModerationReports ImageModerationReport[]
 }
 
 model Gallery {
@@ -104,6 +106,7 @@ model ModelAsset {
   flaggedAt    DateTime?
   flaggedById  String?
   flaggedBy    User?        @relation("ModelAssetFlagger", fields: [flaggedById], references: [id])
+  moderationReports ModelModerationReport[]
 }
 
 model ModelVersion {
@@ -150,6 +153,7 @@ model ImageAsset {
   flaggedAt      DateTime?
   flaggedById    String?
   flaggedBy      User?           @relation("ImageAssetFlagger", fields: [flaggedById], references: [id])
+  moderationReports ImageModerationReport[]
 }
 
 model ImageLike {
@@ -339,6 +343,32 @@ model ModerationLog {
   targetUser    User?                  @relation("ModerationLogRecipient", fields: [targetUserId], references: [id])
   createdAt     DateTime               @default(now())
   @@index([entityType, entityId])
+}
+
+model ModelModerationReport {
+  id         String   @id @default(cuid())
+  modelId    String
+  reporterId String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  model    ModelAsset @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  reporter User       @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([modelId])
+}
+
+model ImageModerationReport {
+  id         String   @id @default(cuid())
+  imageId    String
+  reporterId String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  image    ImageAsset @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  reporter User       @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@index([imageId])
 }
 
 model RankTier {
