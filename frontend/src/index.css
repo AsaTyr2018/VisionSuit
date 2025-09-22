@@ -3411,6 +3411,10 @@ main {
   width: min(820px, 95vw);
 }
 
+.edit-dialog__content--xl {
+  width: min(840px, 95vw);
+}
+
 .model-version-dialog__header,
 .edit-dialog__header {
   display: flex;

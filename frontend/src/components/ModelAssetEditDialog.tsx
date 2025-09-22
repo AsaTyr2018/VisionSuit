@@ -231,7 +231,7 @@ export const ModelAssetEditDialog = ({
 
   return (
     <div className="edit-dialog" role="dialog" aria-modal="true" aria-labelledby="model-edit-title" onClick={handleBackdropClick}>
-      <div className="edit-dialog__content">
+      <div className="edit-dialog__content edit-dialog__content--xl">
         <header className="edit-dialog__header">
           <h3 id="model-edit-title">Edit model details</h3>
           <button type="button" className="edit-dialog__close" onClick={onClose} disabled={isSubmitting}>

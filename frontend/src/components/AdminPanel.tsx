@@ -287,12 +287,14 @@ export const AdminPanel = ({
     query: string;
     owner: FilterValue<string>;
     metadata: string;
+    model: string;
     visibility: FilterValue<VisibilityFilter>;
     sort: 'updated_desc' | 'title_asc' | 'owner_asc';
   }>({
     query: '',
     owner: 'all',
     metadata: '',
+    model: '',
     visibility: 'all',
     sort: 'updated_desc',
   });
@@ -652,40 +654,30 @@ export const AdminPanel = ({
     return models.find((model) => model.id === activeModelId) ?? null;
   }, [activeModelId, models]);
 
-  const imageMetadataOptions = useMemo(() => {
-    const counts = new Map<string, { label: string; count: number }>();
+  const imageModelOptions = useMemo(() => {
+    const models = new Set<string>();
     images.forEach((image) => {
-      collectImageMetadataStrings(image.metadata).forEach((entry) => {
-        const normalized = entry.trim();
-        if (!normalized) {
-          return;
+      const candidate = image.metadata?.model;
+      if (typeof candidate === 'string') {
+        const trimmed = candidate.trim();
+        if (trimmed.length > 0) {
+          models.add(trimmed);
         }
-        const key = normalized.toLowerCase();
-        const existing = counts.get(key);
-        if (existing) {
-          existing.count += 1;
-        } else {
-          counts.set(key, { label: normalized, count: 1 });
-        }
-      });
+      }
     });
 
-    return Array.from(counts.values())
-      .sort((a, b) => {
-        if (b.count !== a.count) {
-          return b.count - a.count;
-        }
-        return a.label.localeCompare(b.label);
-      })
-      .slice(0, 12);
+    return Array.from(models).sort((a, b) => a.localeCompare(b));
   }, [images]);
 
   const filteredImages = useMemo(() => {
     const metadataQuery = imageFilter.metadata.trim().toLowerCase();
+    const modelQuery = imageFilter.model.trim().toLowerCase();
     const searchQuery = imageFilter.query.trim();
 
     const filtered = images.filter((image) => {
       const metadataValues = collectImageMetadataStrings(image.metadata);
+      const imageModel =
+        typeof image.metadata?.model === 'string' ? image.metadata.model.trim().toLowerCase() : '';
       const matchesSearch =
         searchQuery.length === 0 ||
         matchText(image.title, searchQuery) ||
@@ -701,6 +693,10 @@ export const AdminPanel = ({
       }
 
       if (imageFilter.owner !== 'all' && image.owner.id !== imageFilter.owner) {
+        return false;
+      }
+
+      if (modelQuery && !imageModel.includes(modelQuery)) {
         return false;
       }
 
@@ -2339,7 +2335,21 @@ export const AdminPanel = ({
                       const { value } = event.currentTarget;
                       setImageFilter((previous) => ({ ...previous, metadata: value }));
                     }}
-                    placeholder="Seed, model, sampler…"
+                    placeholder="Seed, sampler…"
+                    disabled={isBusy}
+                  />
+                </label>
+                <label>
+                  <span>Model</span>
+                  <input
+                    type="search"
+                    list="admin-image-models"
+                    value={imageFilter.model}
+                    onChange={(event) => {
+                      const { value } = event.currentTarget;
+                      setImageFilter((previous) => ({ ...previous, model: value }));
+                    }}
+                    placeholder="Select or search a model"
                     disabled={isBusy}
                   />
                 </label>
@@ -2381,32 +2391,11 @@ export const AdminPanel = ({
                     <option value="owner_asc">Owner A → Z</option>
                   </select>
                 </label>
-                {imageMetadataOptions.length > 0 ? (
-                  <div className="admin__filter-chips">
-                    <span className="admin__filter-label">Popular metadata</span>
-                    <div className="admin-collection__chip-group admin-collection__chip-group--scroll" role="group">
-                      <FilterChip
-                        label="Any"
-                        isActive={imageFilter.metadata.trim().length === 0}
-                        onClick={() => setImageFilter((previous) => ({ ...previous, metadata: '' }))}
-                        aria-pressed={imageFilter.metadata.trim().length === 0}
-                      />
-                      {imageMetadataOptions.map((option) => {
-                        const normalized = option.label.toLowerCase();
-                        const isActive = imageFilter.metadata.trim().toLowerCase() === normalized;
-                        return (
-                          <FilterChip
-                            key={option.label}
-                            label={`${option.label} (${option.count})`}
-                            isActive={isActive}
-                            onClick={() => setImageFilter((previous) => ({ ...previous, metadata: option.label }))}
-                            aria-pressed={isActive}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
+                <datalist id="admin-image-models">
+                  {imageModelOptions.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
               </div>
               {renderSelectionToolbar(
                 filteredImages.length,
