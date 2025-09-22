@@ -736,3 +736,8 @@
 - **General**: Restored the moderation queue so admins can review flagged assets without API errors.
 - **Technical Changes**: Added moderation report mappers, regenerated the Prisma client, and taught the API to return reporter summaries for flagged models.
 - **Data Changes**: Introduced `ModelModerationReport` and `ImageModerationReport` tables with cascading foreign keys.
+
+## 144 – [Addition] Dual-phase bulk import hardening
+- **General**: Elevated the Linux and Windows bulk import helpers with an admin-only, two-pass workflow that uploads LoRA weights with a random preview before streaming every gallery render in follow-up batches.
+- **Technical Changes**: Split the scripts into model and gallery upload stages, enforced administrator role detection, chunked gallery uploads to bypass the per-request file limit, and refreshed the README with the updated flow and requirements.
+- **Data Changes**: None.

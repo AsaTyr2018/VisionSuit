@@ -125,8 +125,20 @@ try {
   exit 1
 }
 
+$userRole = $null
+if ($loginResponse.user -and $loginResponse.user.PSObject.Properties['role']) {
+  $userRole = [string]$loginResponse.user.role
+}
+
+$detectedRole = if ($userRole) { $userRole } else { 'unknown' }
+
 if (-not $loginResponse.token) {
   Write-Log "Authentication failed: $($loginResponse | ConvertTo-Json -Depth 5)"
+  exit 1
+}
+
+if (-not $userRole -or $userRole.ToUpperInvariant() -ne 'ADMIN') {
+  Write-Log "Bulk import is restricted to admin accounts. Detected role: '$detectedRole'."
   exit 1
 }
 
@@ -148,7 +160,7 @@ $handler = [System.Net.Http.HttpClientHandler]::new()
 $httpClient = [System.Net.Http.HttpClient]::new($handler)
 $httpClient.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $token)
 
-Write-Log "Authenticated as $ServerUsername. Starting bulk upload via VisionSuit API."
+Write-Log "Authenticated as $ServerUsername (role: $userRole). Starting bulk upload via VisionSuit API."
 
 $uploadCount = 0
 $skipCount = 0
@@ -181,13 +193,7 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
   $preview = Get-Random -InputObject $imageFiles
   $otherImages = $imageFiles | Where-Object { $_.FullName -ne $preview.FullName }
 
-  if ($otherImages.Count -gt 10) {
-    $trimmed = $otherImages.Count - 10
-    $otherImages = $otherImages | Select-Object -First 10
-    Write-Log "Limiting additional images for '$baseName' to 10 due to API file cap (trimmed $trimmed)."
-  }
-
-  $orderedImages = @($preview) + $otherImages
+  Write-Log "Uploading '$baseName' with preview '$($preview.Name)'."
 
   $form = New-Object System.Net.Http.MultipartFormDataContent
   $form.Add((New-Object System.Net.Http.StringContent('lora')), 'assetType')
@@ -199,6 +205,7 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
   $form.Add((New-Object System.Net.Http.StringContent($baseName)), 'trigger')
 
   $disposables = @()
+  $gallerySlug = $null
 
   try {
     $modelStream = [System.IO.File]::OpenRead($loraFile.FullName)
@@ -207,30 +214,45 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
     $modelContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/octet-stream')
     $form.Add($modelContent, 'files', $loraFile.Name)
 
-    foreach ($image in $orderedImages) {
-      $imageStream = [System.IO.File]::OpenRead($image.FullName)
-      $disposables += $imageStream
-      $imageContent = New-Object System.Net.Http.StreamContent($imageStream)
-      $mime = Get-MimeType -Path $image.FullName
-      $imageContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($mime)
-      $form.Add($imageContent, 'files', $image.Name)
-    }
+    $previewStream = [System.IO.File]::OpenRead($preview.FullName)
+    $disposables += $previewStream
+    $previewContent = New-Object System.Net.Http.StreamContent($previewStream)
+    $previewMime = Get-MimeType -Path $preview.FullName
+    $previewContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($previewMime)
+    $form.Add($previewContent, 'files', $preview.Name)
 
     $response = $httpClient.PostAsync($uploadUri, $form).GetAwaiter().GetResult()
     $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
 
     if ($response.IsSuccessStatusCode) {
-      Write-Log "Uploaded '$baseName' with preview '$($preview.Name)'."
-      $uploadCount++
+      try {
+        $parsed = $body | ConvertFrom-Json
+      }
+      catch {
+        Write-Log "Model upload succeeded for '$baseName' but response parsing failed: $($_.Exception.Message)"
+        $skipCount++
+        return
+      }
+
+      $gallerySlug = $parsed.gallerySlug
+      if (-not $gallerySlug) {
+        Write-Log "Model upload succeeded for '$baseName' but gallery information was missing."
+        $skipCount++
+        return
+      }
+
+      Write-Log "Model upload complete for '$baseName'. Gallery slug: $gallerySlug."
     }
     else {
       Write-Log "Upload failed for '$baseName' (HTTP $($response.StatusCode)): $body"
       $skipCount++
+      return
     }
   }
   catch {
     Write-Log "Upload request failed for '$baseName': $($_.Exception.Message)"
     $skipCount++
+    return
   }
   finally {
     foreach ($item in $disposables) {
@@ -243,6 +265,91 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
       $form.Dispose()
     }
   }
+
+  if ($otherImages.Count -eq 0) {
+    $uploadCount++
+    Write-Log "No additional images found for '$baseName'; only the preview was uploaded."
+    return
+  }
+
+  $maxBatch = 12
+  $totalImages = $otherImages.Count
+  $processedImages = 0
+  $batchFailed = $false
+  $batchIndex = 1
+
+  for ($start = 0; $start -lt $totalImages; $start += $maxBatch) {
+    $end = [Math]::Min($start + $maxBatch - 1, $totalImages - 1)
+    if ($end -lt $start) {
+      break
+    }
+
+    $chunk = $otherImages[$start..$end]
+    if ($chunk -isnot [System.Array]) {
+      $chunk = @($chunk)
+    }
+
+    $chunkForm = New-Object System.Net.Http.MultipartFormDataContent
+    $chunkForm.Add((New-Object System.Net.Http.StringContent('image')), 'assetType')
+    $chunkForm.Add((New-Object System.Net.Http.StringContent('gallery')), 'context')
+    $chunkForm.Add((New-Object System.Net.Http.StringContent($baseName)), 'title')
+    $chunkForm.Add((New-Object System.Net.Http.StringContent('private')), 'visibility')
+    $chunkForm.Add((New-Object System.Net.Http.StringContent('existing')), 'galleryMode')
+    $chunkForm.Add((New-Object System.Net.Http.StringContent($gallerySlug)), 'targetGallery')
+
+    $chunkDisposables = @()
+
+    try {
+      foreach ($image in $chunk) {
+        $imageStream = [System.IO.File]::OpenRead($image.FullName)
+        $chunkDisposables += $imageStream
+        $imageContent = New-Object System.Net.Http.StreamContent($imageStream)
+        $mime = Get-MimeType -Path $image.FullName
+        $imageContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($mime)
+        $chunkForm.Add($imageContent, 'files', $image.Name)
+      }
+
+      $chunkResponse = $httpClient.PostAsync($uploadUri, $chunkForm).GetAwaiter().GetResult()
+      $chunkBody = $chunkResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+
+      if ($chunkResponse.IsSuccessStatusCode) {
+        $processedImages += $chunk.Count
+        Write-Log "Uploaded image batch $batchIndex for '$baseName' ($($chunk.Count) image(s))."
+      }
+      else {
+        Write-Log "Image batch $batchIndex failed for '$baseName' (HTTP $($chunkResponse.StatusCode)): $chunkBody"
+        $skipCount++
+        $batchFailed = $true
+        break
+      }
+    }
+    catch {
+      Write-Log "Image batch $batchIndex failed for '$baseName': $($_.Exception.Message)"
+      $skipCount++
+      $batchFailed = $true
+      break
+    }
+    finally {
+      foreach ($item in $chunkDisposables) {
+        if ($item -is [System.IDisposable]) {
+          $item.Dispose()
+        }
+      }
+
+      if ($chunkForm -is [System.IDisposable]) {
+        $chunkForm.Dispose()
+      }
+    }
+
+    $batchIndex++
+  }
+
+  if ($batchFailed) {
+    return
+  }
+
+  $uploadCount++
+  Write-Log "Completed '$baseName': uploaded model plus $processedImages additional image(s) across $($batchIndex - 1) batch(es)."
 }
 
 if ($httpClient) {

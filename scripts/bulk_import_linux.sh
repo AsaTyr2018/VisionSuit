@@ -97,7 +97,7 @@ if [ "$http_code" != "200" ]; then
   exit 1
 fi
 
-auth_token=$(python3 <<'PY' "$login_body"
+auth_info=$(python3 <<'PY' "$login_body"
 import json
 import sys
 
@@ -105,20 +105,32 @@ with open(sys.argv[1], 'r', encoding='utf-8') as fh:
     data = json.load(fh)
 
 token = data.get('token')
+user = data.get('user') or {}
+role = user.get('role')
+
 if not token:
     raise SystemExit('Token not found in login response')
 
 print(token)
+print(role or '')
 PY
 ) || {
-  log "Unable to extract token from VisionSuit login response."
+  log "Unable to extract authentication details from VisionSuit response."
   rm -f "$login_body"
   exit 1
 }
 
 rm -f "$login_body"
 
-log "Authenticated as $server_username. Starting bulk upload via VisionSuit API."
+auth_token=$(printf '%s\n' "$auth_info" | sed -n '1p')
+user_role=$(printf '%s\n' "$auth_info" | sed -n '2p')
+
+if [ "${user_role:-}" != "ADMIN" ]; then
+  log "Bulk import is restricted to admin accounts. Detected role: '${user_role:-unknown}'."
+  exit 1
+fi
+
+log "Authenticated as $server_username (role: $user_role). Starting bulk upload via VisionSuit API."
 
 upload_count=0
 skip_count=0
@@ -165,13 +177,9 @@ while IFS= read -r -d '' lora_file; do
     fi
   done
 
-  if [ "${#other_images[@]}" -gt 10 ]; then
-    trimmed=$(( ${#other_images[@]} - 10 ))
-    other_images=("${other_images[@]:0:10}")
-    log "Limiting additional images for '$base_name' to 10 due to API file cap (trimmed $trimmed)."
-  fi
+  log "Uploading '$base_name' with preview '$(basename "$preview_path")'."
 
-  form_args=(
+  request_payload=(
     -sS
     -H "Authorization: Bearer $auth_token"
     --form-string "assetType=lora"
@@ -184,39 +192,126 @@ while IFS= read -r -d '' lora_file; do
   )
 
   model_mime="application/octet-stream"
-  form_args+=(
+  request_payload+=(
     -F "files=@$(abs_path "$lora_file");type=$model_mime"
   )
 
   preview_mime=$(mime_type "$preview_path")
-  form_args+=(
+  request_payload+=(
     -F "files=@$(abs_path "$preview_path");type=$preview_mime"
   )
 
-  for img in "${other_images[@]}"; do
-    img_mime=$(mime_type "$img")
-    form_args+=(
-      -F "files=@$(abs_path "$img");type=$img_mime"
-    )
-  done
-
   response_file=$(mktemp)
-  http_code=$(curl "${form_args[@]}" -o "$response_file" -w '%{http_code}' "$upload_url") || {
+  http_code=$(curl "${request_payload[@]}" -o "$response_file" -w '%{http_code}' "$upload_url") || {
     log "Upload request failed for '$base_name'."
     skip_count=$((skip_count + 1))
     rm -f "$response_file"
     continue
   }
 
-  if [[ "$http_code" =~ ^2 ]]; then
-    log "Uploaded '$base_name' with preview '$(basename "$preview_path")'."
-    upload_count=$((upload_count + 1))
-  else
+  if [[ ! "$http_code" =~ ^2 ]]; then
     log "Upload failed for '$base_name' (HTTP $http_code): $(cat "$response_file")"
     skip_count=$((skip_count + 1))
+    rm -f "$response_file"
+    continue
   fi
 
+  gallery_slug=$(python3 <<'PY' "$response_file"
+import json
+import sys
+
+with open(sys.argv[1], 'r', encoding='utf-8') as fh:
+    data = json.load(fh)
+
+slug = data.get('gallerySlug')
+print(slug or '')
+PY
+) || {
+    log "Upload succeeded for '$base_name' but gallery slug could not be parsed."
+    skip_count=$((skip_count + 1))
+    rm -f "$response_file"
+    continue
+  }
+
+  if [ -z "$gallery_slug" ]; then
+    log "Upload succeeded for '$base_name' but gallery information was missing."
+    skip_count=$((skip_count + 1))
+    rm -f "$response_file"
+    continue
+  fi
+
+  log "Model upload complete for '$base_name'. Gallery slug: $gallery_slug."
   rm -f "$response_file"
+
+  total_images=${#other_images[@]}
+  if [ "$total_images" -gt 0 ]; then
+    max_batch=12
+    uploaded_batches=0
+    uploaded_images=0
+    start_index=0
+    batch_failed=false
+
+    while [ "$start_index" -lt "$total_images" ]; do
+      chunk=("${other_images[@]:$start_index:$max_batch}")
+      chunk_count=${#chunk[@]}
+
+      if [ "$chunk_count" -le 0 ]; then
+        break
+      fi
+
+      batch_number=$((uploaded_batches + 1))
+      batch_payload=(
+        -sS
+        -H "Authorization: Bearer $auth_token"
+        --form-string "assetType=image"
+        --form-string "context=gallery"
+        --form-string "title=$base_name"
+        --form-string "visibility=private"
+        --form-string "galleryMode=existing"
+        --form-string "targetGallery=$gallery_slug"
+      )
+
+      for img in "${chunk[@]}"; do
+        img_mime=$(mime_type "$img")
+        batch_payload+=(
+          -F "files=@$(abs_path "$img");type=$img_mime"
+        )
+      done
+
+      batch_response=$(mktemp)
+      batch_code=$(curl "${batch_payload[@]}" -o "$batch_response" -w '%{http_code}' "$upload_url") || {
+        log "Image batch $batch_number failed for '$base_name'."
+        skip_count=$((skip_count + 1))
+        rm -f "$batch_response"
+        batch_failed=true
+        break
+      }
+
+      if [[ ! "$batch_code" =~ ^2 ]]; then
+        log "Image batch $batch_number failed for '$base_name' (HTTP $batch_code): $(cat "$batch_response")"
+        skip_count=$((skip_count + 1))
+        rm -f "$batch_response"
+        batch_failed=true
+        break
+      fi
+
+      rm -f "$batch_response"
+      uploaded_batches=$((uploaded_batches + 1))
+      uploaded_images=$((uploaded_images + chunk_count))
+      log "Uploaded image batch $batch_number for '$base_name' ($chunk_count image(s))."
+      start_index=$((start_index + chunk_count))
+    done
+
+    if [ "$batch_failed" = true ]; then
+      continue
+    fi
+
+    log "Completed additional image uploads for '$base_name': $uploaded_images image(s) across $uploaded_batches batch(es)."
+  else
+    log "No additional images found for '$base_name'; only the preview was uploaded."
+  fi
+
+  upload_count=$((upload_count + 1))
 done < <(find "$loras_dir" -maxdepth 1 -type f -name '*.safetensors' -print0)
 
 log "Completed import run: $upload_count uploaded, $skip_count skipped."
