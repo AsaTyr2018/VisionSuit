@@ -746,3 +746,8 @@
 - **General**: Prevented the Administration → Moderation dialog from crashing when opening a flagged asset for review.
 - **Technical Changes**: Hoisted the moderation action matcher into a memoized callback so busy-state checks run after initialization instead of reading an uninitialized const.
 - **Data Changes**: None; runtime state handling only.
+
+## 146 – [Addition] MyLora migration helper
+- **General**: Added a turnkey script to migrate LoRA archives from MyLora into VisionSuit without touching databases by hand.
+- **Technical Changes**: Introduced `scripts/migrate_mylora_to_visionsuit.py` with session-based MyLora scraping, VisionSuit upload orchestration, duplicate detection, and preview harvesting plus README guidance for dependency setup.
+- **Data Changes**: None; the tool reads from MyLora and writes through existing VisionSuit APIs.
