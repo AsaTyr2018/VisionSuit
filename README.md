@@ -169,7 +169,7 @@ The script authenticates with `POST /api/auth/login`, then uploads the LoRA and 
 ### Windows (PowerShell)
 
 1. Edit `$ServerIp`, `$ServerUsername`, and `$ServerPort` at the head of `scripts/bulk_import_windows.ps1`.
-2. Launch the script from PowerShell 7+ (pwsh). Enter your VisionSuit password when prompted or expose it via `VISIONSUIT_PASSWORD`.
+2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. The helper auto-loads the required `System.Net.Http` types so legacy shells work without manual assembly tweaks. Enter your VisionSuit password when prompted or expose it via `VISIONSUIT_PASSWORD`.
 3. Run the importer with optional overrides for the source folders:
 
    ```powershell
@@ -177,6 +177,8 @@ The script authenticates with `POST /api/auth/login`, then uploads the LoRA and 
    ```
 
 The PowerShell helper mirrors the Linux workflow: it logs in once, picks a random preview, trims excessive renders, and posts the bundle directly to the VisionSuit API for processing.
+
+> Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
 
 ### Backend service
 

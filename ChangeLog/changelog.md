@@ -717,3 +717,8 @@
 - **General**: Resolved the Windows bulk import helper startup by promoting connection settings to script parameters.
 - **Technical Changes**: Converted server connection variables into the script-level `param` block so it loads before any assignments and continues defaulting directories and credentials.
 - **Data Changes**: None.
+
+## 141 – [Fix] Windows bulk importer resiliency
+- **General**: Ensured the Windows bulk upload helper works on legacy shells and locates image previews stored alongside each LoRA.
+- **Technical Changes**: Added a `System.Net.Http` assembly bootstrap for Windows PowerShell 5.1, resolved absolute paths for the source folders, introduced sibling image folder discovery, tightened image filtering, and guarded disposable cleanup.
+- **Data Changes**: None.
