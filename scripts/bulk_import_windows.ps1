@@ -57,14 +57,56 @@ function Get-MimeType {
   }
 }
 
-if (-not (Test-Path $LorasDirectory)) {
+function Resolve-ImageFolder {
+  param(
+    [string]$BaseName,
+    [string]$ImagesRoot,
+    [string]$LoraDirectory
+  )
+
+  $candidates = @()
+
+  if ($ImagesRoot) {
+    $candidates += (Join-Path -Path $ImagesRoot -ChildPath $BaseName)
+  }
+
+  if ($LoraDirectory) {
+    $candidates += (Join-Path -Path $LoraDirectory -ChildPath $BaseName)
+  }
+
+  foreach ($candidate in ($candidates | Select-Object -Unique)) {
+    if (Test-Path -Path $candidate -PathType Container) {
+      return $candidate
+    }
+  }
+
+  return $null
+}
+
+try {
+  $lorasRoot = (Resolve-Path -Path $LorasDirectory -ErrorAction Stop).ProviderPath
+} catch {
   Write-Log "LoRA directory '$LorasDirectory' was not found."
   exit 1
 }
 
-if (-not (Test-Path $ImagesDirectory)) {
+$imagesRoot = $null
+$imagesRootExists = $false
+
+if (Test-Path -Path $ImagesDirectory) {
+  try {
+    $imagesRoot = (Resolve-Path -Path $ImagesDirectory -ErrorAction Stop).ProviderPath
+    $imagesRootExists = $true
+  } catch {
+    $imagesRoot = $null
+  }
+}
+elseif ($PSBoundParameters.ContainsKey('ImagesDirectory')) {
   Write-Log "Image directory '$ImagesDirectory' was not found."
   exit 1
+}
+else {
+  Write-Log "Image directory '$ImagesDirectory' was not found. Looking for folders next to each LoRA file instead."
 }
 
 $password = Get-PlainPassword -Prompt "Password for $ServerUsername"
@@ -91,6 +133,17 @@ if (-not $loginResponse.token) {
 $token = $loginResponse.token
 $uploadUri = "$apiBase/uploads"
 
+try {
+  Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
+} catch {
+  try {
+    [void][System.Reflection.Assembly]::LoadWithPartialName('System.Net.Http')
+  } catch {
+    Write-Log "Unable to load System.Net.Http: $($_.Exception.Message)"
+    exit 1
+  }
+}
+
 $handler = [System.Net.Http.HttpClientHandler]::new()
 $httpClient = [System.Net.Http.HttpClient]::new($handler)
 $httpClient.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $token)
@@ -100,18 +153,25 @@ Write-Log "Authenticated as $ServerUsername. Starting bulk upload via VisionSuit
 $uploadCount = 0
 $skipCount = 0
 
-Get-ChildItem -Path $LorasDirectory -Filter *.safetensors -File | ForEach-Object {
+Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
   $loraFile = $_
   $baseName = [System.IO.Path]::GetFileNameWithoutExtension($loraFile.Name)
-  $imageFolder = Join-Path $ImagesDirectory $baseName
+  $imageFolder = Resolve-ImageFolder -BaseName $baseName -ImagesRoot $imagesRoot -LoraDirectory $loraFile.DirectoryName
 
-  if (-not (Test-Path $imageFolder)) {
-    Write-Log "Skipping '$baseName' because matching image folder '$imageFolder' is missing."
+  if (-not $imageFolder) {
+    if ($imagesRootExists) {
+      Write-Log "Skipping '$baseName' because no matching image folder was found under '$imagesRoot'."
+    }
+    else {
+      Write-Log "Skipping '$baseName' because matching image folder '$baseName' was not found next to the LoRA file."
+    }
     $skipCount++
     return
   }
 
-  $imageFiles = Get-ChildItem -Path $imageFolder -Include *.png,*.jpg,*.jpeg,*.webp,*.bmp -File | Sort-Object FullName
+  $imageFiles = Get-ChildItem -Path $imageFolder -File |
+    Where-Object { '.png', '.jpg', '.jpeg', '.webp', '.bmp' -contains [System.IO.Path]::GetExtension($_.Name).ToLowerInvariant() } |
+    Sort-Object FullName
   if (-not $imageFiles) {
     Write-Log "Skipping '$baseName' because no preview-ready images were found."
     $skipCount++
@@ -178,11 +238,19 @@ Get-ChildItem -Path $LorasDirectory -Filter *.safetensors -File | ForEach-Object
         $item.Dispose()
       }
     }
-    $form.Dispose()
+
+    if ($form -is [System.IDisposable]) {
+      $form.Dispose()
+    }
   }
 }
 
-$httpClient.Dispose()
-$handler.Dispose()
+if ($httpClient) {
+  $httpClient.Dispose()
+}
+
+if ($handler) {
+  $handler.Dispose()
+}
 
 Write-Log "Completed import run: $uploadCount uploaded, $skipCount skipped."
