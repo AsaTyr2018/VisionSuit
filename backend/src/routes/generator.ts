@@ -2,6 +2,7 @@ import { Prisma, GeneratorAccessMode } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
+import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
@@ -221,6 +222,65 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
 const settingsSchema = z.object({
   accessMode: z.nativeEnum(GeneratorAccessMode),
   baseModels: generatorBaseModelSettingsSchema,
+});
+
+generatorRouter.get('/base-models/catalog', requireAuth, async (_req, res, next) => {
+  try {
+    const bucket = appConfig.generator.baseModelBucket?.trim() ?? '';
+    const normalizedBucket = bucket.replace(/^s3:\/\//i, '').replace(/\/+$/, '');
+
+    const conditions: Prisma.ModelAssetWhereInput[] = [
+      {
+        metadata: {
+          path: 'generatorBaseModel',
+          equals: true,
+        },
+      },
+    ];
+
+    if (normalizedBucket) {
+      const bucketPrefix = `s3://${normalizedBucket}/`;
+      conditions.push(
+        {
+          metadata: {
+            path: 'sourceBucket',
+            equals: normalizedBucket,
+          },
+        },
+        { storagePath: { startsWith: bucketPrefix } },
+        {
+          versions: {
+            some: {
+              storagePath: { startsWith: bucketPrefix },
+            },
+          },
+        },
+      );
+    }
+
+    const assets = (await prisma.modelAsset.findMany({
+      where: { OR: conditions },
+      include: {
+        tags: { include: { tag: true } },
+        owner: { select: { id: true, displayName: true, email: true } },
+        versions: { orderBy: { createdAt: 'desc' } },
+      },
+    })) as HydratedModelAsset[];
+
+    const mapped = assets.map(mapModelAsset);
+    const unique = new Map<string, ReturnType<typeof mapModelAsset>>();
+    mapped.forEach((asset) => {
+      if (!unique.has(asset.id)) {
+        unique.set(asset.id, asset);
+      }
+    });
+
+    const payload = Array.from(unique.values()).sort((a, b) => a.title.localeCompare(b.title));
+
+    res.json({ baseModels: payload });
+  } catch (error) {
+    next(error);
+  }
 });
 
 const generatorRequestSchema = z.object({

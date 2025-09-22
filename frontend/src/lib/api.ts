@@ -278,6 +278,11 @@ const deleteModelVersion = async (token: string, modelId: string, versionId: str
     token,
   );
 
+const getGeneratorBaseModelCatalog = (token: string) =>
+  request<{ baseModels: ModelAsset[] }>('/api/generator/base-models/catalog', {}, token).then(
+    (response) => response.baseModels,
+  );
+
 const getGeneratorBaseModels = (token: string) =>
   request<GeneratorBaseModelOption[]>('/api/generator/base-models', {}, token);
 
@@ -343,6 +348,7 @@ export const api = {
   deleteModelVersion,
   getGeneratorSettings,
   updateGeneratorSettings,
+  getGeneratorBaseModelCatalog,
   getGeneratorBaseModels,
   createGeneratorRequest,
   getGeneratorRequests,

@@ -656,3 +656,8 @@
 - **General**: Restored the On-Site Generator base-model list so curated admin entries surface for users again.
 - **Technical Changes**: Normalized generator settings reads to decode string and buffer payloads before schema validation, keeping alignment with the stored database format and logging parse failures for diagnostics.
 - **Data Changes**: None; existing generator settings rows are read without mutation.
+
+## 130 – Generator base-model catalog hydration
+- **General**: Taught the On-Site Generator to populate its Step 1 picker with the real base models stored in the database so curators always select live checkpoints.
+- **Technical Changes**: Added a `/api/generator/base-models/catalog` route that returns hydrated `ModelAsset` records, refreshed the generator client to merge curated settings with the catalog, updated selection labels and previews to rely on database titles, introduced catalog loading states, and exposed the new helper through the API module.
+- **Data Changes**: None; the change reads existing generator assets without modifying stored rows.
