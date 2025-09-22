@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 
 import type { Prisma, User } from '@prisma/client';
+import { ModerationStatus } from '@prisma/client';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
@@ -223,6 +224,13 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
     const isAuditView = Boolean(viewer && viewer.role === 'ADMIN' && wantsAudit);
     const isAdmin = viewer?.role === 'ADMIN';
     const includePrivate = isAuditView || isAdmin || viewer?.id === id;
+    const canViewFlagged = isAdmin || viewer?.id === id;
+    const modelModerationFilter: Prisma.ModelAssetWhereInput = canViewFlagged
+      ? { moderationStatus: { not: ModerationStatus.REMOVED } }
+      : { moderationStatus: ModerationStatus.ACTIVE };
+    const imageModerationFilter: Prisma.ImageAssetWhereInput = canViewFlagged
+      ? { moderationStatus: { not: ModerationStatus.REMOVED } }
+      : { moderationStatus: ModerationStatus.ACTIVE };
 
     const likeWhere: Prisma.ImageLikeWhereInput = includePrivate
       ? { image: { ownerId: id } }
@@ -233,6 +241,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         where: {
           ownerId: id,
           ...(includePrivate ? {} : { isPublic: true }),
+          ...modelModerationFilter,
         },
         orderBy: { updatedAt: 'desc' },
         include: {
@@ -259,6 +268,7 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
         where: {
           ownerId: id,
           ...(includePrivate ? {} : { isPublic: true }),
+          ...imageModerationFilter,
         },
       }),
       prisma.imageLike.count({ where: likeWhere }),

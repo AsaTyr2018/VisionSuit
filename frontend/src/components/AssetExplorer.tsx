@@ -5,6 +5,7 @@ import type { AssetComment, Gallery, ModelAsset, ModelVersion, User } from '../t
 
 import { api, ApiError } from '../lib/api';
 import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
+import { isAuditPlaceholderForViewer } from '../lib/moderation';
 import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
 import { ModelVersionEditDialog } from './ModelVersionEditDialog';
@@ -521,10 +522,22 @@ export const AssetExplorer = ({
   const deferredSearch = useDeferredValue(searchTerm);
   const normalizedQuery = normalize(deferredSearch.trim());
 
-  const activeAsset = useMemo(
-    () => (activeAssetId ? assets.find((asset) => asset.id === activeAssetId) ?? null : null),
-    [activeAssetId, assets],
-  );
+  const activeAsset = useMemo(() => {
+    if (!activeAssetId) {
+      return null;
+    }
+
+    const asset = assets.find((entry) => entry.id === activeAssetId) ?? null;
+    if (!asset) {
+      return null;
+    }
+
+    if (isAuditPlaceholderForViewer(asset.moderationStatus, asset.owner.id, currentUser)) {
+      return null;
+    }
+
+    return asset;
+  }, [activeAssetId, assets, currentUser]);
 
   const activeAssetIdValue = activeAsset?.id ?? null;
   const modelCommentsAnchorId = useMemo(
@@ -856,10 +869,15 @@ export const AssetExplorer = ({
   }, [closeTagDialog, onCloseDetail]);
 
   useEffect(() => {
-    if (activeAssetId && !assets.some((asset) => asset.id === activeAssetId)) {
+    if (!activeAssetId) {
+      return;
+    }
+
+    const candidate = assets.find((asset) => asset.id === activeAssetId) ?? null;
+    if (!candidate || isAuditPlaceholderForViewer(candidate.moderationStatus, candidate.owner.id, currentUser)) {
       closeDetail();
     }
-  }, [activeAssetId, assets, closeDetail]);
+  }, [activeAssetId, assets, closeDetail, currentUser]);
 
   const visibleAssets = useMemo(() => filteredAssets.slice(0, visibleLimit), [filteredAssets, visibleLimit]);
 
@@ -1428,6 +1446,28 @@ export const AssetExplorer = ({
         {isLoading && assets.length === 0
           ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
           : visibleAssets.map((asset) => {
+              const isAuditPlaceholder = isAuditPlaceholderForViewer(
+                asset.moderationStatus,
+                asset.owner.id,
+                currentUser,
+              );
+
+              if (isAuditPlaceholder) {
+                return (
+                  <article key={asset.id} role="listitem" className="asset-tile asset-tile--audit">
+                    <div className="asset-tile__preview asset-tile__preview--empty">
+                      <span>In Audit</span>
+                    </div>
+                    <div className="asset-tile__body">
+                      <div className="asset-tile__headline">
+                        <h3>{asset.title}</h3>
+                      </div>
+                      <p className="asset-tile__owner">Your model is currently in audit.</p>
+                    </div>
+                  </article>
+                );
+              }
+
               const previewUrl =
                 resolveCachedStorageUrl(asset.previewImage, asset.previewImageBucket, asset.previewImageObject, {
                   updatedAt: asset.updatedAt,

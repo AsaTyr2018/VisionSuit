@@ -481,16 +481,29 @@ assetsRouter.get('/models', async (req, res, next) => {
     const isAdmin = viewer?.role === 'ADMIN';
     const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
       ? {}
-      : {
-          AND: [
-            { moderationStatus: { not: ModerationStatus.REMOVED } },
-            viewer
-              ? {
-                  OR: [{ ownerId: viewer.id }, { isPublic: true }],
-                }
-              : { isPublic: true },
-          ],
-        };
+      : viewer
+        ? {
+            AND: [
+              { moderationStatus: { not: ModerationStatus.REMOVED } },
+              {
+                OR: [
+                  { ownerId: viewer.id },
+                  {
+                    AND: [
+                      { isPublic: true },
+                      { moderationStatus: ModerationStatus.ACTIVE },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : {
+            AND: [
+              { isPublic: true },
+              { moderationStatus: ModerationStatus.ACTIVE },
+            ],
+          };
 
     const assets = await prisma.modelAsset.findMany({
       where: visibilityFilter,
@@ -515,16 +528,29 @@ assetsRouter.get('/images', async (req, res, next) => {
     const isAdmin = viewer?.role === 'ADMIN';
     const visibilityFilter: Prisma.ImageAssetWhereInput = isAdmin
       ? {}
-      : {
-          AND: [
-            { moderationStatus: { not: ModerationStatus.REMOVED } },
-            viewer
-              ? {
-                  OR: [{ ownerId: viewer.id }, { isPublic: true }],
-                }
-              : { isPublic: true },
-          ],
-        };
+      : viewer
+        ? {
+            AND: [
+              { moderationStatus: { not: ModerationStatus.REMOVED } },
+              {
+                OR: [
+                  { ownerId: viewer.id },
+                  {
+                    AND: [
+                      { isPublic: true },
+                      { moderationStatus: ModerationStatus.ACTIVE },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : {
+            AND: [
+              { isPublic: true },
+              { moderationStatus: ModerationStatus.ACTIVE },
+            ],
+          };
 
     const images = await prisma.imageAsset.findMany({
       where: visibilityFilter,

@@ -706,3 +706,8 @@
 - **General**: Introduced end-to-end moderation so members can flag problematic models or renders while administrators triage them without disrupting the main library.
 - **Technical Changes**: Added moderation enums, status fields, and logs to the Prisma schema with new backend routes for flagging, approving, and removing assets; extended mappers and user profile responses; wired frontend explorers, home tiles, and the new Administration → Moderation tab with blur overlays, queue actions, and API helpers; and layered supporting CSS for audit indicators.
 - **Data Changes**: Prisma migration adds moderation status metadata to model/image assets and a `ModerationLog` table for future notification history.
+
+## 139 – [Fix] Moderation visibility adjustments
+- **General**: Tightened moderation UX so flagged models and renders vanish for the community while creators receive a clear “In Audit” placeholder entry.
+- **Technical Changes**: Filtered flagged assets in public listings for non-admins, added shared moderation helpers, rendered audit placeholders across the home tiles, explorers, gallery detail views, and curator profiles, and refreshed README guidance.
+- **Data Changes**: None; visibility logic only.
