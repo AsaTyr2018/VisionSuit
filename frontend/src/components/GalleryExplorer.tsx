@@ -1030,6 +1030,12 @@ export const GalleryExplorer = ({
                 ) : null}
               </header>
 
+              {activeGallery.isUnderModeration ? (
+                <p className="gallery-detail__notice" role="status">
+                  This collection stays hidden from the community while linked assets are under moderation review.
+                </p>
+              ) : null}
+
               {activeGallery.description ? (
                 <p className="gallery-detail__description">{activeGallery.description}</p>
               ) : (

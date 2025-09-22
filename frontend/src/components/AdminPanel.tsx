@@ -11,6 +11,7 @@ import type {
   GeneratorSettings,
   ImageAsset,
   ModerationQueue,
+  ModerationReport,
   ModelAsset,
   RankTier,
   RankingSettings,
@@ -219,6 +220,65 @@ const formatModerationTimestamp = (value?: string | null) => {
   }
 };
 
+type ModerationReportSummary = {
+  total: number;
+  reporters: string[];
+  reasons: string[];
+};
+
+const summarizeModerationReports = (reports?: ModerationReport[] | null): ModerationReportSummary => {
+  if (!reports || reports.length === 0) {
+    return { total: 0, reporters: [], reasons: [] };
+  }
+
+  const reporterMap = new Map<string, string>();
+  const reasonSet = new Set<string>();
+  let includeMissingReason = false;
+
+  reports.forEach((report) => {
+    const name = report.reporter.displayName?.trim() || report.reporter.email;
+    reporterMap.set(report.reporter.id, name);
+
+    const normalizedReason = report.reason?.trim();
+    if (normalizedReason && normalizedReason.length > 0) {
+      reasonSet.add(normalizedReason);
+    } else {
+      includeMissingReason = true;
+    }
+  });
+
+  if (includeMissingReason) {
+    reasonSet.add('No reason provided');
+  }
+
+  return {
+    total: reports.length,
+    reporters: Array.from(reporterMap.values()),
+    reasons: Array.from(reasonSet.values()),
+  };
+};
+
+const formatCompactList = (
+  values: string[],
+  { max = 2, separator = ', ' }: { max?: number; separator?: string } = {},
+) => {
+  if (values.length === 0) {
+    return { display: '—', title: '—' };
+  }
+
+  if (values.length <= max) {
+    const label = values.join(separator);
+    return { display: label, title: values.join('\n') };
+  }
+
+  const visible = values.slice(0, max);
+  const remainder = values.length - visible.length;
+  return {
+    display: `${visible.join(separator)} +${remainder} more`,
+    title: values.join('\n'),
+  };
+};
+
 const buildModelDetail = (model: ModelAsset) => {
   const previewUrl =
     resolveCachedStorageUrl(
@@ -329,6 +389,10 @@ export const AdminPanel = ({
   const [moderationAction, setModerationAction] = useState<
     { entity: 'model' | 'image'; action: 'approve' | 'remove'; id: string } | null
   >(null);
+  const [activeModerationTarget, setActiveModerationTarget] = useState<
+    { entity: 'model' | 'image'; id: string } | null
+  >(null);
+  const [moderationDecisionReason, setModerationDecisionReason] = useState('');
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<{ url: string; title: string } | null>(null);
@@ -366,6 +430,77 @@ export const AdminPanel = ({
   const flaggedModelCount = moderationQueue?.models.length ?? 0;
   const flaggedImageCount = moderationQueue?.images.length ?? 0;
   const totalModerationCount = flaggedModelCount + flaggedImageCount;
+
+  const selectedModerationAsset = useMemo(() => {
+    if (!activeModerationTarget || !moderationQueue) {
+      return null;
+    }
+
+    if (activeModerationTarget.entity === 'model') {
+      const asset = moderationQueue.models.find((entry) => entry.id === activeModerationTarget.id);
+      return asset ? { entity: 'model' as const, asset } : null;
+    }
+
+    const asset = moderationQueue.images.find((entry) => entry.id === activeModerationTarget.id);
+    return asset ? { entity: 'image' as const, asset } : null;
+  }, [activeModerationTarget, moderationQueue]);
+
+  const closeModerationDialog = useCallback(() => {
+    setActiveModerationTarget(null);
+    setModerationDecisionReason('');
+  }, []);
+
+  const moderationDialogAsset = selectedModerationAsset?.asset ?? null;
+  const moderationDialogEntity = selectedModerationAsset?.entity ?? null;
+  const moderationDialogReports = moderationDialogAsset?.moderationReports ?? [];
+  const moderationDialogSummary = summarizeModerationReports(moderationDialogReports);
+  const moderationDialogPreviewUrl = selectedModerationAsset
+    ? selectedModerationAsset.entity === 'model'
+      ? resolveCachedStorageUrl(
+          selectedModerationAsset.asset.previewImage,
+          selectedModerationAsset.asset.previewImageBucket,
+          selectedModerationAsset.asset.previewImageObject,
+          { updatedAt: selectedModerationAsset.asset.updatedAt, cacheKey: selectedModerationAsset.asset.id },
+        ) ?? selectedModerationAsset.asset.previewImage ?? null
+      : resolveCachedStorageUrl(
+          selectedModerationAsset.asset.storagePath,
+          selectedModerationAsset.asset.storageBucket,
+          selectedModerationAsset.asset.storageObject,
+          { updatedAt: selectedModerationAsset.asset.updatedAt, cacheKey: selectedModerationAsset.asset.id },
+        ) ?? selectedModerationAsset.asset.storagePath
+    : null;
+  const isModerationApproveBusy = selectedModerationAsset
+    ? moderationActionMatches(selectedModerationAsset.entity, 'approve', selectedModerationAsset.asset.id)
+    : false;
+  const isModerationRemoveBusy = selectedModerationAsset
+    ? moderationActionMatches(selectedModerationAsset.entity, 'remove', selectedModerationAsset.asset.id)
+    : false;
+  const isModerationDialogBusy = isModerationApproveBusy || isModerationRemoveBusy || isModerationLoading;
+  const trimmedModerationDecisionReason = moderationDecisionReason.trim();
+
+  const handleApproveSelectedAsset = () => {
+    if (!selectedModerationAsset) {
+      return;
+    }
+
+    if (selectedModerationAsset.entity === 'model') {
+      void handleApproveModel(selectedModerationAsset.asset);
+    } else {
+      void handleApproveImage(selectedModerationAsset.asset);
+    }
+  };
+
+  const handleRejectSelectedAsset = () => {
+    if (!selectedModerationAsset) {
+      return;
+    }
+
+    if (selectedModerationAsset.entity === 'model') {
+      void handleRemoveModel(selectedModerationAsset.asset, trimmedModerationDecisionReason);
+    } else {
+      void handleRemoveImage(selectedModerationAsset.asset, trimmedModerationDecisionReason);
+    }
+  };
 
   useEffect(() => {
     setGeneratorAccessMode((current) =>
@@ -468,6 +603,9 @@ export const AdminPanel = ({
             }
           : queue,
       );
+      if (activeModerationTarget?.entity === 'model' && activeModerationTarget.id === model.id) {
+        closeModerationDialog();
+      }
       setStatus({ type: 'success', message: `Approved "${response.model.title}".` });
     } catch (error) {
       const message =
@@ -478,24 +616,8 @@ export const AdminPanel = ({
     }
   };
 
-  const handleRemoveModel = async (model: ModelAsset) => {
+  const handleRemoveModel = async (model: ModelAsset, reason: string) => {
     resetStatus();
-    const confirmed = window.confirm(
-      `Remove "${model.title}"? This permanently deletes the model for everyone.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const reason = window.prompt(
-      'Provide a short removal note for the audit log (required).',
-      '',
-    );
-    if (reason == null) {
-      setStatus({ type: 'error', message: 'Removal cancelled — a note is required.' });
-      return;
-    }
-
     const trimmedReason = reason.trim();
     if (trimmedReason.length === 0) {
       setStatus({ type: 'error', message: 'Removal requires a brief audit note.' });
@@ -513,6 +635,9 @@ export const AdminPanel = ({
             }
           : queue,
       );
+      if (activeModerationTarget?.entity === 'model' && activeModerationTarget.id === model.id) {
+        closeModerationDialog();
+      }
       setStatus({ type: 'success', message: `Removed "${model.title}".` });
     } catch (error) {
       const message =
@@ -536,6 +661,9 @@ export const AdminPanel = ({
             }
           : queue,
       );
+      if (activeModerationTarget?.entity === 'image' && activeModerationTarget.id === image.id) {
+        closeModerationDialog();
+      }
       setStatus({ type: 'success', message: `Approved "${response.image.title}".` });
     } catch (error) {
       const message =
@@ -546,24 +674,8 @@ export const AdminPanel = ({
     }
   };
 
-  const handleRemoveImage = async (image: ImageAsset) => {
+  const handleRemoveImage = async (image: ImageAsset, reason: string) => {
     resetStatus();
-    const confirmed = window.confirm(
-      `Remove "${image.title}"? This permanently deletes the image for everyone.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const reason = window.prompt(
-      'Provide a short removal note for the audit log (required).',
-      '',
-    );
-    if (reason == null) {
-      setStatus({ type: 'error', message: 'Removal cancelled — a note is required.' });
-      return;
-    }
-
     const trimmedReason = reason.trim();
     if (trimmedReason.length === 0) {
       setStatus({ type: 'error', message: 'Removal requires a brief audit note.' });
@@ -581,6 +693,9 @@ export const AdminPanel = ({
             }
           : queue,
       );
+      if (activeModerationTarget?.entity === 'image' && activeModerationTarget.id === image.id) {
+        closeModerationDialog();
+      }
       setStatus({ type: 'success', message: `Removed "${image.title}".` });
     } catch (error) {
       const message =
@@ -2733,8 +2848,11 @@ export const AdminPanel = ({
                   <section className="moderation-queue__group" aria-labelledby="moderation-models-heading">
                     <header className="moderation-queue__group-header">
                       <h4 id="moderation-models-heading">Flagged models</h4>
+                      <span className="moderation-queue__group-count" aria-label={`${flaggedModelCount} flagged models`}>
+                        {flaggedModelCount}
+                      </span>
                     </header>
-                    <ul className="moderation-queue__list">
+                    <div className="moderation-queue__grid" role="list">
                       {moderationQueue?.models.map((model) => {
                         const previewUrl =
                           resolveCachedStorageUrl(
@@ -2743,80 +2861,95 @@ export const AdminPanel = ({
                             model.previewImageObject,
                             { updatedAt: model.updatedAt, cacheKey: model.id },
                           ) ?? model.previewImage ?? null;
-                        const previewClasses = [
-                          'moderation-queue__media',
-                          previewUrl ? '' : 'moderation-queue__media--empty',
-                          'moderation-overlay',
-                          'moderation-overlay--visible',
-                        ]
-                          .filter(Boolean)
-                          .join(' ');
-                        const isApproving = moderationActionMatches('model', 'approve', model.id);
-                        const isRemoving = moderationActionMatches('model', 'remove', model.id);
-                        const tagSummary = model.tags.slice(0, 3).map((tag) => `#${tag.label}`).join(' ');
+                        const summary = summarizeModerationReports(model.moderationReports);
+                        const reporterSummary = formatCompactList(summary.reporters, { max: 3 });
+                        const reasonSummary = formatCompactList(summary.reasons, {
+                          max: 2,
+                          separator: ' • ',
+                        });
+                        const flaggedLabel = formatModerationTimestamp(model.flaggedAt);
+                        const isBusy =
+                          moderationActionMatches('model', 'approve', model.id) ||
+                          moderationActionMatches('model', 'remove', model.id) ||
+                          isModerationLoading;
 
                         return (
-                          <li key={model.id} className="moderation-queue__item">
-                            <div className={previewClasses}>
+                          <button
+                            key={model.id}
+                            type="button"
+                            className="moderation-card"
+                            role="listitem"
+                            onClick={() => {
+                              setActiveModerationTarget({ entity: 'model', id: model.id });
+                              setModerationDecisionReason('');
+                            }}
+                            disabled={isBusy}
+                            aria-label={`Review ${model.title}`}
+                          >
+                            <div
+                              className={`moderation-card__preview${
+                                previewUrl ? '' : ' moderation-card__preview--empty'
+                              }`}
+                            >
                               {previewUrl ? (
                                 <img src={previewUrl} alt={model.title} loading="lazy" />
                               ) : (
                                 <span>No preview</span>
                               )}
-                              <span className="moderation-overlay__label">In audit</span>
+                              <span className="moderation-overlay moderation-overlay--visible">
+                                <span className="moderation-overlay__label">In audit</span>
+                              </span>
+                              {summary.total > 0 ? (
+                                <span className="moderation-card__badge" aria-label={`${summary.total} reports`}>
+                                  {summary.total}
+                                </span>
+                              ) : null}
                             </div>
-                            <div className="moderation-queue__content">
-                              <div className="moderation-queue__header">
-                                <h5>{model.title}</h5>
-                                <p>
-                                  v{model.version} · Owner: {model.owner.displayName}
-                                </p>
+                            <div className="moderation-card__body">
+                              <h5>{model.title}</h5>
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Owner</span>
+                                <span className="moderation-card__meta-value">{model.owner.displayName}</span>
                               </div>
-                              <dl className="moderation-queue__meta">
-                                <div>
-                                  <dt>Flagged</dt>
-                                  <dd>{formatModerationTimestamp(model.flaggedAt)}</dd>
-                                </div>
-                                <div>
-                                  <dt>Reporter</dt>
-                                  <dd>{model.flaggedBy?.displayName ?? 'Unknown reporter'}</dd>
-                                </div>
-                                <div>
-                                  <dt>Tags</dt>
-                                  <dd>{tagSummary || '—'}</dd>
-                                </div>
-                              </dl>
-                              <div className="moderation-queue__actions">
-                                <button
-                                  type="button"
-                                  className="button button--primary moderation-queue__action"
-                                  onClick={() => handleApproveModel(model)}
-                                  disabled={isApproving || isRemoving || isModerationLoading}
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Flagged</span>
+                                <span className="moderation-card__meta-value">{flaggedLabel}</span>
+                              </div>
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Reported by</span>
+                                <span
+                                  className="moderation-card__meta-value"
+                                  title={reporterSummary.title}
                                 >
-                                  {isApproving ? 'Approving…' : 'Approve'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button button--danger moderation-queue__action"
-                                  onClick={() => handleRemoveModel(model)}
-                                  disabled={isApproving || isRemoving || isModerationLoading}
-                                >
-                                  {isRemoving ? 'Removing…' : 'Remove'}
-                                </button>
+                                  {reporterSummary.display}
+                                </span>
+                              </div>
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Reasons</span>
+                                <span className="moderation-card__meta-value" title={reasonSummary.title}>
+                                  {reasonSummary.display}
+                                </span>
+                              </div>
+                              <div className="moderation-card__meta moderation-card__meta--accent">
+                                <span className="moderation-card__meta-label">Times reported</span>
+                                <span className="moderation-card__meta-value">{summary.total}</span>
                               </div>
                             </div>
-                          </li>
+                          </button>
                         );
                       })}
-                    </ul>
+                    </div>
                   </section>
                 ) : null}
                 {flaggedImageCount > 0 ? (
                   <section className="moderation-queue__group" aria-labelledby="moderation-images-heading">
                     <header className="moderation-queue__group-header">
                       <h4 id="moderation-images-heading">Flagged images</h4>
+                      <span className="moderation-queue__group-count" aria-label={`${flaggedImageCount} flagged images`}>
+                        {flaggedImageCount}
+                      </span>
                     </header>
-                    <ul className="moderation-queue__list">
+                    <div className="moderation-queue__grid" role="list">
                       {moderationQueue?.images.map((image) => {
                         const previewUrl =
                           resolveCachedStorageUrl(
@@ -2825,62 +2958,76 @@ export const AdminPanel = ({
                             image.storageObject,
                             { updatedAt: image.updatedAt, cacheKey: image.id },
                           ) ?? image.storagePath;
-                        const previewClasses = [
-                          'moderation-queue__media',
-                          'moderation-overlay',
-                          'moderation-overlay--visible',
-                        ].join(' ');
-                        const isApproving = moderationActionMatches('image', 'approve', image.id);
-                        const isRemoving = moderationActionMatches('image', 'remove', image.id);
+                        const summary = summarizeModerationReports(image.moderationReports);
+                        const reporterSummary = formatCompactList(summary.reporters, { max: 3 });
+                        const reasonSummary = formatCompactList(summary.reasons, {
+                          max: 2,
+                          separator: ' • ',
+                        });
+                        const flaggedLabel = formatModerationTimestamp(image.flaggedAt);
+                        const isBusy =
+                          moderationActionMatches('image', 'approve', image.id) ||
+                          moderationActionMatches('image', 'remove', image.id) ||
+                          isModerationLoading;
 
                         return (
-                          <li key={image.id} className="moderation-queue__item">
-                            <div className={previewClasses}>
+                          <button
+                            key={image.id}
+                            type="button"
+                            className="moderation-card"
+                            role="listitem"
+                            onClick={() => {
+                              setActiveModerationTarget({ entity: 'image', id: image.id });
+                              setModerationDecisionReason('');
+                            }}
+                            disabled={isBusy}
+                            aria-label={`Review ${image.title}`}
+                          >
+                            <div className="moderation-card__preview">
                               <img src={previewUrl} alt={image.title} loading="lazy" />
-                              <span className="moderation-overlay__label">In audit</span>
+                              <span className="moderation-overlay moderation-overlay--visible">
+                                <span className="moderation-overlay__label">In audit</span>
+                              </span>
+                              {summary.total > 0 ? (
+                                <span className="moderation-card__badge" aria-label={`${summary.total} reports`}>
+                                  {summary.total}
+                                </span>
+                              ) : null}
                             </div>
-                            <div className="moderation-queue__content">
-                              <div className="moderation-queue__header">
-                                <h5>{image.title}</h5>
-                                <p>Owner: {image.owner.displayName}</p>
+                            <div className="moderation-card__body">
+                              <h5>{image.title}</h5>
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Owner</span>
+                                <span className="moderation-card__meta-value">{image.owner.displayName}</span>
                               </div>
-                              <dl className="moderation-queue__meta">
-                                <div>
-                                  <dt>Flagged</dt>
-                                  <dd>{formatModerationTimestamp(image.flaggedAt)}</dd>
-                                </div>
-                                <div>
-                                  <dt>Reporter</dt>
-                                  <dd>{image.flaggedBy?.displayName ?? 'Unknown reporter'}</dd>
-                                </div>
-                                <div>
-                                  <dt>Model</dt>
-                                  <dd>{image.metadata?.model ?? '—'}</dd>
-                                </div>
-                              </dl>
-                              <div className="moderation-queue__actions">
-                                <button
-                                  type="button"
-                                  className="button button--primary moderation-queue__action"
-                                  onClick={() => handleApproveImage(image)}
-                                  disabled={isApproving || isRemoving || isModerationLoading}
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Flagged</span>
+                                <span className="moderation-card__meta-value">{flaggedLabel}</span>
+                              </div>
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Reported by</span>
+                                <span
+                                  className="moderation-card__meta-value"
+                                  title={reporterSummary.title}
                                 >
-                                  {isApproving ? 'Approving…' : 'Approve'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button button--danger moderation-queue__action"
-                                  onClick={() => handleRemoveImage(image)}
-                                  disabled={isApproving || isRemoving || isModerationLoading}
-                                >
-                                  {isRemoving ? 'Removing…' : 'Remove'}
-                                </button>
+                                  {reporterSummary.display}
+                                </span>
+                              </div>
+                              <div className="moderation-card__meta">
+                                <span className="moderation-card__meta-label">Reasons</span>
+                                <span className="moderation-card__meta-value" title={reasonSummary.title}>
+                                  {reasonSummary.display}
+                                </span>
+                              </div>
+                              <div className="moderation-card__meta moderation-card__meta--accent">
+                                <span className="moderation-card__meta-label">Times reported</span>
+                                <span className="moderation-card__meta-value">{summary.total}</span>
                               </div>
                             </div>
-                          </li>
+                          </button>
                         );
                       })}
-                    </ul>
+                    </div>
                   </section>
                 ) : null}
               </div>
@@ -3535,6 +3682,158 @@ export const AdminPanel = ({
               </div>
             </div>
           </section>
+        </div>
+      ) : null}
+      {selectedModerationAsset && moderationDialogAsset ? (
+        <div className="modal moderation-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="moderation-detail-title">
+          <div className="modal__backdrop" onClick={closeModerationDialog} aria-hidden="true" />
+          <div className="modal__content moderation-detail-dialog__content">
+            <header className="modal__header">
+              <h2 id="moderation-detail-title">{moderationDialogAsset.title}</h2>
+              <button
+                type="button"
+                className="modal__close"
+                onClick={closeModerationDialog}
+                aria-label="Close moderation dialog"
+                disabled={isModerationDialogBusy}
+              >
+                ×
+              </button>
+            </header>
+            <div className="modal__body moderation-detail-dialog__body">
+              <div className="moderation-detail-dialog__media">
+                {moderationDialogPreviewUrl ? (
+                  <img src={moderationDialogPreviewUrl} alt={moderationDialogAsset.title} />
+                ) : (
+                  <span>No preview available</span>
+                )}
+              </div>
+              <section className="moderation-detail-dialog__section">
+                <h3>Summary</h3>
+                <dl>
+                  <div>
+                    <dt>Type</dt>
+                    <dd>{moderationDialogEntity === 'model' ? 'Model' : 'Image'}</dd>
+                  </div>
+                  <div>
+                    <dt>Owner</dt>
+                    <dd>{moderationDialogAsset.owner.displayName}</dd>
+                  </div>
+                  <div>
+                    <dt>Flagged</dt>
+                    <dd>{formatModerationTimestamp(moderationDialogAsset.flaggedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Times reported</dt>
+                    <dd>{moderationDialogSummary.total}</dd>
+                  </div>
+                  <div>
+                    <dt>Reported by</dt>
+                    <dd>
+                      {moderationDialogSummary.reporters.length > 0 ? (
+                        <ul className="moderation-detail-dialog__chip-list">
+                          {moderationDialogSummary.reporters.map((name) => (
+                            <li key={name} className="moderation-detail-dialog__chip">
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Reasons</dt>
+                    <dd>
+                      {moderationDialogSummary.reasons.length > 0 ? (
+                        <ul className="moderation-detail-dialog__chip-list">
+                          {moderationDialogSummary.reasons.map((reason) => (
+                            <li key={reason} className="moderation-detail-dialog__chip" title={reason}>
+                              {reason}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </dd>
+                  </div>
+                  {moderationDialogEntity === 'model' ? (
+                    <div>
+                      <dt>Version</dt>
+                      <dd>v{moderationDialogAsset.version}</dd>
+                    </div>
+                  ) : (
+                    <div>
+                      <dt>Model metadata</dt>
+                      <dd>{moderationDialogAsset.metadata?.model ?? '—'}</dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+              <section className="moderation-detail-dialog__section">
+                <h3>Report log ({moderationDialogSummary.total})</h3>
+                {moderationDialogSummary.total === 0 ? (
+                  <p>No detailed reports have been recorded.</p>
+                ) : (
+                  <ul className="moderation-detail-dialog__report-list">
+                    {moderationDialogReports.map((report) => (
+                      <li key={report.id} className="moderation-detail-dialog__report">
+                        <div className="moderation-detail-dialog__report-header">
+                          <span>{report.reporter.displayName}</span>
+                          <time dateTime={report.createdAt}>{formatModerationTimestamp(report.createdAt)}</time>
+                        </div>
+                        <p>{report.reason ?? 'No reason provided.'}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              <section className="moderation-detail-dialog__section">
+                <h3>Decision</h3>
+                <label className="moderation-detail-dialog__label" htmlFor="moderation-decision-reason">
+                  Rejection note (required for rejection)
+                </label>
+                <textarea
+                  id="moderation-decision-reason"
+                  value={moderationDecisionReason}
+                  onChange={(event) => setModerationDecisionReason(event.currentTarget.value)}
+                  placeholder="Provide a short explanation for rejecting the asset"
+                  rows={3}
+                  disabled={isModerationDialogBusy}
+                />
+              </section>
+            </div>
+            <div className="modal__actions moderation-detail-dialog__actions">
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={closeModerationDialog}
+                disabled={isModerationDialogBusy}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={handleApproveSelectedAsset}
+                disabled={isModerationDialogBusy || !selectedModerationAsset}
+              >
+                {isModerationApproveBusy ? 'Approving…' : 'Approve'}
+              </button>
+              <button
+                type="button"
+                className="button button--danger"
+                onClick={handleRejectSelectedAsset}
+                disabled={
+                  isModerationDialogBusy || trimmedModerationDecisionReason.length === 0 || !selectedModerationAsset
+                }
+              >
+                {isModerationRemoveBusy ? 'Rejecting…' : 'Reject'}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
       {previewAsset ? (

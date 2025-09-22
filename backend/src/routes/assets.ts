@@ -4,6 +4,7 @@ import {
   Prisma,
   ImageAsset,
   ImageComment,
+  ImageModerationReport,
   ModelComment,
   ModerationActionType,
   ModerationEntityType,
@@ -21,8 +22,16 @@ import { requireAdmin, requireAuth, requireCurator } from '../lib/middleware/aut
 import { extractModelMetadataFromFile } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
 import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
-import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
+import {
+  mapModelAsset,
+  type HydratedModelAsset,
+  type MappedModerationReport,
+} from '../lib/mappers/model';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
+
+type ModerationReportSource = ImageModerationReport & {
+  reporter: Pick<User, 'id' | 'displayName' | 'email'>;
+};
 
 type HydratedImageAsset = ImageAsset & {
   tags: { tag: Tag }[];
@@ -30,6 +39,7 @@ type HydratedImageAsset = ImageAsset & {
   flaggedBy?: Pick<User, 'id' | 'displayName' | 'email'> | null;
   _count: { likes: number };
   likes?: { userId: string }[];
+  moderationReports?: ModerationReportSource[];
 };
 
 type CommentAuthor = Pick<User, 'id' | 'displayName' | 'avatarUrl' | 'role'>;
@@ -187,6 +197,20 @@ const mapImageAsset = (asset: HydratedImageAsset, options: { viewerId?: string |
     viewerHasLiked,
     moderationStatus: asset.moderationStatus,
     flaggedAt: asset.flaggedAt,
+    ...(asset.moderationReports
+      ? {
+          moderationReports: asset.moderationReports.map<MappedModerationReport>((report) => ({
+            id: report.id,
+            reason: report.reason ?? null,
+            createdAt: report.createdAt.toISOString(),
+            reporter: {
+              id: report.reporter.id,
+              displayName: report.reporter.displayName,
+              email: report.reporter.email,
+            },
+          })),
+        }
+      : {}),
   };
 };
 
@@ -254,6 +278,12 @@ const deleteModelAssetAndCleanup = async (asset: ModelDeletionTarget) => {
   }));
 
   await prisma.$transaction(async (tx) => {
+    const linkedGalleries = await tx.galleryEntry.findMany({
+      where: { assetId: asset.id },
+      select: { galleryId: true },
+    });
+    const galleryIdsToDelete = Array.from(new Set(linkedGalleries.map((entry) => entry.galleryId)));
+
     await tx.galleryEntry.deleteMany({ where: { assetId: asset.id } });
     await tx.assetTag.deleteMany({ where: { assetId: asset.id } });
     await tx.modelVersion.deleteMany({ where: { modelId: asset.id } });
@@ -285,6 +315,10 @@ const deleteModelAssetAndCleanup = async (asset: ModelDeletionTarget) => {
     }
 
     await tx.modelAsset.delete({ where: { id: asset.id } });
+
+    if (galleryIdsToDelete.length > 0) {
+      await tx.gallery.deleteMany({ where: { id: { in: galleryIdsToDelete } } });
+    }
   });
 
   await Promise.all([
@@ -598,23 +632,44 @@ assetsRouter.post('/models/:id/flag', requireAuth, async (req, res, next) => {
       owner: { select: { id: true, displayName: true, email: true } },
       flaggedBy: { select: { id: true, displayName: true, email: true } },
       versions: { orderBy: { createdAt: 'desc' } },
+      moderationReports: {
+        include: { reporter: { select: { id: true, displayName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      },
     } as const;
 
-    const updated =
-      model.moderationStatus === ModerationStatus.FLAGGED
-        ? await prisma.modelAsset.findUnique({
-            where: { id: modelId },
-            include: includeConfig,
-          })
-        : await prisma.modelAsset.update({
-            where: { id: modelId },
-            data: {
-              moderationStatus: ModerationStatus.FLAGGED,
-              flaggedAt: new Date(),
-              flaggedBy: { connect: { id: req.user!.id } },
-            },
-            include: includeConfig,
-          });
+    const updated = await prisma.$transaction(async (tx) => {
+      if (model.moderationStatus !== ModerationStatus.FLAGGED) {
+        await tx.modelAsset.update({
+          where: { id: modelId },
+          data: {
+            moderationStatus: ModerationStatus.FLAGGED,
+            flaggedAt: new Date(),
+            flaggedBy: { connect: { id: req.user!.id } },
+          },
+        });
+      } else {
+        await tx.modelAsset.update({
+          where: { id: modelId },
+          data: {
+            flaggedBy: { connect: { id: req.user!.id } },
+          },
+        });
+      }
+
+      await tx.modelModerationReport.create({
+        data: {
+          modelId,
+          reporterId: req.user!.id,
+          reason: parsed.data.reason ?? null,
+        },
+      });
+
+      return tx.modelAsset.findUnique({
+        where: { id: modelId },
+        include: includeConfig,
+      });
+    });
 
     if (!updated) {
       res.status(500).json({ message: 'Das Modell konnte nicht aktualisiert werden.' });
@@ -667,21 +722,46 @@ assetsRouter.post('/images/:id/flag', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const updated =
-      image.moderationStatus === ModerationStatus.FLAGGED
-        ? await prisma.imageAsset.findUnique({
-            where: { id: imageId },
-            include: buildImageInclude(req.user?.id),
-          })
-        : await prisma.imageAsset.update({
-            where: { id: imageId },
-            data: {
-              moderationStatus: ModerationStatus.FLAGGED,
-              flaggedAt: new Date(),
-              flaggedBy: { connect: { id: req.user!.id } },
-            },
-            include: buildImageInclude(req.user?.id),
-          });
+    const includeConfig = {
+      ...buildImageInclude(req.user?.id),
+      moderationReports: {
+        include: { reporter: { select: { id: true, displayName: true, email: true } } },
+        orderBy: { createdAt: 'desc' },
+      },
+    } as const;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (image.moderationStatus !== ModerationStatus.FLAGGED) {
+        await tx.imageAsset.update({
+          where: { id: imageId },
+          data: {
+            moderationStatus: ModerationStatus.FLAGGED,
+            flaggedAt: new Date(),
+            flaggedBy: { connect: { id: req.user!.id } },
+          },
+        });
+      } else {
+        await tx.imageAsset.update({
+          where: { id: imageId },
+          data: {
+            flaggedBy: { connect: { id: req.user!.id } },
+          },
+        });
+      }
+
+      await tx.imageModerationReport.create({
+        data: {
+          imageId,
+          reporterId: req.user!.id,
+          reason: parsed.data.reason ?? null,
+        },
+      });
+
+      return tx.imageAsset.findUnique({
+        where: { id: imageId },
+        include: includeConfig,
+      });
+    });
 
     if (!updated) {
       res.status(500).json({ message: 'Bild konnte nicht aktualisiert werden.' });
@@ -715,12 +795,22 @@ assetsRouter.get('/moderation/queue', requireAuth, requireAdmin, async (req, res
           owner: { select: { id: true, displayName: true, email: true } },
           flaggedBy: { select: { id: true, displayName: true, email: true } },
           versions: { orderBy: { createdAt: 'desc' } },
+          moderationReports: {
+            include: { reporter: { select: { id: true, displayName: true, email: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
         },
         orderBy: [{ flaggedAt: 'desc' }, { createdAt: 'desc' }],
       }),
       prisma.imageAsset.findMany({
         where: { moderationStatus: ModerationStatus.FLAGGED },
-        include: buildImageInclude(req.user?.id),
+        include: {
+          ...buildImageInclude(req.user?.id),
+          moderationReports: {
+            include: { reporter: { select: { id: true, displayName: true, email: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
         orderBy: [{ flaggedAt: 'desc' }, { createdAt: 'desc' }],
       }),
     ]);
@@ -794,15 +884,21 @@ assetsRouter.post('/models/:id/moderation/approve', requireAuth, requireAdmin, a
 
 assetsRouter.post('/models/:id/moderation/remove', requireAuth, requireAdmin, async (req, res, next) => {
   try {
+    const { id: modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Model-ID fehlt.' });
+      return;
+    }
+
     const parsed = moderationDecisionSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
       return;
     }
 
-    const { id: modelId } = req.params;
-    if (!modelId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+    const trimmedReason = parsed.data.reason?.trim() ?? '';
+    if (trimmedReason.length === 0) {
+      res.status(400).json({ message: 'Bitte gib eine Begründung für die Ablehnung an.' });
       return;
     }
 
@@ -836,7 +932,7 @@ assetsRouter.post('/models/:id/moderation/remove', requireAuth, requireAdmin, as
       action: ModerationActionType.REMOVED,
       actorId: req.user!.id,
       targetUserId: model.ownerId,
-      message: parsed.data.reason ?? 'Inhalt durch Moderation entfernt.',
+      message: trimmedReason,
     });
 
     res.json({ removed: model.id });
@@ -900,15 +996,21 @@ assetsRouter.post('/images/:id/moderation/approve', requireAuth, requireAdmin, a
 
 assetsRouter.post('/images/:id/moderation/remove', requireAuth, requireAdmin, async (req, res, next) => {
   try {
+    const { id: imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
     const parsed = moderationDecisionSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
       return;
     }
 
-    const { id: imageId } = req.params;
-    if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+    const trimmedReason = parsed.data.reason?.trim() ?? '';
+    if (trimmedReason.length === 0) {
+      res.status(400).json({ message: 'Bitte gib eine Begründung für die Ablehnung an.' });
       return;
     }
 
@@ -935,7 +1037,7 @@ assetsRouter.post('/images/:id/moderation/remove', requireAuth, requireAdmin, as
       action: ModerationActionType.REMOVED,
       actorId: req.user!.id,
       targetUserId: image.ownerId,
-      message: parsed.data.reason ?? 'Inhalt durch Moderation entfernt.',
+      message: trimmedReason,
     });
 
     res.json({ removed: image.id });
