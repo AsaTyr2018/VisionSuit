@@ -1,668 +1,668 @@
-## 001 – Express startup fix
+## 001 – [Fix] Express startup fix
 - **General**: Stabilized the backend boot process after Express failed to locate the request augmentation module.
 - **Technical Changes**: Converted the Express request extension from `.d.ts` to `.ts`, refreshed backend linting, and documented the troubleshooting steps and upload endpoint in the README.
 - **Data Changes**: None; runtime typings only.
 
-## 002 – Storage proxy hardening (0c8e4b3)
+## 002 – [Fix] Storage proxy hardening (0c8e4b3)
 - **General**: Delivered a reliable storage proxy so MinIO assets stream through the backend with consistent limits and messaging.
 - **Technical Changes**: Added `/api/storage/:bucket/:objectKey`, enriched Multer error handling, routed frontend downloads through the proxy, introduced shared storage helpers, and updated README limits.
 - **Data Changes**: None; transport layer adjustments only.
 
-## 003 – MinIO storage foundation (16b920c)
+## 003 – [Addition] MinIO storage foundation (16b920c)
 - **General**: Introduced MinIO-backed storage with first-class setup guidance across the stack.
 - **Technical Changes**: Added `lib/storage` with automatic bucket provisioning, gated server startup on successful bootstrap, wired new MinIO environment variables, templated `.env`, and extended the installer and README.
 - **Data Changes**: None beyond new storage buckets created at runtime.
 
-## 004 – Platform bootstrap (21ef5ed)
+## 004 – [Addition] Platform bootstrap (21ef5ed)
 - **General**: Established the initial VisionSuit platform spanning backend API, Prisma schema, and Vite frontend skeleton.
 - **Technical Changes**: Implemented Express routing, LoRA/image/gallery/statistics endpoints, Prisma schema with seeds, responsive dashboard components, API helpers, lint/build automation, and comprehensive README guidance.
 - **Data Changes**: Introduced the baseline SQLite schema and seed content for users, assets, galleries, and tags.
 
-## 005 – Express wildcard regression (37ed12b)
+## 005 – [Fix] Express wildcard regression (37ed12b)
 - **General**: Repaired storage downloads after Express 5 rejected wildcard parameters.
 - **Technical Changes**: Replaced the proxy route with `/api/storage/:bucket/:objectKey(*)`, updated handler lookups, and aligned README documentation.
 - **Data Changes**: None.
 
-## 006 – Unified dev starter (5957426)
+## 006 – [Addition] Unified dev starter (5957426)
 - **General**: Simplified local development with a combined launcher for backend and frontend.
 - **Technical Changes**: Added `dev-start.sh`, hardened Vite host/port parsing for 0.0.0.0 access, synchronized backend package metadata, and refreshed README workflow notes.
 - **Data Changes**: None.
 
-## 007 – Node 18 crypto polyfill (620b2ab)
+## 007 – [Fix] Node 18 crypto polyfill (620b2ab)
 - **General**: Ensured the frontend works on Node 18.19 by polyfilling missing WebCrypto hashing APIs.
 - **Technical Changes**: Added a reusable polyfill script, required it via npm scripts, typed the Vite config, and documented Node compatibility guidance.
 - **Data Changes**: None.
 
-## 008 – Guided installer (78dbd3b)
+## 008 – [Addition] Guided installer (78dbd3b)
 - **General**: Reduced onboarding friction with an interactive installation script for both services.
 - **Technical Changes**: Introduced `install.sh` to install dependencies, scaffold `.env` files, and optionally run Prisma tasks while documenting the workflow in the README.
 - **Data Changes**: None.
 
-## 009 – Extended rollback tooling (805a7d9)
+## 009 – [Addition] Extended rollback tooling (805a7d9)
 - **General**: Expanded the rollback utility to fully clean local toolchains when requested.
 - **Technical Changes**: Taught `rollback.sh` to purge npm caches, global prefixes, and popular Node version managers while clearly documenting the destructive steps.
 - **Data Changes**: None.
 
-## 010 – Dockerized install flow (a1b2c3d)
+## 010 – [Addition] Dockerized install flow (a1b2c3d)
 - **General**: Automated Docker, Portainer, and MinIO provisioning during installation.
 - **Technical Changes**: Added Docker/Compose checks, optional Portainer setup, persistent MinIO container orchestration, and README updates covering prerequisites and persistence paths.
 - **Data Changes**: None; infrastructure only.
 
-## 011 – Prisma configuration cleanup (b29726e)
+## 011 – [Fix] Prisma configuration cleanup (b29726e)
 - **General**: Unblocked Prisma CLI usage by removing conflicting environment overrides.
 - **Technical Changes**: Deleted `prisma/.env`, updated ignores and rollback script references, and clarified README setup notes.
 - **Data Changes**: None.
 
-## 012 – Repository reset (d09d717)
+## 012 – [Addition] Repository reset (d09d717)
 - **General**: Cleared the repository to prepare for the new VisionSuit codebase.
 - **Technical Changes**: Removed legacy application files and reset README content.
 - **Data Changes**: Purged prior project artifacts to start from a clean slate.
 
-## 013 – Inline Vite polyfill (d5003cf)
+## 013 – [Fix] Inline Vite polyfill (d5003cf)
 - **General**: Delivered a built-in hash polyfill so the dev starter no longer crashes on missing `crypto.hash`.
 - **Technical Changes**: Embedded compatibility logic inside `vite.config.ts`, expanded TypeScript settings, and documented the change.
 - **Data Changes**: None.
 
-## 014 – Rollback utility (d7034e7)
+## 014 – [Addition] Rollback utility (d7034e7)
 - **General**: Added a dedicated rollback script to restore local environments quickly.
 - **Technical Changes**: Implemented artifact and dependency cleanup for both services and described usage in the README.
 - **Data Changes**: None; cleans up generated files only.
 
-## 015 – Storage proxy compatibility (eedd315)
+## 015 – [Fix] Storage proxy compatibility (eedd315)
 - **General**: Fixed another Express wildcard incompatibility impacting storage downloads.
 - **Technical Changes**: Switched the proxy to `:objectKey(.*)` to accept nested paths and validated linting (pending type fixes).
 - **Data Changes**: None.
 
-## 016 – Frontend production pass (f80f7df)
+## 016 – [Addition] Frontend production pass (f80f7df)
 - **General**: Elevated the landing experience with a hero flow and three-step upload wizard.
 - **Technical Changes**: Built the UploadWizard component, toast system, hero CTA, API client hooks, and extensive styling updates while aligning README highlights.
 - **Data Changes**: None.
 
-## 017 – Prisma environment standardization (fa46387)
+## 017 – [Fix] Prisma environment standardization (fa46387)
 - **General**: Normalized Prisma configuration so migrations run without manual variables.
 - **Technical Changes**: Added a shared SQLite URL, updated ignore rules, removed legacy package settings, and refreshed README guidance.
 - **Data Changes**: None; configuration only.
 
-## 018 – Explorer expansion (pending)
+## 018 – [Addition] Explorer expansion (pending)
 - **General**: Delivered data-driven explorers for LoRA assets and curated galleries.
 - **Technical Changes**: Implemented advanced filtering, lazy loading, new card layouts, reusable chips, and README updates for the frontend workflow.
 - **Data Changes**: None; UI consuming existing APIs.
 
-## 019 – Workflow plan
+## 019 – [Addition] Workflow plan
 - **General**: Published the VisionSuit workflow roadmap covering components, phases, and risks.
 - **Technical Changes**: Added planning documentation and referenced it from the README.
 - **Data Changes**: None.
 
-## 020 – Gallery overhaul (0941b39)
+## 020 – [Addition] Gallery overhaul (0941b39)
 - **General**: Replaced the legacy image gallery with a richer collection explorer and lightbox.
 - **Technical Changes**: Added random preview tiles, five-column grids, scroll pagination, detailed lightbox metadata, supporting styles, and README updates.
 - **Data Changes**: None.
 
-## 021 – Upload pipeline foundation (1bdf211)
+## 021 – [Addition] Upload pipeline foundation (1bdf211)
 - **General**: Transitioned uploads from a mock to a production-ready flow with governance messaging.
 - **Technical Changes**: Implemented `POST /api/uploads`, added `UploadDraft` schema and validation, enhanced hero layout, enriched wizard error handling, refreshed styles, and documented the API.
 - **Data Changes**: Added the `UploadDraft` table and related migration to persist draft sessions and file metadata.
 
-## 022 – Model detail refresh (3396953)
+## 022 – [Addition] Model detail refresh (3396953)
 - **General**: Streamlined the model detail view for clearer information hierarchy.
 - **Technical Changes**: Reworked layout into summary table plus preview, elevated download CTA styling, and synchronized README highlights.
 - **Data Changes**: None.
 
-## 023 – Metadata table redesign (4b59727)
+## 023 – [Addition] Metadata table redesign (4b59727)
 - **General**: Made model metadata easier to scan by normalizing nested payloads.
 - **Technical Changes**: Added recursive normalization in the asset explorer, replaced definition lists with accessible tables, and refined table styling.
 - **Data Changes**: None.
 
-## 024 – Focused model uploads (4fd2b2b)
+## 024 – [Fix] Focused model uploads (4fd2b2b)
 - **General**: Tightened the model upload experience to prevent extraneous files.
 - **Technical Changes**: Limited uploads to one model plus optional preview, hid gallery/type controls, updated review copy, and refreshed README guidance.
 - **Data Changes**: None.
 
-## 025 – Model versioning (5b1e08a)
+## 025 – [Addition] Model versioning (5b1e08a)
 - **General**: Enabled versioned model management across backend and frontend.
 - **Technical Changes**: Added `ModelVersion` schema and API endpoint, expanded storage cleanup, built the ModelVersion dialog, wired API client calls, and styled version chips.
 - **Data Changes**: Added the `ModelVersion` table and relations for persisted Safetensor revisions.
 
-## 026 – Explorer layout polish (7c08273)
+## 026 – [Addition] Explorer layout polish (7c08273)
 - **General**: Improved model explorer navigation with consistent grids and cross-links.
 - **Technical Changes**: Locked the explorer to five-column lazy-loaded grids, added metadata sidebars, linked related galleries and models, and updated styles plus README highlights.
 - **Data Changes**: None.
 
-## 027 – Gallery albums (9225ba6)
+## 027 – [Addition] Gallery albums (9225ba6)
 - **General**: Introduced album-centric gallery browsing with immersive previews.
 - **Technical Changes**: Added `GalleryAlbum` components, hero tiles, keyboard-aware lightbox, skeleton states, and removed outdated cards while updating documentation.
 - **Data Changes**: None.
 
-## 028 – Admin control center (commit TBD)
+## 028 – [Addition] Admin control center (commit TBD)
 - **General**: Reimagined the admin panel for large-scale moderation workloads.
 - **Technical Changes**: Added bulk filters and actions across users, models, and images; extended gallery editors; implemented backend batch endpoints; refreshed styling; and aligned README highlights.
 - **Data Changes**: None; operates on existing records.
 
-## 029 – Explorer copy cleanup (commit TBD)
+## 029 – [Fix] Explorer copy cleanup (commit TBD)
 - **General**: Completed the English localization of remaining asset explorer strings.
 - **Technical Changes**: Translated residual German labels and logs and verified linting.
 - **Data Changes**: None.
 
-## 030 – Authentication and admin suite (commit TBD)
+## 030 – [Addition] Authentication and admin suite (commit TBD)
 - **General**: Secured VisionSuit with full JWT authentication and admin tooling.
 - **Technical Changes**: Added login/me endpoints, password hashing, auth middleware, role-aware upload/asset routes, admin CRUD APIs, provisioning script, frontend auth context and dashboards, and updated styling plus README docs.
 - **Data Changes**: Stores hashed credentials and role assignments within existing user tables.
 
-## 031 – Dialog-based explorers (commit TBD)
+## 031 – [Addition] Dialog-based explorers (commit TBD)
 - **General**: Shifted model and gallery detail views into reusable dialogs for better focus on small screens.
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
-## 032 – Resilient gallery metadata (commit TBD)
+## 032 – [Fix] Resilient gallery metadata (commit TBD)
 - **General**: Prevented gallery crashes when metadata is missing or incomplete.
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
-## 033 – Curator asset lifecycle tools
+## 033 – [Addition] Curator asset lifecycle tools
 - **General**: Empowered curators and admins to fully manage models, collections, and images with safe deletion workflows and flexible gallery links.
 - **Technical Changes**: Added a backend endpoint for linking models to galleries, refreshed the model explorer with irreversible delete confirmations and link management UI, expanded the gallery explorer with delete actions, updated shared styles, and extended the API client plus app state handlers.
 - **Data Changes**: None; feature relies on existing Prisma models.
 
-## 033 – Ranking administration suite (commit TBD)
+## 033 – [Addition] Ranking administration suite (commit TBD)
 - **General**: Empowered administrators to tune ranking math, expand the ladder, and moderate curator visibility.
 - **Technical Changes**: Added configurable ranking settings and tier management APIs, introduced user-specific ranking overrides, refreshed profile scoring with dynamic weights, and surfaced ranking blocks in the UI.
 - **Data Changes**: Added Prisma models and migrations for ranking settings, tiers, and per-user overrides.
 
-## 034 – Home dashboard alignment (commit TBD)
+## 034 – [Addition] Home dashboard alignment (commit TBD)
 - **General**: Brought the home view in line with the explorer layout for consistent discovery.
 - **Technical Changes**: Implemented modular home cards, responsive two-section grid, tagged CTA buttons, explorer tag filtering, and README updates.
 - **Data Changes**: None.
 
-## 035 – Metadata extraction pipeline (commit TBD)
+## 035 – [Addition] Metadata extraction pipeline (commit TBD)
 - **General**: Added automated metadata parsing for uploads to power richer search.
 - **Technical Changes**: Built a backend metadata helper for PNG/JPEG/Safetensors, integrated results into upload processing and API payloads, wired frontend filters and admin dashboards to the new fields, and documented the automation.
 - **Data Changes**: Persisted extracted metadata JSON on model/image assets and upload drafts.
 
-## 036 – Metadata dialog enhancements (commit TBD)
+## 036 – [Addition] Metadata dialog enhancements (commit TBD)
 - **General**: Clarified safetensor metadata presentation and separated tag analysis.
 - **Technical Changes**: Added recursive JSON detection for model aliases, filtered frequency stats, introduced a dedicated tag dialog, refined buttons/tables, and updated highlights.
 - **Data Changes**: None.
 
-## 037 – UI streamline (commit TBD)
+## 037 – [Addition] UI streamline (commit TBD)
 - **General**: Simplified dashboard chrome and clarified key call-to-actions.
 - **Technical Changes**: Removed redundant header buttons, unified explorer labels, added role-aware gallery dropdown in the wizard with error messaging, and updated README notes.
 - **Data Changes**: None.
 
-## 038 – Upload wizard translation (commit TBD)
+## 038 – [Addition] Upload wizard translation (commit TBD)
 - **General**: Completed the English-language UX for the upload wizard.
 - **Technical Changes**: Translated all visible strings, added category mapping, refined copy in success/review states, ensured supporting components match, and noted the change in the README.
 - **Data Changes**: None.
 
-## 039 – Storage route consolidation (commit TBD)
+## 039 – [Fix] Storage route consolidation (commit TBD)
 - **General**: Finalized Express storage routing compatible with Express 5 across GET and HEAD.
 - **Technical Changes**: Migrated to `/:bucket/*`, shared handler logic, and explained the fix while awaiting final commit ID.
 - **Data Changes**: None.
 
-## 040 – Streamlined installer (da2500c)
+## 040 – [Addition] Streamlined installer (da2500c)
 - **General**: Tuned the installer for production hosts with automatic IP detection.
 - **Technical Changes**: Added smart IP/port prompts, synchronized `.env` files, injected MinIO defaults, and refreshed README installation guidance.
 - **Data Changes**: None.
 
-## 041 – Storage wildcard fix (e59b9b2)
+## 041 – [Fix] Storage wildcard fix (e59b9b2)
 - **General**: Ensured storage endpoints load under Express 5 after wildcard parsing changes.
 - **Technical Changes**: Adopted a named `:objectPath(*)` parameter, retained legacy fallback, and updated README endpoint documentation.
 - **Data Changes**: None.
 
-## 042 – Avatar upload pipeline (commit TBD)
+## 042 – [Addition] Avatar upload pipeline (commit TBD)
 - **General**: Enabled secure on-platform avatar uploads with built-in validation and MinIO-backed delivery.
 - **Technical Changes**: Added the `/api/users/:id/avatar` endpoint with strict MIME checks and size guards, updated auth user serialization, wired the React account settings dialog and API client for file uploads, and refreshed styles plus documentation.
 - **Data Changes**: Stores uploaded avatars in the image bucket under user-specific prefixes; database schema unchanged.
 
-## 043 – Model version hierarchy controls (commit TBD)
+## 043 – [Addition] Model version hierarchy controls (commit TBD)
 - **General**: Enabled full lifecycle management of secondary model revisions directly from the admin console.
 - **Technical Changes**: Added backend promotion and deletion endpoints, refined primary-version mapping to preserve chronology, exposed new API client helpers, and wired admin UI actions for promoting, renaming, and removing versions with refreshed README guidance.
 - **Data Changes**: None.
 
-## 044 – Model card layout polish (commit TBD)
+## 044 – [Addition] Model card layout polish (commit TBD)
 - **General**: Smoothed the model card experience by aligning primary actions and tightening the dataset tags table.
 - **Technical Changes**: Converted the preview action stack to a full-width flex column, equalized button typography, and padded the tag frequency table with a fixed layout so headers and rows stay inside the dialog.
 - **Data Changes**: None.
 
-## 045 – Trigger activator modelcards
+## 045 – [Addition] Trigger activator modelcards
 - **General**: Added a dedicated Trigger/Activator field to modelcards with copy-to-clipboard handling during uploads and admin edits.
 - **Technical Changes**: Extended the Prisma schema, API validation, upload wizard, admin panel, and explorer UI to capture and display trigger phrases while equalizing modelcard summary column sizing and styling the copy action.
 - **Data Changes**: Introduced a nullable `trigger` column on `ModelAsset` records and seeded demo content with a default activator.
 
-## 046 – Storage object IDs (e78ced6)
+## 046 – [Addition] Storage object IDs (e78ced6)
 - **General**: Moved storage downloads to stable object IDs resolved from the database.
 - **Technical Changes**: Added the `StorageObject` table and migration, updated the proxy to look up metadata by ID, adjusted upload pipelines to create records, and refreshed README docs.
 - **Data Changes**: Introduced `StorageObject` records referencing each stored asset.
 
-## 047 – Gallery upload wizard (ecb521e)
+## 047 – [Addition] Gallery upload wizard (ecb521e)
 - **General**: Launched a gallery-specific upload wizard with backend support and documentation.
 - **Technical Changes**: Added multi-image upload handling with validation, created gallery entries per file, linked explorer actions, adjusted toast handling, and updated README guidance.
 - **Data Changes**: Persisted gallery draft assets and cover updates during uploads.
 
-## 048 – README refresh
+## 048 – [Addition] README refresh
 - **General**: Modernized and translated the README into clear English.
 - **Technical Changes**: Reorganized highlights, architecture overview, installation, workflow, upload pipeline, and troubleshooting content for clarity.
 - **Data Changes**: None.
 
-## 049 – Product shell refresh (bb636b9)
+## 049 – [Addition] Product shell refresh (bb636b9)
 - **General**: Updated the frontend shell with persistent navigation and service health indicators.
 - **Technical Changes**: Added a permanent sidebar, surface status API `/api/meta/status`, refreshed home tiles, introduced a standalone image explorer, and aligned README docs.
 - **Data Changes**: None.
 
-## 050 – Launch day polish (bcd8f72)
+## 050 – [Addition] Launch day polish (bcd8f72)
 - **General**: Elevated the landing page into a production control panel with trust cues and CTAs.
 - **Technical Changes**: Added sticky topbar, hero, trust metrics, CTA panels, wizard auto-refresh callbacks, extensive styling, README updates, and corrected prior changelog references.
 - **Data Changes**: None.
 
-## 051 – Direct MinIO pipeline (pending)
+## 051 – [Addition] Direct MinIO pipeline (pending)
 - **General**: Connected uploads directly to MinIO with immediate asset availability.
 - **Technical Changes**: Updated upload endpoints to stream to MinIO with checksums, created assets/galleries in one pass, exposed storage metadata in APIs, refreshed frontend cards/wizard messaging, and documented the flow.
 - **Data Changes**: Assets and galleries now persist MinIO bucket/object names alongside existing metadata.
 
-## 052 – Community roadmap documentation
+## 052 – [Addition] Community roadmap documentation
 - **General**: Documented the planned community engagement features and surfaced the roadmap in public docs.
 - **Technical Changes**: Added a dedicated community features plan detailing reactions, comments, follows, collections, and the supporting architecture; linked the plan from the README via a new Community Roadmap section.
 - **Data Changes**: None; documentation-only update outlining future schema additions.
 
-## 053 – Historical changelog migration
+## 053 – [Addition] Historical changelog migration
 - **General**: Consolidated all legacy changelog entries into the unified format and cleaned up redundant files.
 - **Technical Changes**: Transcribed prior per-commit notes into the new changelog layout and removed superseded markdown entries.
 - **Data Changes**: None.
 
-## 054 – Preview gallery quick actions
+## 054 – [Addition] Preview gallery quick actions
 - **General**: Moved linked image collection access directly beneath the model preview with action-style buttons.
 - **Technical Changes**: Updated the asset detail preview card to render gallery navigation buttons alongside downloads and refreshed the associated styling while removing the old section list.
 - **Data Changes**: None.
 
-## 055 – Model card action polish (commit TBD)
+## 055 – [Addition] Model card action polish (commit TBD)
 - **General**: Tightened the model card actions by matching button styling and clarifying the surrounding tag and metadata layout.
 - **Technical Changes**: Reduced preview action width stretching, unified the open-collection button palette with downloads, simplified its label, introduced a detail grid for tags versus metadata, and refreshed spacing utilities for both sections.
 - **Data Changes**: None.
 
-## 056 – Model card layout restructure
+## 056 – [Addition] Model card layout restructure
 - **General**: Rebuilt the model card layout into a two-column canvas with more breathing room and stabilized table alignment.
 - **Technical Changes**: Introduced a responsive layout grid for summary and metadata panes, widened the dialog container, enforced fixed table layouts, and added flexible metadata scroll containers.
 - **Data Changes**: None.
 
-## 057 – Model card width expansion
+## 057 – [Addition] Model card width expansion
 - **General**: Enlarged the model detail dialog so metadata columns remain readable on wide screens.
 - **Technical Changes**: Adjusted the dialog container to span 80% of the viewport (capped at 1400px) and loosened the tablet breakpoint width to retain proportional spacing.
 - **Data Changes**: None.
 
-## 058 – Model card metadata centering
+## 058 – [Addition] Model card metadata centering
 - **General**: Realigned the model card so the metadata panel sits beneath the preview and regains breathing room.
 - **Technical Changes**: Repositioned the metadata section inside the summary grid, removed the squeezing flex growth, and added styling to center the metadata card below the preview.
 - **Data Changes**: None.
 
-## 059 – Model version management enhancements (commit TBD)
+## 059 – [Addition] Model version management enhancements (commit TBD)
 - **General**: Empowered curators and admins to rename model versions from the modelcard while giving the metadata section more breathing room.
 - **Technical Changes**: Added `PUT /api/assets/models/:modelId/versions/:versionId`, expanded the frontend API client, introduced an edit dialog with permission checks, refined version chip labelling with edit controls, and stretched the metadata card styling.
 - **Data Changes**: None; operates on existing model/version records without schema updates.
 
-## 060 – Asset explorer crash fix (commit TBD)
+## 060 – [Fix] Asset explorer crash fix (commit TBD)
 - **General**: Restored the model gallery so the Asset Explorer shows tiles instead of failing with a blank screen.
 - **Technical Changes**: Reordered the `activeAsset` memo and its permission guard ahead of dependent effects to remove the temporal dead zone runtime error that crashed the component on load.
 - **Data Changes**: None.
 
-## 061 – Gallery detail grid expansion (commit TBD)
+## 061 – [Addition] Gallery detail grid expansion (commit TBD)
 - **General**: Extended the gallery detail view to surface six thumbnails per row on wide screens without distorting the layout.
 - **Technical Changes**: Updated `.gallery-detail__grid` breakpoints and thumbnail sizing in `frontend/src/index.css` to provide a six-column base with responsive fallbacks and square previews.
 - **Data Changes**: None; visual styling only.
 
-## 062 – Administration workspace restyle
+## 062 – [Addition] Administration workspace restyle
 - **General**: Modernized the admin console with a lighter visual rhythm and clearer hierarchy for moderation workflows.
 - **Technical Changes**: Reworked administration CSS with glassmorphism cards, pill navigation, refined forms/tables, enhanced focus states, and refreshed README guidance.
 - **Data Changes**: None.
 
-## 063 – Compact moderation grid (commit TBD)
+## 063 – [Addition] Compact moderation grid (commit TBD)
 - **General**: Reimagined the admin image moderation space as a dense grid with inline previews and quick actions to keep hundreds of thousands of assets scannable.
 - **Technical Changes**: Introduced thumbnail resolution helpers, expandable edit sections, condensed metadata badges, subtle action buttons, and refreshed README guidance to describe the new workflow.
 - **Data Changes**: None; presentation-only adjustments.
 
-## 064 – Admin search event pooling fix
+## 064 – [Fix] Admin search event pooling fix
 - **General**: Restored admin panel filters so typing in search fields no longer crashes the interface.
 - **Technical Changes**: Captured input and select values before enqueuing state updates throughout `AdminPanel.tsx` to avoid React's SyntheticEvent pooling from clearing `currentTarget`.
 - **Data Changes**: None; UI state handling only.
 
-## 065 – Admin model grid parity (commit TBD)
+## 065 – [Addition] Admin model grid parity (commit TBD)
 - **General**: Brought the models administration view in line with the image moderation cards, including clear version lineage per asset.
 - **Technical Changes**: Replaced the tabular model manager with card-based layouts, surfaced version metadata with storage links, added expansion controls, refreshed styling, and updated README guidance.
 - **Data Changes**: None; presentation layer only.
 
-## 066 – Community plan feasibility documentation
+## 066 – [Addition] Community plan feasibility documentation
 - **General**: Captured the community roadmap feasibility assessment in dedicated documentation and linked it from the main README.
 - **Technical Changes**: Added `docs/community-features-plan-analysis.md` mirroring the prior review tables and refreshed the README community roadmap section with a reference to the new analysis.
 - **Data Changes**: None; documentation-only addition for planning purposes.
-## 067 – Severity-based community update plans
+## 067 – [Addition] Severity-based community update plans
 - **General**: Published severity-grouped content update roadmaps to steer community feature rollout communications.
 - **Technical Changes**: Added dedicated plan documents for Projects Silverleaf, Ironquill, and Novashield plus updated the README to reference them.
 - **Data Changes**: None; documentation-only planning assets.
 
-## 068 – Interactive home spotlights (commit TBD)
+## 068 – [Addition] Interactive home spotlights (commit TBD)
 - **General**: Elevated the home dashboard with clickable previews that jump directly into the explorers.
 - **Technical Changes**: Added media buttons on home tiles that focus the respective model or gallery, introduced gallery lookups for image cards, updated hover/focus styling, and refreshed README guidance.
 - **Data Changes**: None.
 
-## 069 – Modelcard primary-first ordering
+## 069 – [Fix] Modelcard primary-first ordering
 - **General**: Ensured modelcard version listings surface the primary release before sequential versions for quicker recognition.
 - **Technical Changes**: Updated backend asset mapping to keep the primary version at the top while numerically ordering the remaining versions and retaining latest-version metadata via creation timestamps.
 - **Data Changes**: None; response payload ordering only.
 
-## 070 – Dialog-driven user onboarding (pending)
+## 070 – [Addition] Dialog-driven user onboarding (pending)
 - **General**: Reimagined account creation with preset-driven dialogs and clearer role guidance for administrators.
 - **Technical Changes**: Added a multi-step `UserCreationDialog` with validation and password generation, introduced role summary popups, revamped the admin onboarding panel styling, extended status handling, and refreshed README highlights.
 - **Data Changes**: None; interface and workflow updates only.
 
-## 071 – Client bulk import scripts
+## 071 – [Addition] Client bulk import scripts
 - **General**: Equipped curators with turnkey client importers so LoRA weights and previews can be staged locally and pushed to the VisionSuit server in bulk.
 - **Technical Changes**: Added dedicated Linux/macOS and Windows scripts that validate matching preview folders, pick a random cover image, generate a manifest, and upload packages over SSH; refreshed the README with setup and execution guidance.
 - **Data Changes**: None; tooling additions only.
 
-## 072 – API-driven bulk import helpers
+## 072 – [Addition] API-driven bulk import helpers
 - **General**: Reworked the client import tooling to authenticate against VisionSuit and upload LoRAs through the official pipeline instead of SSH transfers.
 - **Technical Changes**: Replaced the staging/manifest workflow with direct `POST /api/uploads` calls in both scripts, added credential prompts and file-cap trimming, refreshed README guidance, and documented password handling.
 - **Data Changes**: None; ingestion now flows through existing upload drafts and storage objects.
 
-## 073 – Frontend title alignment (commit TBD)
+## 073 – [Fix] Frontend title alignment (commit TBD)
 - **General**: Updated the browser tab title to reflect the VisionSuit brand instead of the Vite starter text.
 - **Technical Changes**: Changed the HTML document title in `frontend/index.html` to "VisionSuit" for production readiness.
 - **Data Changes**: None.
-## 074 – Sidebar service status refinement
+## 074 – [Addition] Sidebar service status refinement
 - **General**: Elevated the service indicator deck with cohesive glassmorphism cards and contextual badges.
 - **Technical Changes**: Reworked the sidebar status markup with service initials, introduced gradient icon styling and status-aware card accents, refreshed health pill visuals, and updated the README highlight to describe the polished cards.
 - **Data Changes**: None; presentation-only updates for health indicators.
 
-## 075 – Sidebar status LED redesign (commit TBD)
+## 075 – [Addition] Sidebar status LED redesign (commit TBD)
 - **General**: Replaced the sidebar service text badges with compact LED indicators that stay visible within the card layout.
 - **Technical Changes**: Updated the service status header markup, introduced dedicated LED styling with accessibility helpers, and refreshed the README highlight to mention the beacons.
 - **Data Changes**: None.
 
-## 076 – Curator edit controls (commit TBD)
+## 076 – [Addition] Curator edit controls (commit TBD)
 - **General**: Enabled curators to edit their own models, galleries, and images directly from the explorers without requiring admin access.
 - **Technical Changes**: Added role-aware edit dialogs for models, images, and collections, refreshed state management in the explorers, expanded styling for new action buttons, and updated README guidance.
 - **Data Changes**: None; updates operate on existing records only.
 
-## 077 – Gallery explorer resilience (commit TBD)
+## 077 – [Fix] Gallery explorer resilience (commit TBD)
 - **General**: Restored the gallery explorer so collections with missing owners or entry arrays render instead of crashing to an empty panel.
 - **Technical Changes**: Added defensive helpers for owner and entry access, updated filters/sorters to use the safe lookups, hardened the detail dialogs, and refreshed README guidance about handling incomplete payloads.
 - **Data Changes**: None; safeguards run entirely on the client.
 
-## 078 – Gallery explorer initialization fix (commit TBD)
+## 078 – [Fix] Gallery explorer initialization fix (commit TBD)
 - **General**: Restored the gallery explorer lightbox so collections open without crashing.
 - **Technical Changes**: Moved the active gallery memoization before dependent effects to prevent accessing uninitialized bindings.
 - **Data Changes**: None.
 
-## 079 – Image edit dialog layering fix
+## 079 – [Fix] Image edit dialog layering fix
 - **General**: Ensured the image edit dialog surfaces above the lightbox when curators edit a single gallery image.
 - **Technical Changes**: Raised the modal z-index styling in `frontend/src/index.css` so edit dialogs overlay the gallery image modal backdrop.
 - **Data Changes**: None; styling adjustment only.
 
-## 080 – Image metadata layout compaction
+## 080 – [Addition] Image metadata layout compaction
 - **General**: Shortened the image metadata edit experience by spreading controls into columns so the dialog stays within the viewport.
 - **Technical Changes**: Widened the image edit dialog container and introduced a responsive three-column grid for metadata fields in `frontend/src/components/ImageAssetEditDialog.tsx` and `frontend/src/index.css`.
 - **Data Changes**: None; purely presentational improvements to existing metadata inputs.
 
-## 081 – Curator profile spotlight
+## 081 – [Addition] Curator profile spotlight
 - **General**: Introduced curator profile pages with contribution stats, ranks, and full listings of each curator’s models and collections.
 - **Technical Changes**: Added a public `/api/users/:id/profile` endpoint, new profile view state management, reusable curator link styling, `UserProfile` component, and expanded explorers/admin panels to open profiles.
 - **Data Changes**: None; profile data is derived from existing users, models, galleries, and images.
 
-## 082 – Upload wizard asset type wiring fix
+## 082 – [Fix] Upload wizard asset type wiring fix
 - **General**: Restored both model and gallery uploads by ensuring each wizard mode automatically supplies the correct asset type to the API.
 - **Technical Changes**: Renamed the upload wizard form state to `assetType`, adjusted validations, review summaries, and submission payloads to use the field, and forwarded the computed type to `createUploadDraft` so the backend receives `lora` or `image` as expected.
 - **Data Changes**: None; fixes adjust client-side form wiring only.
 
-## 083 – Primary view initialization guard
+## 083 – [Fix] Primary view initialization guard
 - **General**: Fixed the blank screen on startup by ensuring the primary view navigation helper initializes before any effects run.
 - **Technical Changes**: Moved the `openPrimaryView` callback above dependent effects in `frontend/src/App.tsx` so React doesn’t hit the temporal dead zone when guarding the admin view.
 - **Data Changes**: None; state management only.
 
-## 084 – Self-service account settings
+## 084 – [Addition] Self-service account settings
 - **General**: Empowered curators to manage their own profile details and passwords directly from the console sidebar.
 - **Technical Changes**: Added authenticated profile/password routes, new API helpers, an account settings modal with validation, refreshed sidebar styling, and updated README guidance.
 - **Data Changes**: None; updates operate on existing user records only.
 
-## 085 – Avatar relay hardening
+## 085 – [Fix] Avatar relay hardening
 - **General**: Ensured curator avatars remain visible regardless of MinIO hostname settings by proxying them through the API and removing the manual URL field from account settings.
 - **Technical Changes**: Added a `/api/users/:id/avatar` stream endpoint, centralized avatar URL resolution with request-aware helpers, updated user serializers to emit proxied links, refreshed the React profile view to normalize avatar sources, and simplified the account settings dialog plus docs.
 - **Data Changes**: None; avatars continue to upload into the existing image bucket with unchanged storage paths.
 
-## 086 – Admin ranking controls UI
+## 086 – [Addition] Admin ranking controls UI
 - **General**: Introduced a ranking administration tab so operators can adjust scoring weights, manage tiers, and moderate individual curators from one place.
 - **Technical Changes**: Extended the frontend API client with ranking helpers, wired App state to load settings and tiers, built ranking forms with validation/status feedback in the admin panel, and refreshed the README to highlight the feature.
 - **Data Changes**: None; interfaces call existing ranking endpoints without schema updates.
 
-## 087 – Ranking administration guardrails
+## 087 – [Fix] Ranking administration guardrails
 - **General**: Restored the ranking admin workspace so weights, tiers, and curator actions work reliably for administrators.
 - **Technical Changes**: Required authenticated admin access for `/api/rankings` endpoints, buffered ranking input handlers against React event reuse, and refreshed README guidance around the responsive admin panel.
 - **Data Changes**: None.
 
-## 088 – Model management mainframe
+## 088 – [Addition] Model management mainframe
 - **General**: Simplified the admin model overview to focus on previews and names while moving detailed editing into the mainframe workspace.
 - **Technical Changes**: Reworked the `AdminPanel` model tab to highlight grid cards with a Manage action, introduced a dedicated mainframe form/versions layout, refreshed selection handling, and updated styling to support the new structure.
 - **Data Changes**: None; presentation and client-side workflow updates only.
 
-## 089 – Private visibility with curator audits
+## 089 – [Addition] Private visibility with curator audits
 - **General**: Locked down private models, images, and collections so they’re only visible to their owners, while giving administrators an explicit Audit switch on curator profiles to moderate hidden uploads on demand.
 - **Technical Changes**: Added optional auth middleware, Prisma `isPublic` flags for models and images, request-level filtering across asset and gallery endpoints, profile visibility signalling, audit-aware gallery serialization, and refreshed the React profile view with an Audit control, privacy notices, and private badges.
 - **Data Changes**: Introduced a Prisma migration that persists the new `isPublic` columns for `ModelAsset` and `ImageAsset` records.
 
-## 090 – Model version migration guard
+## 090 – [Fix] Model version migration guard
 - **General**: Unblocked local migrations by ensuring the new model version table setup skips recreating already-provisioned structures.
 - **Technical Changes**: Updated the `add_asset_visibility` Prisma migration to conditionally create the `ModelVersion` table and associated indexes when they are missing.
 - **Data Changes**: None; existing `ModelVersion` rows remain untouched.
 
-## 091 – Admin visibility restoration
+## 091 – [Fix] Admin visibility restoration
 - **General**: Restored comprehensive moderation access so administrators always see every model, gallery, and image without toggling audit mode in the workspace.
 - **Technical Changes**: Let admin requests bypass `isPublic` filters across asset and gallery listings, ensured gallery serialization includes private entries for admins, and allowed admin profile views to include private uploads while leaving audit mode behavior intact.
 - **Data Changes**: None; visibility rules operate on existing records only.
 
-## 092 – Curator deletion & linking hardening
+## 092 – [Fix] Curator deletion & linking hardening
 - **General**: Finalized curator-facing deletion and gallery linking so model and collection maintenance works without admin support.
 - **Technical Changes**: Regenerated the Prisma client, tightened gallery mapper typings, restored missing backend type imports, and verified linting for both backend and frontend workspaces.
 - **Data Changes**: None; the feature operates on existing Prisma models.
 
-## 093 – Model explorer initialization guard
+## 093 – [Fix] Model explorer initialization guard
 - **General**: Prevented the model explorer from crashing when opening the page by initializing gallery linking state safely.
 - **Technical Changes**: Reordered the gallery memoization and effect in `frontend/src/components/AssetExplorer.tsx` so React never references `linkableGalleries` before it is computed.
 - **Data Changes**: None; client-side state management only.
 
-## 094 – Collection cover picker
+## 094 – [Addition] Collection cover picker
 - **General**: Replaced the manual cover URL input with dedicated actions to upload a new image or pick one from the collection itself.
 - **Technical Changes**: Added a gallery cover upload endpoint with image validation and storage cleanup, refreshed the gallery editor UI with preview/status handling, selection grid styling, and API wiring for immediate updates, and exposed a client helper for the new upload call.
 - **Data Changes**: None; cover selections reuse existing gallery/image records.
 
-## 095 – Vite host allow list helper (commit TBD)
+## 095 – [Addition] Vite host allow list helper (commit TBD)
 - **General**: Simplified approving external domains for the front-end dev server.
 - **Technical Changes**: Added a Node helper to append domains to `frontend/allowed-hosts.json`, taught `vite.config.ts` to load the allow list, and documented the workflow in the README.
 - **Data Changes**: None; stores hostnames in a tracked configuration file only.
 
-## 096 – Neutralize Vite host documentation
+## 096 – [Fix] Neutralize Vite host documentation
 - **General**: Replaced references to a private domain with a neutral example so operators can copy commands safely.
 - **Technical Changes**: Updated the README usage sample for the allowed-host helper and refreshed the default `frontend/allowed-hosts.json` entry to use `example.com`.
 - **Data Changes**: Adjusted the tracked allow-list file to contain only the placeholder `example.com`.
 
-## 097 – Frontend-origin routing control
+## 097 – [Addition] Frontend-origin routing control
 - **General**: Enabled external access through the frontend without exposing backend or MinIO internals.
 - **Technical Changes**: Added same-origin API routing tokens, automatic Vite proxying with `DEV_API_PROXY_TARGET`, installer support for the proxy target, and refreshed README guidance for reverse proxy deployments.
 - **Data Changes**: None; configuration and documentation updates only.
 
-## 098 – Avatar public URL rewrite
+## 098 – [Fix] Avatar public URL rewrite
 - **General**: Ensured curator avatars load on public domains by rewriting leftover MinIO links to flow through the API proxy.
 - **Technical Changes**: Taught the storage resolver to map HTTP MinIO URLs back to bucket/object pairs so avatar serialization always emits `/api/users/:id/avatar`, and refreshed the README highlight around the hardened avatar delivery.
 - **Data Changes**: None; existing avatar records are reinterpreted at runtime without touching persisted values.
 
-## 099 – Avatar loopback rewrite (commit TBD)
+## 099 – [Fix] Avatar loopback rewrite (commit TBD)
 - **General**: Ensured curator avatars never leak loopback URLs when profiles are loaded externally.
 - **Technical Changes**: Taught the avatar resolver to reroute any localhost or 127.0.0.0/8 links through the configured API base so the frontend serves same-origin assets.
 - **Data Changes**: None.
 
-## 033 – On-site generator planning
+## 033 – [Addition] On-site generator planning
 - **General**: Documented the ComfyUI-based on-site image generator concept with architecture, workflow pipeline, and rollout phases, and linked the plan in the README roadmap.
 - **Technical Changes**: Added `docs/on-site-image-generator-plan.md` detailing service topology, pipeline stages, storage strategy, and operational guidance; updated README to reference the new plan.
 - **Data Changes**: None; planning documentation only.
 
-## 100 – Generator queue & credit planning refresh
+## 100 – [Addition] Generator queue & credit planning refresh
 - **General**: Expanded the on-site generator roadmap with detailed queue management and virtual credit policies.
 - **Technical Changes**: Documented Redis-backed queue operations, prioritization tiers, credit-aware submissions, ledger schema considerations, and monitoring/operational responses.
 - **Data Changes**: None; outlined prospective metadata and credit ledger fields only.
 
-## 101 – Member likes rollout
+## 101 – [Addition] Member likes rollout
 - **General**: Enabled the USER member role with public registration, single-tap image likes, and updated guest restrictions across the platform.
 - **Technical Changes**: Added a shared gallery include builder with like hydration, enforced auth on download/like routes, refreshed the gallery explorer UI for accessible inline like controls, updated admin role summaries, and wired the API client plus profile views to surface total like counts.
 - **Data Changes**: Introduced the `ImageLike` table with composite keys and defaulted new accounts to the USER role via Prisma migration.
 
-## 102 – Public storage access restoration
+## 102 – [Fix] Public storage access restoration
 - **General**: Restored public asset previews and downloads after the storage proxy started rejecting guest traffic.
 - **Technical Changes**: Replaced the blanket auth guard on `/api/storage` with role-aware access checks that map objects back to their owning models, images, galleries, or avatars, and refreshed README guidance about guest downloads.
 - **Data Changes**: None; access rules only.
 
-## 103 – Admin private preview access
+## 103 – [Addition] Admin private preview access
 - **General**: Let administrators review private images inline without downloading files manually.
 - **Technical Changes**: Accepted access tokens supplied via query parameters in the storage proxy middleware and taught the front-end storage resolver to append the persisted auth token so `<img>` requests authenticate transparently.
 - **Data Changes**: None; authentication flow only.
 
-## 104 – Intelligent preview cache tokens (commit TBD)
+## 104 – [Addition] Intelligent preview cache tokens (commit TBD)
 - **General**: Sped up gallery and model browsing by keeping recent imagery hot in the browser while still refreshing instantly when assets change.
 - **Technical Changes**: Added cache-aware storage resolvers that append short-lived tokens based on `updatedAt` timestamps, updated all preview consumers to use the smarter resolver, and documented the behavior in the README.
 - **Data Changes**: None; cache keys derive from existing metadata.
 
-## 105 – Role-gated model downloads
+## 105 – [Addition] Role-gated model downloads
 - **General**: Hid the model download button from guests so only signed-in members can fetch safetensors.
 - **Technical Changes**: Updated the asset explorer to require USER-or-higher roles before rendering the download link and added README guidance about the new requirement.
 - **Data Changes**: None.
 
-## 106 – Comment threads for models & gallery images
+## 106 – [Addition] Comment threads for models & gallery images
 - **General**: Opened persistent discussions on modelcards and gallery imagery with inline like toggles for every response.
 - **Technical Changes**: Added Prisma tables for model/image comments plus likes, exposed REST endpoints for loading, posting, and reacting to comments, wired new API helpers, built a reusable CommentSection component with anchors in both explorers, and refreshed styling plus README highlights for the quick comment links.
 - **Data Changes**: Introduced the `ModelComment`, `ModelCommentLike`, `ImageComment`, and `ImageCommentLike` tables via Prisma migration.
 
-## 107 – Gallery comment visibility controls
+## 107 – [Addition] Gallery comment visibility controls
 - **General**: Prioritized the enlarged image view by relocating gallery comments into a collapsible side panel.
 - **Technical Changes**: Embedded the comment section inside the metadata column, added a show/hide toggle with smooth focus handling, adjusted modal layout measurements, and refined styles so the side rail scrolls independently without obscuring the media.
 - **Data Changes**: None; UI-only adjustments.
 
-## 108 – Support channel and credits
+## 108 – [Addition] Support channel and credits
 - **General**: Added community support details and proper project attribution.
 - **Technical Changes**: Introduced a global footer in the frontend with Discord support and MythosMachina/AsaTyr credits, and refreshed the README with matching links.
 - **Data Changes**: None.
 
-## 109 – GPU worker bootstrap
+## 109 – [Addition] GPU worker bootstrap
 - **General**: Added a dedicated installer to provision ComfyUI GPU workers with MinIO connectivity.
 - **Technical Changes**: Introduced `gpuworker/install.sh`, MinIO helper scripts for model manifests, LoRA sync, and output uploads, plus documentation updates in the main README and a focused GPU worker guide.
 - **Data Changes**: None; scripts interact with runtime storage only.
 
-## 110 – GPU worker MinIO endpoint prompt (pending)
+## 110 – [Addition] GPU worker MinIO endpoint prompt (pending)
 - **General**: Streamlined GPU worker setup by capturing the target MinIO endpoint during installation.
 - **Technical Changes**: Added an interactive prompt to `gpuworker/install.sh` that records the endpoint and secure-mode flag inside `/etc/comfyui/minio.env`, refreshed the worker README, and updated the project README instructions.
 - **Data Changes**: None; only environment templates are updated.
 
-## 111 – GPU worker driver automation
+## 111 – [Addition] GPU worker driver automation
 - **General**: Equipped the GPU worker installer with intelligent GPU detection and automated driver/runtime setup for NVIDIA and AMD hosts.
 - **Technical Changes**: Added vendor detection with lspci/nvidia-smi/ROCm tools, provisioned CUDA or ROCm repositories, adjusted PyTorch index selection, expanded base dependencies, and refreshed GPU worker documentation plus the project README.
 - **Data Changes**: None.
 
-## 112 – GPU worker AWS CLI fallback (commit TBD)
+## 112 – [Fix] GPU worker AWS CLI fallback (commit TBD)
 - **General**: Unblocked the GPU worker installer on distributions that no longer ship `awscli` via APT.
 - **Technical Changes**: Added an `ensure_aws_cli` helper that installs the official AWS CLI v2 bundle when necessary and refreshed the README to explain the behavior.
 - **Data Changes**: None.
 
-## 113 – GPU worker MinIO test harness (commit TBD)
+## 113 – [Addition] GPU worker MinIO test harness (commit TBD)
 - **General**: Added standalone scripts so GPU render nodes can validate MinIO storage without the full VisionSuit stack.
 - **Technical Changes**: Shipped bucket provisioning, checkpoint/LoRA upload, and output download helpers plus README instructions for their usage.
 - **Data Changes**: Scripts can create MinIO buckets and upload test assets during validation runs.
 
-## 114 – ComfyUI workflow CLI validation
+## 114 – [Addition] ComfyUI workflow CLI validation
 - **General**: Added a non-interactive workflow runner so operators can validate renders without the ComfyUI web UI.
 - **Technical Changes**: Introduced `gpuworker/scripts/test-run-workflow.sh` to source MinIO credentials, post workflows to `/prompt`, poll queue/history endpoints, report asset identifiers, and optionally call `test-export-outputs`.
 - **Data Changes**: Reads existing MinIO environment variables and touches only ComfyUI’s HTTP API plus optional MinIO downloads; no repository data is persisted.
 
-## 114 – SDXL workflow validation pack (Testing only)
+## 114 – [Addition] SDXL workflow validation pack (Testing only)
 - **General**: Delivered an automation-focused SDXL validation workflow that pairs with the ComfyUI API runner for hands-free checks.
 - **Technical Changes**: Added `gpuworker/workflows/validation.json` capturing the calicomixPonyXL base plus DoomGirl LoRA pipeline and updated the GPU worker README with usage guidance and paths.
 - **Data Changes**: New workflow JSON references the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` adapter for validation renders.
 
 
-## 115 – ComfyUI workflow polling hardening
+## 115 – [Fix] ComfyUI workflow polling hardening
 - **General**: Prevented the GPU workflow validator from spamming jq errors when the ComfyUI API emits non-JSON responses during queue polling.
 - **Technical Changes**: Added a reusable `jq_safe` helper that type-checks queue and history payloads before parsing, guarded every jq lookup, and refreshed the GPU worker plus root README sections to note the resilience.
 - **Data Changes**: None; the scripts only inspect HTTP responses and print metadata.
 
-## 116 – ComfyUI API-format validation workflow
+## 116 – [Fix] ComfyUI API-format validation workflow
 - **General**: Fixed GPU workflow validation runs that previously failed on ComfyUI by supplying an API-format prompt.
 - **Technical Changes**: Replaced `gpuworker/workflows/validation.json` with a direct ComfyUI prompt map and updated both READMEs to stress exporting workflows via **Save (API Format)** before posting them with `test-run-workflow.sh`.
 - **Data Changes**: Workflow JSON now stores node parameters in API layout while still referencing the `calicomixPonyXL_v20.safetensors` checkpoint and `DoomGirl.safetensors` LoRA.
 
-## 117 – GPU worker checkpoint sync helper
+## 117 – [Addition] GPU worker checkpoint sync helper
 - **General**: Equipped GPU render nodes with a direct command to mirror required checkpoints ahead of validation runs.
 - **Technical Changes**: Added a MinIO-backed `sync-checkpoints` utility, registered it with the installer, pre-created the checkpoints directory, and expanded the workflow tester to surface missing assets with actionable guidance.
 - **Data Changes**: Refreshed the primary README and GPU worker guide to document the new helper and the need to sync checkpoints alongside LoRAs.
 
-## 118 – ComfyUI asset path alignment
+## 118 – [Fix] ComfyUI asset path alignment
 - **General**: Ensured GPU workers drop synchronized assets where ComfyUI actually loads them.
 - **Technical Changes**: Pointed the installer and MinIO helper scripts at `/opt/comfyui/models` and `/opt/comfyui/output`, refreshed documentation, and kept legacy overrides intact through environment variables.
 - **Data Changes**: None; directories only change location defaults.
 
-## 119 – ComfyUI rollback utility
+## 119 – [Addition] ComfyUI rollback utility
 - **General**: Added a targeted rollback path so GPU worker tests can return a host to its pre-install ComfyUI state instantly.
 - **Technical Changes**: Introduced `gpuworker/rollback-comfy.sh` to stop the service, remove the checkout, helper binaries, MinIO env file, and dedicated user/group, while updating both READMEs with usage guidance.
 - **Data Changes**: None; the rollback only deletes generated runtime artifacts.
 
-## 120 – On-Site Generator access controls & wizard
+## 120 – [Addition] On-Site Generator access controls & wizard
 - **General**: Introduced a VisionSuit-native On-Site Generator view with a guided prompt builder, LoRA mixer, and per-user request history alongside an admin toggle that controls who can see the feature.
 - **Technical Changes**: Added generator settings/request tables and routes to the backend, wired new API helpers, created the React wizard plus admin configuration tab, and expanded global styling for the generator UI.
 - **Data Changes**: New Prisma models store generator visibility and submitted requests; migrations update the SQLite schema accordingly.
 
-## 121 – On-Site generator base-model bucket filter
+## 121 – [Fix] On-Site generator base-model bucket filter
 - **General**: Corrected the generator's base-model picker so it mirrors the ComfyUI checkpoints stored in MinIO.
 - **Technical Changes**: Added a configurable `VITE_GENERATOR_BASE_MODEL_BUCKET` defaulting to `comfyui-models`, prioritized bucket matching over heuristic tag guesses in the wizard, and updated documentation plus `.env` templates.
 - **Data Changes**: None; the change only touches configuration defaults and client-side filtering.
 
-## 122 – Generator base picker & trigger helper
+## 122 – [Addition] Generator base picker & trigger helper
 - **General**: Clarified the On-Site Generator by limiting the base-model list to real ComfyUI checkpoints and surfacing clickable trigger hints from the selected LoRAs inside the prompt step.
 - **Technical Changes**: Hardened base-model detection against LoRA heuristics, added a non-LoRA fallback when no bucket match exists, extracted trigger phrases from model metadata, wired a click-to-insert handler on the prompt step, refreshed the generator styles, and updated the README highlight.
 - **Data Changes**: None; UI-only improvements leveraging existing model metadata.
 
-## 123 – Generator MinIO-backed base-model feed
+## 123 – [Addition] Generator MinIO-backed base-model feed
 - **General**: Ensured the On-Site Generator surfaces only real ComfyUI checkpoints by reading the dedicated MinIO bucket instead of relying on heuristics that exposed LoRA assets.
 - **Technical Changes**: Added a backend `/api/generator/base-models` endpoint driven by the new `GENERATOR_BASE_MODEL_BUCKET` config, refactored mapping utilities for reuse, fetched and rendered the base-model list on the client with loading/error states, updated styles, and refreshed documentation plus env templates.
 - **Data Changes**: None; changes are configuration-driven with no schema updates.
 
-## 124 – Generator checkpoint sync helper
+## 124 – [Addition] Generator checkpoint sync helper
 - **General**: Diagnosed missing base models in the On-Site Generator and added a synchronization path so MinIO checkpoints appear in the picker once they land in the bucket.
 - **Technical Changes**: Introduced `backend/scripts/syncGeneratorBaseModels.ts` with a matching `npm run generator:sync-base-models` alias to upsert public checkpoint assets, ensure ownership, and flag metadata for the generator pipeline.
 - **Data Changes**: None; the helper only registers existing MinIO objects without altering stored checkpoint files.
 
-## 125 – Generator manifest-backed base model feed
+## 125 – [Addition] Generator manifest-backed base model feed
 - **General**: Allowed the On-Site Generator to surface base models even when MinIO access is limited to manifest reads instead of bucket listings.
 - **Technical Changes**: Added manifest parsing and normalization inside `/api/generator/base-models`, introduced the configurable `GENERATOR_BASE_MODEL_MANIFEST` default, refreshed `.env` templates, and documented the workflow in the README.
 - **Data Changes**: None; updates touch configuration defaults and documentation only.
 
-## 126 – Generator base-model auto-sync
+## 126 – [Addition] Generator base-model auto-sync
 - **General**: Ensured On-Site Generator base checkpoints appear immediately by syncing the database from the ComfyUI bucket on demand.
 - **Technical Changes**: Added reusable generator base-model sync helpers, wired the `/api/generator/base-models` route to auto-register checkpoints using manifest sizes, refreshed the CLI sync script, and documented the behavior in the README.
 - **Data Changes**: No schema updates; existing base-model metadata is normalized when the sync runs.
 
-## 127 – On-Site generator base model curation
+## 127 – [Addition] On-Site generator base model curation
 - **General**: Empowered administrators to curate the generator’s base-model list directly from the dashboard so members see only vetted checkpoints.
 - **Technical Changes**: Extended Prisma generator settings with a JSON base-model collection, updated the settings and base-model routes to serve the curated definitions, refreshed the admin generator form with add/remove controls, and taught the On-Site Generator to consume the new payload with inline availability warnings.
 - **Data Changes**: `GeneratorSettings` now persists the configured base models as structured JSON entries, enabling future edits without additional tables.
 
-## 128 – Generator settings recovery
+## 128 – [Fix] Generator settings recovery
 - **General**: Stopped the admin generator settings view from crashing when legacy rows contain invalid JSON.
 - **Technical Changes**: Added a sanitization fallback for generator settings, retrying reads after normalizing bad `baseModels` payloads.
 - **Data Changes**: Automatically rewrites malformed generator `baseModels` entries to an empty array when encountered.
 
-## 129 – Generator base-model JSON parsing
+## 129 – [Fix] Generator base-model JSON parsing
 - **General**: Restored the On-Site Generator base-model list so curated admin entries surface for users again.
 - **Technical Changes**: Normalized generator settings reads to decode string and buffer payloads before schema validation, keeping alignment with the stored database format and logging parse failures for diagnostics.
 - **Data Changes**: None; existing generator settings rows are read without mutation.
 
-## 130 – Generator base-model catalog hydration
+## 130 – [Addition] Generator base-model catalog hydration
 - **General**: Taught the On-Site Generator to populate its Step 1 picker with the real base models stored in the database so curators always select live checkpoints.
 - **Technical Changes**: Added a `/api/generator/base-models/catalog` route that returns hydrated `ModelAsset` records, refreshed the generator client to merge curated settings with the catalog, updated selection labels and previews to rely on database titles, introduced catalog loading states, and exposed the new helper through the API module.
 - **Data Changes**: None; the change reads existing generator assets without modifying stored rows.
 
-## 131 – Generator preset label passthrough
+## 131 – [Addition] Generator preset label passthrough
 - **General**: Ensured the On-Site Generator surfaces the exact base-model names curated in Administration → Generator so admins control the dropdown wording members see.
 - **Technical Changes**: Updated the generator wizard to render curated labels in the picker, review step, and preview pane while still surfacing catalog metadata for verification, and refreshed the README highlight to reflect the mirrored naming behavior.
 - **Data Changes**: None; existing generator settings and assets are read without mutation.
