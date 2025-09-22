@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { FormEvent, MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent, KeyboardEvent, MouseEvent } from 'react';
 
 import { api, ApiError } from '../lib/api';
 import type { ModelAsset } from '../types/api';
@@ -10,6 +10,7 @@ interface ModelAssetEditDialogProps {
   model: ModelAsset;
   token: string | null | undefined;
   onSuccess?: (updated: ModelAsset) => void;
+  owners: { id: string; label: string }[];
 }
 
 const parseTags = (value: string) =>
@@ -18,12 +19,52 @@ const parseTags = (value: string) =>
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 
+type ModelEditTab = 'overview' | 'prompting' | 'ownership';
+
+const modelEditTabs: { id: ModelEditTab; label: string; description: string }[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    description: 'Adjust the public-facing title, description, and discoverability tags.',
+  },
+  {
+    id: 'prompting',
+    label: 'Prompting',
+    description: 'Curate trigger keywords and the primary version label members see.',
+  },
+  {
+    id: 'ownership',
+    label: 'Ownership',
+    description: 'Reassign the curator responsible for this LoRA asset.',
+  },
+];
+
+const formatDateTime = (value: string) => new Date(value).toLocaleString('en-US');
+
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes || Number.isNaN(bytes)) {
+    return null;
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let remaining = bytes;
+  let unitIndex = 0;
+
+  while (remaining >= 1024 && unitIndex < units.length - 1) {
+    remaining /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${remaining.toFixed(remaining >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
 export const ModelAssetEditDialog = ({
   isOpen,
   onClose,
   model,
   token,
   onSuccess,
+  owners,
 }: ModelAssetEditDialogProps) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -33,6 +74,36 @@ export const ModelAssetEditDialog = ({
   const [error, setError] = useState<string | null>(null);
   const [details, setDetails] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ownerId, setOwnerId] = useState('');
+  const [activeTab, setActiveTab] = useState<ModelEditTab>('overview');
+
+  const tabIndexById = useMemo(() => {
+    const entries = new Map<ModelEditTab, number>();
+    modelEditTabs.forEach((tab, index) => entries.set(tab.id, index));
+    return entries;
+  }, []);
+
+  const handleTabKeyNavigation = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, current: ModelEditTab) => {
+      const currentIndex = tabIndexById.get(current) ?? 0;
+      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        const nextIndex = (currentIndex + 1) % modelEditTabs.length;
+        setActiveTab(modelEditTabs[nextIndex].id);
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const previousIndex = (currentIndex - 1 + modelEditTabs.length) % modelEditTabs.length;
+        setActiveTab(modelEditTabs[previousIndex].id);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setActiveTab(modelEditTabs[0].id);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        setActiveTab(modelEditTabs[modelEditTabs.length - 1].id);
+      }
+    },
+    [tabIndexById],
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -44,6 +115,8 @@ export const ModelAssetEditDialog = ({
       setError(null);
       setDetails([]);
       setIsSubmitting(false);
+      setOwnerId('');
+      setActiveTab('overview');
       return;
     }
 
@@ -55,6 +128,8 @@ export const ModelAssetEditDialog = ({
     setError(null);
     setDetails([]);
     setIsSubmitting(false);
+    setOwnerId(model.owner.id);
+    setActiveTab('overview');
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -100,6 +175,7 @@ export const ModelAssetEditDialog = ({
     const trimmedVersion = version.trim();
     const trimmedTrigger = trigger.trim();
     const parsedTags = parseTags(tags);
+    const normalizedOwner = ownerId.trim();
 
     if (!trimmedTitle) {
       setError('Please provide a title for the model.');
@@ -112,13 +188,19 @@ export const ModelAssetEditDialog = ({
     setDetails([]);
 
     try {
-      const updated = await api.updateModelAsset(token, model.id, {
+      const payload: Parameters<typeof api.updateModelAsset>[2] = {
         title: trimmedTitle,
         description: trimmedDescription.length > 0 ? trimmedDescription : null,
         version: trimmedVersion.length > 0 ? trimmedVersion : undefined,
         trigger: trimmedTrigger.length > 0 ? trimmedTrigger : null,
         tags: parsedTags,
-      });
+      };
+
+      if (normalizedOwner && normalizedOwner !== model.owner.id) {
+        payload.ownerId = normalizedOwner;
+      }
+
+      const updated = await api.updateModelAsset(token, model.id, payload);
       onSuccess?.(updated);
       onClose();
     } catch (updateError) {
@@ -141,6 +223,12 @@ export const ModelAssetEditDialog = ({
     return null;
   }
 
+  const ownerOptions = owners.some((owner) => owner.id === ownerId)
+    ? owners
+    : ownerId
+    ? [{ id: ownerId, label: model.owner.displayName }, ...owners]
+    : owners;
+
   return (
     <div className="edit-dialog" role="dialog" aria-modal="true" aria-labelledby="model-edit-title" onClick={handleBackdropClick}>
       <div className="edit-dialog__content">
@@ -150,68 +238,198 @@ export const ModelAssetEditDialog = ({
             Close
           </button>
         </header>
-        <form className="edit-dialog__form" onSubmit={handleSubmit}>
-          <label className="edit-dialog__field">
-            <span>Title</span>
-            <input type="text" value={title} onChange={(event) => setTitle(event.target.value)} disabled={isSubmitting} required />
-          </label>
-          <label className="edit-dialog__field">
-            <span>Description</span>
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} disabled={isSubmitting} rows={4} />
-          </label>
-          <label className="edit-dialog__field">
-            <span>Primary version label</span>
-            <input
-              type="text"
-              value={version}
-              onChange={(event) => setVersion(event.target.value)}
-              disabled={isSubmitting}
-              placeholder="e.g. 1.2.0"
-            />
-          </label>
-          <label className="edit-dialog__field">
-            <span>Trigger / Activator</span>
-            <input
-              type="text"
-              value={trigger}
-              onChange={(event) => setTrigger(event.target.value)}
-              disabled={isSubmitting}
-              placeholder="Optional keyword"
-            />
-          </label>
-          <label className="edit-dialog__field">
-            <span>Tags</span>
-            <input
-              type="text"
-              value={tags}
-              onChange={(event) => setTags(event.target.value)}
-              disabled={isSubmitting}
-              placeholder="Comma-separated tags"
-            />
-          </label>
-
-          {error ? (
-            <div className="edit-dialog__error" role="alert">
-              <p>{error}</p>
-              {details.length > 0 ? (
-                <ul>
-                  {details.map((entry) => (
-                    <li key={entry}>{entry}</li>
-                  ))}
-                </ul>
-              ) : null}
+        <div className="edit-dialog__layout edit-dialog__layout--split">
+          <form className="edit-dialog__form" onSubmit={handleSubmit}>
+            <div className="edit-dialog__tabs" role="tablist" aria-label="Model settings">
+              {modelEditTabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    id={`model-edit-tab-${tab.id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`model-edit-panel-${tab.id}`}
+                    className={`edit-dialog__tab${isActive ? ' edit-dialog__tab--active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                    onKeyDown={(event) => handleTabKeyNavigation(event, tab.id)}
+                    disabled={isSubmitting}
+                  >
+                    <span className="edit-dialog__tab-label">{tab.label}</span>
+                    <span className="edit-dialog__tab-description">{tab.description}</span>
+                  </button>
+                );
+              })}
             </div>
-          ) : null}
 
-          <footer className="edit-dialog__actions">
-            <button type="button" onClick={onClose} className="edit-dialog__secondary" disabled={isSubmitting}>
-              Cancel
-            </button>
-            <button type="submit" className="edit-dialog__primary" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving…' : 'Save changes'}
-            </button>
-          </footer>
-        </form>
+            <div className="edit-dialog__panels">
+              {modelEditTabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <section
+                    key={tab.id}
+                    id={`model-edit-panel-${tab.id}`}
+                    role="tabpanel"
+                    aria-labelledby={`model-edit-tab-${tab.id}`}
+                    className={`edit-dialog__panel${isActive ? ' edit-dialog__panel--active' : ''}`}
+                    hidden={!isActive}
+                  >
+                    {tab.id === 'overview' ? (
+                      <div className="edit-dialog__panel-grid">
+                        <label className="edit-dialog__field edit-dialog__field--wide">
+                          <span>Title</span>
+                          <input
+                            type="text"
+                            value={title}
+                            onChange={(event) => setTitle(event.target.value)}
+                            disabled={isSubmitting}
+                            required
+                          />
+                        </label>
+                        <label className="edit-dialog__field edit-dialog__field--wide">
+                          <span>Description</span>
+                          <textarea
+                            value={description}
+                            onChange={(event) => setDescription(event.target.value)}
+                            disabled={isSubmitting}
+                            rows={4}
+                          />
+                        </label>
+                        <label className="edit-dialog__field">
+                          <span>Tags</span>
+                          <input
+                            type="text"
+                            value={tags}
+                            onChange={(event) => setTags(event.target.value)}
+                            disabled={isSubmitting}
+                            placeholder="Comma-separated tags"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                    {tab.id === 'prompting' ? (
+                      <div className="edit-dialog__panel-grid">
+                        <label className="edit-dialog__field">
+                          <span>Primary version label</span>
+                          <input
+                            type="text"
+                            value={version}
+                            onChange={(event) => setVersion(event.target.value)}
+                            disabled={isSubmitting}
+                            placeholder="e.g. 1.2.0"
+                          />
+                        </label>
+                        <label className="edit-dialog__field">
+                          <span>Trigger / Activator</span>
+                          <input
+                            type="text"
+                            value={trigger}
+                            onChange={(event) => setTrigger(event.target.value)}
+                            disabled={isSubmitting}
+                            placeholder="Optional keyword"
+                          />
+                        </label>
+                        <p className="edit-dialog__hint">
+                          Version labels appear in the admin console and download prompts. Triggers surface in the upload wizard
+                          and curator explorers to guide prompting.
+                        </p>
+                      </div>
+                    ) : null}
+                    {tab.id === 'ownership' ? (
+                      <div className="edit-dialog__panel-grid">
+                        <label className="edit-dialog__field">
+                          <span>Asset owner</span>
+                          <select
+                            value={ownerId}
+                            onChange={(event) => setOwnerId(event.target.value)}
+                            disabled={isSubmitting}
+                          >
+                            {ownerOptions.map((owner) => (
+                              <option key={owner.id} value={owner.id}>
+                                {owner.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="edit-dialog__hint">
+                          Ownership controls who sees the model inside their curator dashboard. Administrators retain full
+                          visibility regardless of assignment.
+                        </p>
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+            </div>
+
+            {error ? (
+              <div className="edit-dialog__error" role="alert">
+                <p>{error}</p>
+                {details.length > 0 ? (
+                  <ul>
+                    {details.map((entry) => (
+                      <li key={entry}>{entry}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <footer className="edit-dialog__actions">
+              <button type="button" onClick={onClose} className="edit-dialog__secondary" disabled={isSubmitting}>
+                Cancel
+              </button>
+              <button type="submit" className="edit-dialog__primary" disabled={isSubmitting}>
+                {isSubmitting ? 'Saving…' : 'Save changes'}
+              </button>
+            </footer>
+          </form>
+          <aside className="edit-dialog__sidebar" aria-label="Model summary">
+            <h4 className="edit-dialog__summary-title">Quick facts</h4>
+            <dl className="edit-dialog__summary-list">
+              <div>
+                <dt>Owner</dt>
+                <dd>{model.owner.displayName}</dd>
+              </div>
+              <div>
+                <dt>Visibility</dt>
+                <dd>{model.isPublic ? 'Public' : 'Private'}</dd>
+              </div>
+              <div>
+                <dt>Versions</dt>
+                <dd>{model.versions.length}</dd>
+              </div>
+              {model.fileSize ? (
+                <div>
+                  <dt>Latest file size</dt>
+                  <dd>{formatFileSize(model.fileSize)}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Primary version</dt>
+                <dd>{model.version || '—'}</dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd>{formatDateTime(model.updatedAt)}</dd>
+              </div>
+              <div>
+                <dt>Created</dt>
+                <dd>{formatDateTime(model.createdAt)}</dd>
+              </div>
+            </dl>
+            {model.tags.length > 0 ? (
+              <div className="edit-dialog__summary-tags" aria-label="Existing tags">
+                {model.tags.map((tag) => (
+                  <span key={tag.id} className="admin-badge">
+                    {tag.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </aside>
+        </div>
       </div>
     </div>
   );
