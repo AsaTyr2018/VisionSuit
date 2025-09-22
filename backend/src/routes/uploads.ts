@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
+import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, slugify } from '../lib/slug';
@@ -374,6 +375,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       const tagRecords = await ensureTags(tx, normalizedTags, payload.category);
       const tagIds = tagRecords.map((tag) => tag.id);
       const assignedTags = [...tagRecords];
+      const adultKeywords = await getAdultKeywordLabels(tx);
 
       if (payload.assetType === 'lora') {
         const loraTag = await ensureLoraTypeTag(tx);
@@ -495,6 +497,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           trigger: payload.trigger ?? null,
           metadata: modelMetadataPayload,
           tags: assignedTags.map((tag) => ({ tag })),
+          adultKeywords,
         });
 
         const modelAsset = await tx.modelAsset.create({
@@ -579,6 +582,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           sampler: metadata?.sampler ?? null,
           metadata: Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null,
           tags: assignedTags.map((tag) => ({ tag })),
+          adultKeywords,
         });
 
         const imageAsset = await tx.imageAsset.create({

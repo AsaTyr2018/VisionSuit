@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
+import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import type { Prisma } from '@prisma/client';
 
 export const tagsRouter = Router();
@@ -47,6 +48,8 @@ const recalculateAdultForTag = async (tagId: string) => {
     }),
   ]);
 
+  const adultKeywords = await getAdultKeywordLabels();
+
   await Promise.all(
     models.map(async (model) => {
       const nextIsAdult = determineAdultForModel({
@@ -55,6 +58,7 @@ const recalculateAdultForTag = async (tagId: string) => {
         trigger: model.trigger,
         metadata: model.metadata ?? null,
         tags: model.tags,
+        adultKeywords,
       });
 
       if (model.isAdult !== nextIsAdult) {
@@ -85,6 +89,7 @@ const recalculateAdultForTag = async (tagId: string) => {
         sampler: image.sampler,
         metadata: Object.keys(metadataPayload).length > 0 ? metadataPayload : null,
         tags: image.tags,
+        adultKeywords,
       });
 
       if (image.isAdult !== nextIsAdult) {

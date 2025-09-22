@@ -17,7 +17,7 @@ import type {
   UserProfile,
   UserProfileRank,
   User,
-  AdultTagSummary,
+  AdultSafetyKeyword,
 } from '../types/api';
 
 import { buildApiUrl } from '../config';
@@ -506,13 +506,21 @@ export const api = {
       },
       token,
     ),
-  getAdultTags: (token: string) => request<{ tags: AdultTagSummary[] }>('/api/tags/safety', {}, token),
-  updateAdultTag: (token: string, id: string, isAdult: boolean) =>
-    request<{ tag: AdultTagSummary }>(
-      `/api/tags/${id}/adult`,
+  getAdultSafetyKeywords: (token: string) => request<{ keywords: AdultSafetyKeyword[] }>('/api/safety/keywords', {}, token),
+  createAdultSafetyKeyword: (token: string, label: string) =>
+    request<{ keyword: AdultSafetyKeyword }>(
+      '/api/safety/keywords',
       {
-        method: 'PUT',
-        body: JSON.stringify({ isAdult }),
+        method: 'POST',
+        body: JSON.stringify({ label }),
+      },
+      token,
+    ),
+  deleteAdultSafetyKeyword: (token: string, id: string) =>
+    request<void>(
+      `/api/safety/keywords/${id}`,
+      {
+        method: 'DELETE',
       },
       token,
     ),

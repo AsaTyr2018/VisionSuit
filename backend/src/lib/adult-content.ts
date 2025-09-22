@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 
-const ADULT_PATTERNS: RegExp[] = [
+const BASE_ADULT_PATTERNS: RegExp[] = [
   /\bnsfw\b/i,
   /\bnude(s)?\b/i,
   /\bnudity\b/i,
@@ -29,7 +29,16 @@ const ADULT_PATTERNS: RegExp[] = [
 
 const normalizeString = (value: string) => value.trim();
 
-const matchesAdultPattern = (value: string) => {
+const normalizeKeywords = (keywords: string[]) =>
+  Array.from(
+    new Set(
+      keywords
+        .map((keyword) => keyword.trim().toLowerCase())
+        .filter((keyword) => keyword.length > 0),
+    ),
+  ).slice(0, 100);
+
+const matchesAdultSignals = (value: string, keywords: string[]) => {
   if (!value) {
     return false;
   }
@@ -39,7 +48,13 @@ const matchesAdultPattern = (value: string) => {
     return false;
   }
 
-  return ADULT_PATTERNS.some((pattern) => pattern.test(normalized));
+  const lowered = normalized.toLowerCase();
+
+  if (keywords.some((keyword) => lowered.includes(keyword))) {
+    return true;
+  }
+
+  return BASE_ADULT_PATTERNS.some((pattern) => pattern.test(normalized));
 };
 
 const collectStringsFromJson = (value: Prisma.JsonValue | null | undefined, limit = 50) => {
@@ -79,15 +94,18 @@ const collectStringsFromJson = (value: Prisma.JsonValue | null | undefined, limi
   return results;
 };
 
-const hasAdultSignalFromTexts = (texts: Array<string | null | undefined>) =>
-  texts.some((text) => (text ? matchesAdultPattern(text) : false));
+const hasAdultSignalFromTexts = (texts: Array<string | null | undefined>, keywords: string[]) =>
+  texts.some((text) => (text ? matchesAdultSignals(text, keywords) : false));
 
-const hasAdultSignalFromTags = (tags: Array<{ tag: { label: string; isAdult: boolean } }>) => {
+const hasAdultSignalFromTags = (
+  tags: Array<{ tag: { label: string; isAdult: boolean } }>,
+  keywords: string[],
+) => {
   if (tags.some((entry) => entry.tag.isAdult)) {
     return true;
   }
 
-  return tags.some((entry) => matchesAdultPattern(entry.tag.label));
+  return tags.some((entry) => matchesAdultSignals(entry.tag.label, keywords));
 };
 
 export const determineAdultForImage = (input: {
@@ -99,7 +117,9 @@ export const determineAdultForImage = (input: {
   sampler?: string | null;
   metadata?: Prisma.JsonValue | null;
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+  adultKeywords?: string[];
 }) => {
+  const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataStrings = collectStringsFromJson(input.metadata);
   const adultFromTexts = hasAdultSignalFromTexts([
     input.title,
@@ -109,9 +129,9 @@ export const determineAdultForImage = (input: {
     input.model,
     input.sampler,
     ...metadataStrings,
-  ]);
+  ], adultKeywords);
 
-  const adultFromTags = hasAdultSignalFromTags(input.tags);
+  const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
 
   return adultFromTexts || adultFromTags;
 };
@@ -122,16 +142,18 @@ export const determineAdultForModel = (input: {
   trigger?: string | null;
   metadata?: Prisma.JsonValue | null;
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+  adultKeywords?: string[];
 }) => {
+  const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataStrings = collectStringsFromJson(input.metadata);
   const adultFromTexts = hasAdultSignalFromTexts([
     input.title,
     input.description,
     input.trigger,
     ...metadataStrings,
-  ]);
+  ], adultKeywords);
 
-  const adultFromTags = hasAdultSignalFromTags(input.tags);
+  const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
 
   return adultFromTexts || adultFromTags;
 };

@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
+import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import { requireAdmin, requireAuth, requireCurator } from '../lib/middleware/auth';
 import { extractModelMetadataFromFile } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
@@ -2212,12 +2213,15 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         },
       });
 
+      const adultKeywords = await getAdultKeywordLabels(tx);
+
       const nextIsAdult = determineAdultForModel({
         title: updatedAsset.title,
         description: updatedAsset.description,
         trigger: updatedAsset.trigger,
         metadata: updatedAsset.metadata ?? null,
         tags: updatedAsset.tags,
+        adultKeywords,
       });
 
       if (updatedAsset.isAdult !== nextIsAdult) {
@@ -2502,6 +2506,8 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
 
       const metadataInput = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
 
+      const adultKeywords = await getAdultKeywordLabels(tx);
+
       const nextIsAdult = determineAdultForImage({
         title: updatedImage.title,
         description: updatedImage.description,
@@ -2511,6 +2517,7 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
         sampler: updatedImage.sampler,
         metadata: metadataInput,
         tags: updatedImage.tags,
+        adultKeywords,
       });
 
       if (updatedImage.isAdult !== nextIsAdult) {
