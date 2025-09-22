@@ -681,3 +681,8 @@
 - **General**: Restored a clean Administration → Models & Images overview with focused cards, dedicated detail pages, and the long-missing visibility controls.
 - **Technical Changes**: Replaced the density toggles with thumbnail grids, added modal preview support, introduced model/image detail layouts, wired visibility toggles via the API payloads, refreshed admin styling, and updated the README to match the streamlined flow.
 - **Data Changes**: None; the change only touches front-end rendering and existing endpoints.
+
+## 135 – [Fix] Administration dialog and filter polish
+- **General**: Improved the admin workspace by widening the model edit dialog and replacing the image metadata chips with a model-focused picker.
+- **Technical Changes**: Added an XL layout modifier to the model edit dialog, wired the component to use the larger width, introduced a metadata-derived model datalist with filtering logic, updated image filter state management, and refreshed documentation to describe the new picker.
+- **Data Changes**: None.
