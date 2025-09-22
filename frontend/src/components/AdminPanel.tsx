@@ -469,6 +469,13 @@ export const AdminPanel = ({
           { updatedAt: selectedModerationAsset.asset.updatedAt, cacheKey: selectedModerationAsset.asset.id },
         ) ?? selectedModerationAsset.asset.storagePath
     : null;
+  const moderationActionMatches = useCallback(
+    (entity: 'model' | 'image', action: 'approve' | 'remove', id: string) =>
+      moderationAction?.entity === entity &&
+      moderationAction?.action === action &&
+      moderationAction?.id === id,
+    [moderationAction],
+  );
   const isModerationApproveBusy = selectedModerationAsset
     ? moderationActionMatches(selectedModerationAsset.entity, 'approve', selectedModerationAsset.asset.id)
     : false;
@@ -580,15 +587,6 @@ export const AdminPanel = ({
   }, [activeTab, fetchModerationQueue]);
 
   const resetStatus = () => setStatus(null);
-
-  const moderationActionMatches = (
-    entity: 'model' | 'image',
-    action: 'approve' | 'remove',
-    id: string,
-  ) =>
-    moderationAction?.entity === entity &&
-    moderationAction?.action === action &&
-    moderationAction?.id === id;
 
   const handleApproveModel = async (model: ModelAsset) => {
     resetStatus();
