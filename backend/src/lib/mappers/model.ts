@@ -1,4 +1,4 @@
-import { Prisma, ModelAsset, ModelVersion, Tag, User } from '@prisma/client';
+import { Prisma, ModelAsset, ModelModerationReport, ModelVersion, Tag, User } from '@prisma/client';
 
 import { resolveStorageLocation } from '../storage';
 
@@ -7,6 +7,20 @@ export type HydratedModelAsset = ModelAsset & {
   owner: Pick<User, 'id' | 'displayName' | 'email'>;
   flaggedBy?: Pick<User, 'id' | 'displayName' | 'email'> | null;
   versions: ModelVersion[];
+  moderationReports?: (ModelModerationReport & {
+    reporter: Pick<User, 'id' | 'displayName' | 'email'>;
+  })[];
+};
+
+export type MappedModerationReport = {
+  id: string;
+  reason: string | null;
+  createdAt: string;
+  reporter: {
+    id: string;
+    displayName: string;
+    email: string;
+  };
 };
 
 export type MappedModelVersion = {
@@ -179,5 +193,19 @@ export const mapModelAsset = (asset: HydratedModelAsset) => {
           email: asset.flaggedBy.email,
         }
       : null,
+    ...(asset.moderationReports
+      ? {
+          moderationReports: asset.moderationReports.map<MappedModerationReport>((report) => ({
+            id: report.id,
+            reason: report.reason ?? null,
+            createdAt: report.createdAt.toISOString(),
+            reporter: {
+              id: report.reporter.id,
+              displayName: report.reporter.displayName,
+              email: report.reporter.email,
+            },
+          })),
+        }
+      : {}),
   };
 };

@@ -731,3 +731,8 @@
 - **General**: Ensured the Windows bulk upload helper works on legacy shells and locates image previews stored alongside each LoRA.
 - **Technical Changes**: Added a `System.Net.Http` assembly bootstrap for Windows PowerShell 5.1, resolved absolute paths for the source folders, introduced sibling image folder discovery, tightened image filtering, and guarded disposable cleanup.
 - **Data Changes**: None.
+
+## 143 – [Fix] Moderation reports schema wiring
+- **General**: Restored the moderation queue so admins can review flagged assets without API errors.
+- **Technical Changes**: Added moderation report mappers, regenerated the Prisma client, and taught the API to return reporter summaries for flagged models.
+- **Data Changes**: Introduced `ModelModerationReport` and `ImageModerationReport` tables with cascading foreign keys.
