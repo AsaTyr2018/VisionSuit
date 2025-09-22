@@ -3412,7 +3412,9 @@ main {
 }
 
 .edit-dialog__content--xl {
-  width: min(840px, 95vw);
+  width: 50%;
+  max-width: 95vw;
+  min-width: min(420px, 95vw);
 }
 
 .model-version-dialog__header,
@@ -3520,6 +3522,7 @@ main {
 .edit-dialog__tabs {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 0.75rem;
   padding: 0.25rem;
   border-radius: 999px;
