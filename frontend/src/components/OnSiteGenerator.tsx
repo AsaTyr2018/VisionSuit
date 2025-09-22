@@ -656,8 +656,12 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       <div className="generator-preview">
         {previewUrl ? <img src={previewUrl} alt="Base model preview" /> : <div className="generator-preview__fallback">No preview</div>}
         <div className="generator-preview__details">
-          <h3>{selectedBaseModel.asset.title}</h3>
+          <h3>{selectedBaseModel.name}</h3>
           <dl>
+            <div>
+              <dt>Configured label</dt>
+              <dd>{selectedBaseModel.name}</dd>
+            </div>
             <div>
               <dt>Type</dt>
               <dd>{selectedBaseModel.type}</dd>
@@ -667,7 +671,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               <dd>{selectedBaseModel.asset.version}</dd>
             </div>
             <div>
-              <dt>Asset title</dt>
+              <dt>Catalog title</dt>
               <dd>{selectedBaseModel.asset.title}</dd>
             </div>
             <div>
@@ -898,7 +902,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         <dl>
           <div>
             <dt>Base model</dt>
-            <dd>{selectedBaseModel ? selectedBaseModel.asset.title : 'Not selected'}</dd>
+            <dd>{selectedBaseModel ? selectedBaseModel.name : 'Not selected'}</dd>
           </div>
           <div>
             <dt>Prompt</dt>
@@ -963,7 +967,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               ) : null}
               {selectableBaseModels.map((entry) => (
                 <option key={entry.asset.id} value={entry.asset.id}>
-                  {entry.asset.title} — {entry.type}
+                  {entry.name} — {entry.type}
                 </option>
               ))}
             </select>

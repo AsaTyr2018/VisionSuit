@@ -661,3 +661,8 @@
 - **General**: Taught the On-Site Generator to populate its Step 1 picker with the real base models stored in the database so curators always select live checkpoints.
 - **Technical Changes**: Added a `/api/generator/base-models/catalog` route that returns hydrated `ModelAsset` records, refreshed the generator client to merge curated settings with the catalog, updated selection labels and previews to rely on database titles, introduced catalog loading states, and exposed the new helper through the API module.
 - **Data Changes**: None; the change reads existing generator assets without modifying stored rows.
+
+## 131 – Generator preset label passthrough
+- **General**: Ensured the On-Site Generator surfaces the exact base-model names curated in Administration → Generator so admins control the dropdown wording members see.
+- **Technical Changes**: Updated the generator wizard to render curated labels in the picker, review step, and preview pane while still surfacing catalog metadata for verification, and refreshed the README highlight to reflect the mirrored naming behavior.
+- **Data Changes**: None; existing generator settings and assets are read without mutation.
