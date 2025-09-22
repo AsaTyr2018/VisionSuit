@@ -21,7 +21,7 @@ import { prisma } from '../lib/prisma';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import { requireAdmin, requireAuth, requireCurator } from '../lib/middleware/auth';
-import { extractModelMetadataFromFile } from '../lib/metadata';
+import { extractImageMetadata, extractModelMetadataFromFile, toJsonImageMetadata } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
 import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
 import {
@@ -1651,6 +1651,14 @@ assetsRouter.post(
         return;
       }
 
+      let previewMetadataPayload: Prisma.JsonObject | null = null;
+      try {
+        const extracted = await extractImageMetadata(previewFile);
+        previewMetadataPayload = toJsonImageMetadata(extracted);
+      } catch {
+        previewMetadataPayload = null;
+      }
+
       const asset = await prisma.modelAsset.findUnique({
         where: { id: assetId },
         include: {
@@ -1714,6 +1722,10 @@ assetsRouter.post(
         originalFileName: modelFile.originalname,
         checksum,
       };
+
+      if (previewMetadataPayload) {
+        metadataPayload.preview = previewMetadataPayload;
+      }
 
       if (extractedMetadata) {
         metadataPayload.baseModel = extractedMetadata.baseModel ?? null;
@@ -1789,7 +1801,35 @@ assetsRouter.post(
         throw error;
       }
 
-      res.status(201).json(mapModelAsset(updatedAsset));
+      const adultKeywords = await getAdultKeywordLabels();
+      const versionMetadataList = updatedAsset.versions
+        .map((entry) => entry.metadata ?? null)
+        .filter((entry): entry is Prisma.JsonValue => entry != null);
+
+      const nextIsAdult = determineAdultForModel({
+        title: updatedAsset.title,
+        description: updatedAsset.description,
+        trigger: updatedAsset.trigger,
+        metadata: updatedAsset.metadata ?? null,
+        metadataList: versionMetadataList,
+        tags: updatedAsset.tags,
+        adultKeywords,
+      });
+
+      let finalAsset = updatedAsset;
+      if (updatedAsset.isAdult !== nextIsAdult) {
+        finalAsset = await prisma.modelAsset.update({
+          where: { id: updatedAsset.id },
+          data: { isAdult: nextIsAdult },
+          include: {
+            owner: { select: { id: true, displayName: true, email: true } },
+            tags: { include: { tag: true } },
+            versions: { orderBy: { createdAt: 'desc' } },
+          },
+        });
+      }
+
+      res.status(201).json(mapModelAsset(finalAsset));
     } catch (error) {
       next(error);
     }
@@ -2057,7 +2097,35 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
       removeStorageObject(versionPreview.bucket, versionPreview.objectName),
     ]);
 
-    res.json(mapModelAsset(updatedAsset));
+    const adultKeywords = await getAdultKeywordLabels();
+    const versionMetadataList = updatedAsset.versions
+      .map((entry) => entry.metadata ?? null)
+      .filter((entry): entry is Prisma.JsonValue => entry != null);
+
+    const nextIsAdult = determineAdultForModel({
+      title: updatedAsset.title,
+      description: updatedAsset.description,
+      trigger: updatedAsset.trigger,
+      metadata: updatedAsset.metadata ?? null,
+      metadataList: versionMetadataList,
+      tags: updatedAsset.tags,
+      adultKeywords,
+    });
+
+    let finalAsset = updatedAsset;
+    if (updatedAsset.isAdult !== nextIsAdult) {
+      finalAsset = await prisma.modelAsset.update({
+        where: { id: updatedAsset.id },
+        data: { isAdult: nextIsAdult },
+        include: {
+          owner: { select: { id: true, displayName: true, email: true } },
+          tags: { include: { tag: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
+        },
+      });
+    }
+
+    res.json(mapModelAsset(finalAsset));
   } catch (error) {
     next(error);
   }
@@ -2214,12 +2282,16 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
       });
 
       const adultKeywords = await getAdultKeywordLabels(tx);
+      const versionMetadataList = updatedAsset.versions
+        .map((entry) => entry.metadata ?? null)
+        .filter((entry): entry is Prisma.JsonValue => entry != null);
 
       const nextIsAdult = determineAdultForModel({
         title: updatedAsset.title,
         description: updatedAsset.description,
         trigger: updatedAsset.trigger,
         metadata: updatedAsset.metadata ?? null,
+        metadataList: versionMetadataList,
         tags: updatedAsset.tags,
         adultKeywords,
       });

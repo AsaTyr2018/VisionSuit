@@ -15,6 +15,7 @@ import { requireAuth, requireCurator } from '../lib/middleware/auth';
 import {
   extractImageMetadata,
   extractModelMetadataFromFile,
+  toJsonImageMetadata,
   type ImageMetadataResult,
   type SafetensorsMetadataResult,
 } from '../lib/metadata';
@@ -479,6 +480,11 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           draftId: draft.id,
         };
 
+        const previewMetadataPayload = toJsonImageMetadata(previewEntry?.imageMetadata ?? null);
+        if (previewMetadataPayload) {
+          modelMetadataPayload.preview = previewMetadataPayload;
+        }
+
         if (modelEntry?.modelMetadata) {
           const extracted = modelEntry.modelMetadata;
           modelMetadataPayload.baseModel = extracted.baseModel ?? null;
@@ -496,6 +502,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           description: payload.description ?? null,
           trigger: payload.trigger ?? null,
           metadata: modelMetadataPayload,
+          ...(previewMetadataPayload ? { metadataList: [previewMetadataPayload] } : {}),
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
         });
@@ -571,6 +578,9 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         }
         if (metadata?.steps != null) {
           imageMetadataPayload.steps = metadata.steps;
+        }
+        if (metadata?.extras && Object.keys(metadata.extras).length > 0) {
+          imageMetadataPayload.extras = metadata.extras as Prisma.JsonObject;
         }
 
         const imageAdult = determineAdultForImage({
