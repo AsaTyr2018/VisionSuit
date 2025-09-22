@@ -741,3 +741,8 @@
 - **General**: Elevated the Linux and Windows bulk import helpers with an admin-only, two-pass workflow that uploads LoRA weights with a random preview before streaming every gallery render in follow-up batches.
 - **Technical Changes**: Split the scripts into model and gallery upload stages, enforced administrator role detection, chunked gallery uploads to bypass the per-request file limit, and refreshed the README with the updated flow and requirements.
 - **Data Changes**: None.
+
+## 145 – [Fix] Moderation dialog initialization guard
+- **General**: Prevented the Administration → Moderation dialog from crashing when opening a flagged asset for review.
+- **Technical Changes**: Hoisted the moderation action matcher into a memoized callback so busy-state checks run after initialization instead of reading an uninitialized const.
+- **Data Changes**: None; runtime state handling only.
