@@ -151,32 +151,32 @@ Client-side helpers streamline batched LoRA transfers when curating existing lib
 - `loras/` – contains `.safetensors` weights.
 - `images/` – contains folders named after each safetensor (without the extension) populated with preview renders.
 
-Each importer refuses to upload a model unless a matching image folder exists. After authentication the scripts pick a random preview render, keep up to ten additional images (VisionSuit accepts a maximum of twelve files per upload, including the LoRA), and stream the batch to `POST /api/uploads` so the backend can push artifacts into MinIO.
+Each importer refuses to upload a model unless a matching image folder exists. After authentication the helpers verify the signed-in account is an administrator, upload the LoRA with a randomly chosen preview image, and then cycle through the remaining renders in batches of up to twelve files so the entire gallery lands in VisionSuit without the usual per-request cap.
 
 ### Linux and macOS
 
 1. Review and adjust `server_ip`, `server_username`, and `server_port` at the top of `scripts/bulk_import_linux.sh`.
 2. Ensure `curl` and `python3` are installed on the client.
-3. Provide the VisionSuit password either via the `VISIONSUIT_PASSWORD` environment variable or interactively when prompted.
+3. Provide the VisionSuit administrator password either via the `VISIONSUIT_PASSWORD` environment variable or interactively when prompted (bulk imports are restricted to admin accounts).
 4. Run the script from the root of your asset stash (or pass custom directories):
 
    ```bash
    ./scripts/bulk_import_linux.sh ./loras ./images
    ```
 
-The script authenticates with `POST /api/auth/login`, then uploads the LoRA and curated previews straight to the VisionSuit API. Models without imagery are skipped automatically.
+The script authenticates with `POST /api/auth/login`, seeds the gallery by uploading the LoRA file together with a random preview, and then pushes every remaining render into the same collection across as many follow-up batches as necessary. Models without imagery are skipped automatically.
 
 ### Windows (PowerShell)
 
 1. Edit `$ServerIp`, `$ServerUsername`, and `$ServerPort` at the head of `scripts/bulk_import_windows.ps1`.
-2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. The helper auto-loads the required `System.Net.Http` types so legacy shells work without manual assembly tweaks. Enter your VisionSuit password when prompted or expose it via `VISIONSUIT_PASSWORD`.
+2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. The helper auto-loads the required `System.Net.Http` types so legacy shells work without manual assembly tweaks. Enter your VisionSuit administrator password when prompted or expose it via `VISIONSUIT_PASSWORD`.
 3. Run the importer with optional overrides for the source folders:
 
    ```powershell
    pwsh -File .\scripts\bulk_import_windows.ps1 -LorasDirectory .\loras -ImagesDirectory .\images
    ```
 
-The PowerShell helper mirrors the Linux workflow: it logs in once, picks a random preview, trims excessive renders, and posts the bundle directly to the VisionSuit API for processing.
+The PowerShell helper mirrors the Linux workflow: it authenticates, verifies admin privileges, stages the LoRA with a random preview, and then fans out the remaining renders in twelve-file batches until the entire collection has been imported.
 
 > Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
 
