@@ -198,6 +198,7 @@
 - **Technical Changes**: Migrated to `/:bucket/*`, shared handler logic, and explained the fix while awaiting final commit ID.
 - **Data Changes**: None.
 
+
 ## 040 – [Addition] Streamlined installer (da2500c)
 - **General**: Tuned the installer for production hosts with automatic IP detection.
 - **Technical Changes**: Added smart IP/port prompts, synchronized `.env` files, injected MinIO defaults, and refreshed README installation guidance.
@@ -720,4 +721,8 @@
 ## 141 – [Addition] Moderation queue comfort refinements
 - **General**: Softened the moderation workspace with a cozy tile grid that highlights who reported an asset, why it was flagged, and how often, while surfacing a clear hold notice on collections affected by moderation.
 - **Technical Changes**: Summarized moderation reports into reporter/reason chips inside the admin queue and detail dialog, refreshed the tile styling, enforced rejection reasons server-side, exposed `isUnderModeration` from the gallery mapper, and added a gallery detail notice so curators know why a collection is hidden.
+
+## 142 – [Fix] Windows bulk import parameter order
+- **General**: Resolved the Windows bulk import helper startup by promoting connection settings to script parameters.
+- **Technical Changes**: Converted server connection variables into the script-level `param` block so it loads before any assignments and continues defaulting directories and credentials.
 - **Data Changes**: None.
