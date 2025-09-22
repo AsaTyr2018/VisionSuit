@@ -13,6 +13,7 @@ import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
+import { isAuditPlaceholderForViewer } from './lib/moderation';
 import type {
   Gallery,
   GeneratorSettings,
@@ -76,6 +77,50 @@ const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
   frontend: 'UI',
   backend: 'API',
   minio: 'S3',
+};
+
+const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) => {
+  if (!viewer) {
+    return assets.filter((asset) => asset.moderationStatus !== 'REMOVED');
+  }
+
+  if (viewer.role === 'ADMIN') {
+    return assets;
+  }
+
+  return assets.filter((asset) => {
+    if (asset.moderationStatus === 'REMOVED') {
+      return false;
+    }
+
+    if (isAuditPlaceholderForViewer(asset.moderationStatus, asset.owner.id, viewer)) {
+      return true;
+    }
+
+    return asset.moderationStatus !== 'FLAGGED';
+  });
+};
+
+const filterImageAssetsForViewer = (images: ImageAsset[], viewer?: User | null) => {
+  if (!viewer) {
+    return images.filter((image) => image.moderationStatus !== 'REMOVED');
+  }
+
+  if (viewer.role === 'ADMIN') {
+    return images;
+  }
+
+  return images.filter((image) => {
+    if (image.moderationStatus === 'REMOVED') {
+      return false;
+    }
+
+    if (isAuditPlaceholderForViewer(image.moderationStatus, image.owner.id, viewer)) {
+      return true;
+    }
+
+    return image.moderationStatus !== 'FLAGGED';
+  });
 };
 
 const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
@@ -614,10 +659,39 @@ export const App = () => {
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   };
 
-  const latestModels = useMemo(() => assets.slice(0, 5), [assets]);
-  const latestImages = useMemo(() => images.slice(0, 5), [images]);
+  const visibleModelAssets = useMemo(
+    () => filterModelAssetsForViewer(assets, authUser),
+    [assets, authUser],
+  );
+  const visibleImageAssets = useMemo(
+    () => filterImageAssetsForViewer(images, authUser),
+    [images, authUser],
+  );
+
+  const latestModels = useMemo(() => visibleModelAssets.slice(0, 5), [visibleModelAssets]);
+  const latestImages = useMemo(() => visibleImageAssets.slice(0, 5), [visibleImageAssets]);
 
   const modelTiles = latestModels.map((asset) => {
+    const isAuditPlaceholder = isAuditPlaceholderForViewer(
+      asset.moderationStatus,
+      asset.owner.id,
+      authUser,
+    );
+
+    if (isAuditPlaceholder) {
+      return (
+        <article key={asset.id} className="home-card home-card--model home-card--audit">
+          <div className="home-card__media home-card__media--empty">
+            <span className="home-card__placeholder">In Audit</span>
+          </div>
+          <div className="home-card__body">
+            <h3 className="home-card__title">{asset.title}</h3>
+            <p className="home-card__moderation-note">Your model is currently in audit.</p>
+          </div>
+        </article>
+      );
+    }
+
     const previewUrl =
       resolveCachedStorageUrl(
         asset.previewImage,
@@ -702,6 +776,26 @@ export const App = () => {
   });
 
   const imageTiles = latestImages.map((image) => {
+    const isAuditPlaceholder = isAuditPlaceholderForViewer(
+      image.moderationStatus,
+      image.owner.id,
+      authUser,
+    );
+
+    if (isAuditPlaceholder) {
+      return (
+        <article key={image.id} className="home-card home-card--image home-card--audit">
+          <div className="home-card__media home-card__media--empty">
+            <span className="home-card__placeholder">In Audit</span>
+          </div>
+          <div className="home-card__body">
+            <h3 className="home-card__title">{image.title}</h3>
+            <p className="home-card__moderation-note">Your image is currently in audit.</p>
+          </div>
+        </article>
+      );
+    }
+
     const imageUrl =
       resolveCachedStorageUrl(image.storagePath, image.storageBucket, image.storageObject, {
         updatedAt: image.updatedAt,
@@ -802,7 +896,7 @@ export const App = () => {
           <p>The most recent uploads from the model explorer presented as compact tiles.</p>
         </header>
         <div className="home-section__grid">
-          {isLoading && assets.length === 0
+          {isLoading && visibleModelAssets.length === 0
             ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
             : modelTiles}
         </div>
@@ -817,7 +911,7 @@ export const App = () => {
           <p>Freshly rendered references including prompt excerpts.</p>
         </header>
         <div className="home-section__grid">
-          {isLoading && images.length === 0
+          {isLoading && visibleImageAssets.length === 0
             ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
             : imageTiles}
         </div>
@@ -855,7 +949,7 @@ export const App = () => {
     if (activeView === 'models') {
       return (
         <AssetExplorer
-          assets={assets}
+          assets={visibleModelAssets}
           galleries={galleries}
           isLoading={isLoading}
           onStartUpload={handleOpenAssetUpload}
@@ -903,7 +997,7 @@ export const App = () => {
 
       return (
         <OnSiteGenerator
-          models={assets}
+          models={visibleModelAssets}
           token={token}
           currentUser={authUser}
           onNotify={handleGeneratorNotify}
@@ -924,6 +1018,7 @@ export const App = () => {
           canAudit={authUser?.role === 'ADMIN' && Boolean(activeProfileId)}
           isAuditActive={activeProfile?.visibility?.audit ?? (authUser?.role === 'ADMIN' && isProfileAuditMode)}
           onToggleAudit={handleToggleProfileAudit}
+          viewer={authUser}
         />
       );
     }

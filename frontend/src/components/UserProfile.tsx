@@ -2,7 +2,9 @@ import { useMemo } from 'react';
 
 import { resolveAvatarUrl } from '../lib/avatar';
 import { resolveCachedStorageUrl } from '../lib/storage';
+import { isAuditPlaceholderForViewer } from '../lib/moderation';
 import type {
+  User,
   UserProfile as UserProfileResponse,
   UserProfileGallerySummary,
   UserProfileModelSummary,
@@ -19,6 +21,7 @@ interface UserProfileProps {
   canAudit?: boolean;
   isAuditActive?: boolean;
   onToggleAudit?: () => void;
+  viewer?: User | null;
 }
 
 const formatDate = (value: string) => {
@@ -55,11 +58,13 @@ const getInitials = (name: string) => {
 type ModelCardOptions = {
   onOpenModel?: (modelId: string) => void;
   viewerCanAudit?: boolean;
+  viewer?: User | null;
+  ownerId?: string;
 };
 
 const renderModelCard = (
   model: UserProfileModelSummary,
-  { onOpenModel, viewerCanAudit }: ModelCardOptions = {},
+  { onOpenModel, viewerCanAudit, viewer, ownerId }: ModelCardOptions = {},
 ) => {
   const previewUrl =
     resolveCachedStorageUrl(model.previewImage, model.previewImageBucket, model.previewImageObject, {
@@ -70,6 +75,9 @@ const renderModelCard = (
   const remainingTags = model.tags.length - tagList.length;
   const isFlagged = model.moderationStatus === 'FLAGGED';
   const canBypassModeration = Boolean(viewerCanAudit);
+  const isAuditPlaceholder = ownerId
+    ? isAuditPlaceholderForViewer(model.moderationStatus, ownerId, viewer)
+    : false;
   const shouldObscure = isFlagged && !canBypassModeration;
   const mediaClasses = [
     'profile-view__model-media',
@@ -80,6 +88,24 @@ const renderModelCard = (
   ]
     .filter(Boolean)
     .join(' ');
+
+  if (isAuditPlaceholder && !canBypassModeration) {
+    return (
+      <article key={model.id} className="profile-view__model-card profile-view__model-card--audit">
+        <div className="profile-view__model-media profile-view__model-media--empty">
+          <span>In Audit</span>
+        </div>
+        <div className="profile-view__model-body">
+          <div className="profile-view__model-header">
+            <h3>{model.title}</h3>
+          </div>
+          <p className="profile-view__model-moderation" role="status">
+            Your model is currently in audit.
+          </p>
+        </div>
+      </article>
+    );
+  }
 
   const media = (
     <div className={mediaClasses}>
@@ -245,6 +271,7 @@ export const UserProfile = ({
   canAudit,
   isAuditActive,
   onToggleAudit,
+  viewer,
 }: UserProfileProps) => {
   const avatarUrl = profile ? resolveAvatarUrl(profile.avatarUrl, profile.id) : null;
   const initials = profile ? getInitials(profile.displayName) : '?';
@@ -398,7 +425,12 @@ export const UserProfile = ({
             {profile.models.length > 0 ? (
               <div className="profile-view__model-grid" role="list">
                 {profile.models.map((model) =>
-                  renderModelCard(model, { onOpenModel, viewerCanAudit: canAudit }),
+                  renderModelCard(model, {
+                    onOpenModel,
+                    viewerCanAudit: canAudit,
+                    viewer,
+                    ownerId: profile.id,
+                  }),
                 )}
               </div>
             ) : (

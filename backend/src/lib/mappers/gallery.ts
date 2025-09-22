@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { ModerationStatus, Prisma } from '@prisma/client';
 
 import type { AuthenticatedUser } from '../auth';
 import { resolveStorageLocation } from '../storage';
@@ -163,6 +163,7 @@ export const mapGallery = (
   const cover = resolveStorageLocation(gallery.coverImage);
   const viewer = options.viewer;
   const viewerId = viewer?.id ?? null;
+  const isAdmin = viewer?.role === 'ADMIN';
 
   return {
     id: gallery.id,
@@ -182,11 +183,20 @@ export const mapGallery = (
           return true;
         }
 
-        const canViewAsset = entry.asset
-          ? canViewResource(viewer, entry.asset.ownerId, entry.asset.isPublic, options)
+        const assetVisible = entry.asset
+          ? entry.asset.moderationStatus !== ModerationStatus.REMOVED &&
+            (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.asset.ownerId === viewerId)
           : false;
-        const canViewImage = entry.image
-          ? canViewResource(viewer, entry.image.ownerId, entry.image.isPublic, options)
+        const imageVisible = entry.image
+          ? entry.image.moderationStatus !== ModerationStatus.REMOVED &&
+            (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.image.ownerId === viewerId)
+          : false;
+
+        const canViewAsset = assetVisible
+          ? canViewResource(viewer, entry.asset!.ownerId, entry.asset!.isPublic, options)
+          : false;
+        const canViewImage = imageVisible
+          ? canViewResource(viewer, entry.image!.ownerId, entry.image!.isPublic, options)
           : false;
 
         return canViewAsset || canViewImage;
@@ -194,11 +204,19 @@ export const mapGallery = (
       .map((entry) => {
         const modelStorage = entry.asset ? resolveStorageLocation(entry.asset.storagePath) : null;
         const modelPreview = entry.asset ? resolveStorageLocation(entry.asset.previewImage) : null;
-        const canViewAsset = entry.asset
-          ? canViewResource(viewer, entry.asset.ownerId, entry.asset.isPublic, options)
+        const assetVisible = entry.asset
+          ? entry.asset.moderationStatus !== ModerationStatus.REMOVED &&
+            (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.asset.ownerId === viewerId)
           : false;
-        const canViewImage = entry.image
-          ? canViewResource(viewer, entry.image.ownerId, entry.image.isPublic, options)
+        const imageVisible = entry.image
+          ? entry.image.moderationStatus !== ModerationStatus.REMOVED &&
+            (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.image.ownerId === viewerId)
+          : false;
+        const canViewAsset = assetVisible
+          ? canViewResource(viewer, entry.asset!.ownerId, entry.asset!.isPublic, options)
+          : false;
+        const canViewImage = imageVisible
+          ? canViewResource(viewer, entry.image!.ownerId, entry.image!.isPublic, options)
           : false;
 
         return {

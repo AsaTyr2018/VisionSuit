@@ -4,6 +4,7 @@ import type { AssetComment, Gallery, ImageAsset, ModelAsset, User } from '../typ
 
 import { api, ApiError } from '../lib/api';
 import { resolveCachedStorageUrl } from '../lib/storage';
+import { isAuditPlaceholderForViewer } from '../lib/moderation';
 
 import { FilterChip } from './FilterChip';
 import { GalleryEditDialog } from './GalleryEditDialog';
@@ -185,8 +186,10 @@ const buildSeededIndex = (seed: string, length: number) => {
   return Math.abs(hash) % length;
 };
 
-const selectPreviewImage = (gallery: Gallery) => {
-  const imageEntries = getImageEntries(gallery);
+const selectPreviewImage = (gallery: Gallery, viewer?: User | null) => {
+  const imageEntries = getImageEntries(gallery).filter(
+    (entry) => !isAuditPlaceholderForViewer(entry.image.moderationStatus, entry.image.owner.id, viewer),
+  );
   if (imageEntries.length === 0) {
     return null;
   }
@@ -424,6 +427,16 @@ export const GalleryExplorer = ({
       setIsDeletingGallery(false);
     }
   }, [activeGallery]);
+
+  useEffect(() => {
+    if (!activeImage) {
+      return;
+    }
+
+    if (isAuditPlaceholderForViewer(activeImage.image.moderationStatus, activeImage.image.owner.id, currentUser)) {
+      setActiveImage(null);
+    }
+  }, [activeImage, currentUser]);
 
   useEffect(() => {
     if (!activeImage) {
@@ -874,7 +887,7 @@ export const GalleryExplorer = ({
           ? Array.from({ length: 10 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
           : visibleGalleries.map((gallery) => {
               const entries = getGalleryEntries(gallery);
-              const previewImage = selectPreviewImage(gallery);
+              const previewImage = selectPreviewImage(gallery, currentUser);
               const totalImages = entries.filter((entry) => Boolean(entry.imageAsset)).length;
               const totalModels = entries.filter((entry) => Boolean(entry.modelAsset)).length;
               const owner = getGalleryOwner(gallery);
@@ -1029,21 +1042,37 @@ export const GalleryExplorer = ({
                 <section className="gallery-detail__models">
                   <h4>Linked LoRAs</h4>
                   <ul>
-                    {activeGalleryModels.map((model) => (
-                      <li key={model.id}>
-                        {onNavigateToModel ? (
-                          <button
-                            type="button"
-                            className="gallery-detail__model-button"
-                            onClick={() => onNavigateToModel(model.id)}
-                          >
-                            {model.title} · v{model.version}
-                          </button>
-                        ) : (
-                          <span>{model.title} · v{model.version}</span>
-                        )}
-                      </li>
-                    ))}
+                    {activeGalleryModels.map((model) => {
+                      const isAuditPlaceholder = isAuditPlaceholderForViewer(
+                        model.moderationStatus,
+                        model.owner.id,
+                        currentUser,
+                      );
+
+                      if (isAuditPlaceholder) {
+                        return (
+                          <li key={model.id} className="gallery-detail__model gallery-detail__model--audit">
+                            <span>In Audit – {model.title}</span>
+                          </li>
+                        );
+                      }
+
+                      return (
+                        <li key={model.id}>
+                          {onNavigateToModel ? (
+                            <button
+                              type="button"
+                              className="gallery-detail__model-button"
+                              onClick={() => onNavigateToModel(model.id)}
+                            >
+                              {model.title} · v{model.version}
+                            </button>
+                          ) : (
+                            <span>{model.title} · v{model.version}</span>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </section>
               ) : null}
@@ -1051,6 +1080,26 @@ export const GalleryExplorer = ({
               <div className="gallery-detail__grid" role="list">
                 {activeGalleryImages.length > 0 ? (
                   activeGalleryImages.map((entry) => {
+                    const isAuditPlaceholder = isAuditPlaceholderForViewer(
+                      entry.image.moderationStatus,
+                      entry.image.owner.id,
+                      currentUser,
+                    );
+
+                    if (isAuditPlaceholder) {
+                      return (
+                        <div
+                          key={entry.entryId}
+                          role="listitem"
+                          className="gallery-detail__thumb gallery-detail__thumb--audit"
+                        >
+                          <div className="gallery-detail__thumb-trigger">
+                            <span>In Audit – {entry.image.title}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     const imageUrl =
                       resolveCachedStorageUrl(
                         entry.image.storagePath,
