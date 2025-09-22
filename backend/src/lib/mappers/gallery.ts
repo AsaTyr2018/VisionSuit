@@ -133,6 +133,7 @@ export const mapGalleryImageAsset = (
     title: image.title,
     description: image.description,
     isPublic: image.isPublic,
+    isAdult: image.isAdult,
     dimensions: image.width && image.height ? { width: image.width, height: image.height } : undefined,
     fileSize: image.fileSize,
     storagePath: storage.url ?? image.storagePath,
@@ -164,6 +165,7 @@ export const mapGallery = (
   const viewer = options.viewer;
   const viewerId = viewer?.id ?? null;
   const isAdmin = viewer?.role === 'ADMIN';
+  const allowAdultContent = viewer?.showAdultContent ?? false;
   const hasFlaggedEntry = gallery.entries.some(
     (entry) =>
       (entry.asset && entry.asset.moderationStatus === ModerationStatus.FLAGGED) ||
@@ -185,16 +187,26 @@ export const mapGallery = (
     isUnderModeration: hasFlaggedEntry,
     entries: gallery.entries
       .filter((entry) => {
+        const adultAllowed =
+          allowAdultContent ||
+          ((entry.asset ? !entry.asset.isAdult : true) && (entry.image ? !entry.image.isAdult : true));
+
+        if (!adultAllowed) {
+          return false;
+        }
+
         if (options.includePrivate) {
           return true;
         }
 
         const assetVisible = entry.asset
           ? entry.asset.moderationStatus !== ModerationStatus.REMOVED &&
+            (!entry.asset.isAdult || allowAdultContent) &&
             (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.asset.ownerId === viewerId)
           : false;
         const imageVisible = entry.image
           ? entry.image.moderationStatus !== ModerationStatus.REMOVED &&
+            (!entry.image.isAdult || allowAdultContent) &&
             (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.image.ownerId === viewerId)
           : false;
 
@@ -212,10 +224,12 @@ export const mapGallery = (
         const modelPreview = entry.asset ? resolveStorageLocation(entry.asset.previewImage) : null;
         const assetVisible = entry.asset
           ? entry.asset.moderationStatus !== ModerationStatus.REMOVED &&
+            (!entry.asset.isAdult || allowAdultContent) &&
             (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.asset.ownerId === viewerId)
           : false;
         const imageVisible = entry.image
           ? entry.image.moderationStatus !== ModerationStatus.REMOVED &&
+            (!entry.image.isAdult || allowAdultContent) &&
             (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.image.ownerId === viewerId)
           : false;
         const canViewAsset = assetVisible

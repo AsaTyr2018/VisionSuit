@@ -69,6 +69,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
         bio: true,
         avatarUrl: true,
         isActive: true,
+        showAdultContent: true,
       },
     });
 
@@ -103,6 +104,7 @@ export const attachOptionalUser = async (req: Request, _res: Response, next: Nex
         bio: true,
         avatarUrl: true,
         isActive: true,
+        showAdultContent: true,
       },
     });
 

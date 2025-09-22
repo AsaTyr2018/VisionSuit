@@ -742,12 +742,18 @@
 - **Technical Changes**: Split the scripts into model and gallery upload stages, enforced administrator role detection, chunked gallery uploads to bypass the per-request file limit, and refreshed the README with the updated flow and requirements.
 - **Data Changes**: None.
 
+## 14.5 – [Addition] MyLora migration helper
+- **General**: Added a turnkey script to migrate LoRA archives from MyLora into VisionSuit without touching databases by hand.
+- **Technical Changes**: Introduced `scripts/migrate_mylora_to_visionsuit.py` with session-based MyLora scraping, VisionSuit upload orchestration, duplicate detection, and preview harvesting plus README guidance for dependency setup.
+- **Data Changes**: None; the tool reads from MyLora and writes through existing VisionSuit APIs.
+
 ## 145 – [Fix] Moderation dialog initialization guard
 - **General**: Prevented the Administration → Moderation dialog from crashing when opening a flagged asset for review.
 - **Technical Changes**: Hoisted the moderation action matcher into a memoized callback so busy-state checks run after initialization instead of reading an uninitialized const.
 - **Data Changes**: None; runtime state handling only.
 
-## 146 – [Addition] MyLora migration helper
-- **General**: Added a turnkey script to migrate LoRA archives from MyLora into VisionSuit without touching databases by hand.
-- **Technical Changes**: Introduced `scripts/migrate_mylora_to_visionsuit.py` with session-based MyLora scraping, VisionSuit upload orchestration, duplicate detection, and preview harvesting plus README guidance for dependency setup.
-- **Data Changes**: None; the tool reads from MyLora and writes through existing VisionSuit APIs.
+## 146 – [Addition] Adult safety controls polish
+- **General**: Finalized the NSFW governance experience with a focused admin Safety tab and clear badges when adult assets surface for opted-in viewers.
+- **Technical Changes**: Suppressed duplicate status banners on the Safety tab, reset adult-tag errors when navigating away, refreshed the home tiles and explorer cards with adult badges gated by the viewer preference, and updated styling plus documentation to explain the workflow.
+- **Data Changes**: None; UI and messaging updates only.
+

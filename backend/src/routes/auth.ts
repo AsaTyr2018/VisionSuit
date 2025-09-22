@@ -38,6 +38,7 @@ authRouter.post('/login', async (req, res, next) => {
         avatarUrl: true,
         passwordHash: true,
         isActive: true,
+        showAdultContent: true,
       },
     });
 
@@ -104,6 +105,7 @@ authRouter.post('/register', async (req, res, next) => {
         role: true,
         bio: true,
         avatarUrl: true,
+        showAdultContent: true,
       },
     });
 
