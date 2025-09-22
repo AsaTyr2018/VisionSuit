@@ -36,11 +36,18 @@ export const AssetCard = ({ asset }: AssetCardProps) => {
         </div>
       ) : null}
       <header className="asset-card__header">
-        <div>
+        <div className="asset-card__title-group">
           <h3 className="asset-card__title">{asset.title}</h3>
           <p className="asset-card__version">Version {asset.version}</p>
         </div>
-        <span className="asset-card__badge">{modelType}</span>
+        <div className="asset-card__badge-group">
+          {asset.isAdult ? (
+            <span className="asset-card__badge asset-card__badge--adult" title="Marked as adult content">
+              Adult
+            </span>
+          ) : null}
+          <span className="asset-card__badge">{modelType}</span>
+        </div>
       </header>
       <p className="asset-card__description">{asset.description ?? 'No description provided yet.'}</p>
       <dl className="asset-card__meta">

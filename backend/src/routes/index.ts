@@ -9,6 +9,7 @@ import { storageRouter } from './storage';
 import { usersRouter } from './users';
 import { rankingsRouter } from './rankings';
 import { generatorRouter } from './generator';
+import { tagsRouter } from './tags';
 
 export const router = Router();
 
@@ -21,3 +22,4 @@ router.use('/storage', storageRouter);
 router.use('/users', usersRouter);
 router.use('/rankings', rankingsRouter);
 router.use('/generator', generatorRouter);
+router.use('/tags', tagsRouter);

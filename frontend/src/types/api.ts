@@ -2,6 +2,7 @@ export interface Tag {
   id: string;
   label: string;
   category?: string | null;
+  isAdult: boolean;
 }
 
 export type UserRole = 'USER' | 'CURATOR' | 'ADMIN';
@@ -17,6 +18,7 @@ export interface User {
   lastLoginAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  showAdultContent: boolean;
 }
 
 export interface CommentAuthor {
@@ -227,6 +229,7 @@ export interface ModelAsset {
   description?: string | null;
   trigger?: string | null;
   isPublic: boolean;
+  isAdult: boolean;
   version: string;
   fileSize?: number | null;
   checksum?: string | null;
@@ -267,6 +270,7 @@ export interface ImageAsset {
   title: string;
   description?: string | null;
   isPublic: boolean;
+  isAdult: boolean;
   dimensions?: { width: number; height: number };
   fileSize?: number | null;
   storagePath: string;
@@ -317,6 +321,15 @@ export interface Gallery {
   createdAt: string;
   updatedAt: string;
   entries: GalleryEntry[];
+}
+
+export interface AdultTagSummary {
+  id: string;
+  label: string;
+  category?: string | null;
+  isAdult: boolean;
+  imageCount: number;
+  modelCount: number;
 }
 
 export interface MetaStats {

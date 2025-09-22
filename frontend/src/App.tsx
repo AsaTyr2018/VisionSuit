@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent } from 'react';
 
 import { AssetExplorer } from './components/AssetExplorer';
 import { GalleryExplorer } from './components/GalleryExplorer';
@@ -80,15 +81,18 @@ const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
 };
 
 const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) => {
+  const allowAdult = viewer?.showAdultContent ?? false;
+  const filteredByAdult = assets.filter((asset) => allowAdult || !asset.isAdult);
+
   if (!viewer) {
-    return assets.filter((asset) => asset.moderationStatus !== 'REMOVED');
+    return filteredByAdult.filter((asset) => asset.moderationStatus !== 'REMOVED');
   }
 
   if (viewer.role === 'ADMIN') {
-    return assets;
+    return filteredByAdult;
   }
 
-  return assets.filter((asset) => {
+  return filteredByAdult.filter((asset) => {
     if (asset.moderationStatus === 'REMOVED') {
       return false;
     }
@@ -102,15 +106,18 @@ const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) 
 };
 
 const filterImageAssetsForViewer = (images: ImageAsset[], viewer?: User | null) => {
+  const allowAdult = viewer?.showAdultContent ?? false;
+  const filteredByAdult = images.filter((image) => allowAdult || !image.isAdult);
+
   if (!viewer) {
-    return images.filter((image) => image.moderationStatus !== 'REMOVED');
+    return filteredByAdult.filter((image) => image.moderationStatus !== 'REMOVED');
   }
 
   if (viewer.role === 'ADMIN') {
-    return images;
+    return filteredByAdult;
   }
 
-  return images.filter((image) => {
+  return filteredByAdult.filter((image) => {
     if (image.moderationStatus === 'REMOVED') {
       return false;
     }
@@ -164,6 +171,7 @@ export const App = () => {
   const [isProfileAuditMode, setIsProfileAuditMode] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const [generatorSettings, setGeneratorSettings] = useState<GeneratorSettings | null>(null);
+  const [isUpdatingAdultPreference, setIsUpdatingAdultPreference] = useState(false);
   const generatorAccessMode = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
 
   const canAccessGenerator = useMemo(() => {
@@ -659,6 +667,34 @@ export const App = () => {
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   };
 
+  const handleAdultPreferenceToggle = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!authUser || !token) {
+      setToast({ type: 'error', message: 'Sign in to adjust adult content visibility.' });
+      event.preventDefault();
+      return;
+    }
+
+    const nextValue = event.currentTarget.checked;
+    setIsUpdatingAdultPreference(true);
+
+    try {
+      await api.updateOwnProfile(token, authUser.id, { showAdultContent: nextValue });
+      await refreshUser();
+      await refreshData();
+      setToast({
+        type: 'success',
+        message: nextValue
+          ? 'Adult content enabled. Hidden assets will now appear across explorers.'
+          : 'Adult content disabled. Restricted assets are now filtered out.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update preference.';
+      setToast({ type: 'error', message });
+    } finally {
+      setIsUpdatingAdultPreference(false);
+    }
+  };
+
   const visibleModelAssets = useMemo(
     () => filterModelAssetsForViewer(assets, authUser),
     [assets, authUser],
@@ -670,6 +706,7 @@ export const App = () => {
 
   const latestModels = useMemo(() => visibleModelAssets.slice(0, 5), [visibleModelAssets]);
   const latestImages = useMemo(() => visibleImageAssets.slice(0, 5), [visibleImageAssets]);
+  const showAdultBadges = authUser?.showAdultContent ?? false;
 
   const modelTiles = latestModels.map((asset) => {
     const isAuditPlaceholder = isAuditPlaceholderForViewer(
@@ -732,7 +769,14 @@ export const App = () => {
           </button>
         </div>
         <div className="home-card__body">
-          <h3 className="home-card__title">{asset.title}</h3>
+          <div className="home-card__title-row">
+            <h3 className="home-card__title">{asset.title}</h3>
+            {showAdultBadges && asset.isAdult ? (
+              <span className="home-card__badge home-card__badge--adult" title="Marked as adult content">
+                Adult
+              </span>
+            ) : null}
+          </div>
           <dl className="home-card__meta">
             <div>
               <dt>Model</dt>
@@ -839,7 +883,14 @@ export const App = () => {
           </button>
         </div>
         <div className="home-card__body">
-          <h3 className="home-card__title">{image.title}</h3>
+          <div className="home-card__title-row">
+            <h3 className="home-card__title">{image.title}</h3>
+            {showAdultBadges && image.isAdult ? (
+              <span className="home-card__badge home-card__badge--adult" title="Marked as adult content">
+                Adult
+              </span>
+            ) : null}
+          </div>
           <dl className="home-card__meta">
             <div>
               <dt>Model</dt>
@@ -1145,6 +1196,29 @@ export const App = () => {
               <div>
                 <h1 className="content__title">{headerTitle}</h1>
                 <p className="content__subtitle">{headerDescription}</p>
+              </div>
+              <div className="content__actions">
+                {authUser ? (
+                  <label
+                    className={`content__toggle${authUser.showAdultContent ? ' content__toggle--active' : ''}`}
+                    htmlFor="nsfw-toggle"
+                  >
+                    <input
+                      id="nsfw-toggle"
+                      type="checkbox"
+                      checked={authUser.showAdultContent}
+                      onChange={handleAdultPreferenceToggle}
+                      disabled={isUpdatingAdultPreference}
+                    />
+                    <span>
+                      {authUser.showAdultContent ? 'Adult content visible' : 'Adult content hidden'}
+                    </span>
+                  </label>
+                ) : (
+                  <div className="content__toggle content__toggle--disabled" role="status" aria-live="polite">
+                    Guests browse in safe mode
+                  </div>
+                )}
               </div>
             </header>
 

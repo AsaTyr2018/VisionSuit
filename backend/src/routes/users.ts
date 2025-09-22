@@ -33,12 +33,14 @@ const updateUserSchema = z.object({
   role: z.enum(['USER', 'CURATOR', 'ADMIN']).optional(),
   bio: z.string().max(600).nullable().optional(),
   isActive: z.boolean().optional(),
+  showAdultContent: z.boolean().optional(),
 });
 
 const updateProfileSchema = z
   .object({
     displayName: z.string().min(2).max(160).optional(),
     bio: z.string().max(600).nullable().optional(),
+    showAdultContent: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'No profile changes provided.',
@@ -100,7 +102,7 @@ const sendAvatarNotFound = (res: Response) => {
 
 const serializeUserWithOrigin = (
   req: Request,
-  user: Pick<User, 'id' | 'email' | 'displayName' | 'role' | 'bio' | 'avatarUrl'>,
+  user: Pick<User, 'id' | 'email' | 'displayName' | 'role' | 'bio' | 'avatarUrl' | 'showAdultContent'>,
 ) => {
   const origin = getRequestOrigin(req);
   const location = resolveStorageLocation(user.avatarUrl ?? undefined);
@@ -444,6 +446,7 @@ usersRouter.post('/:id/avatar', requireAuth, requireSelfOrAdmin, (req, res, next
           role: true,
           bio: true,
           avatarUrl: true,
+          showAdultContent: true,
         },
       });
 
@@ -480,6 +483,7 @@ usersRouter.post('/:id/avatar', requireAuth, requireSelfOrAdmin, (req, res, next
             role: true,
             bio: true,
             avatarUrl: true,
+            showAdultContent: true,
           },
         });
       } catch (dbError) {
@@ -530,7 +534,7 @@ usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res
     const payload = parseResult.data;
     const updates: Record<string, unknown> = {};
 
-    if (payload.displayName) {
+    if (payload.displayName !== undefined) {
       const trimmed = payload.displayName.trim();
       if (trimmed.length < 2) {
         res.status(400).json({ message: 'Display name must be at least 2 characters.' });
@@ -548,6 +552,10 @@ usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res
       }
     }
 
+    if (payload.showAdultContent !== undefined) {
+      updates.showAdultContent = payload.showAdultContent;
+    }
+
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ message: 'No profile changes provided.' });
       return;
@@ -563,6 +571,7 @@ usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res
         role: true,
         bio: true,
         avatarUrl: true,
+        showAdultContent: true,
       },
     });
 
@@ -710,6 +719,10 @@ usersRouter.put('/:id', async (req, res, next) => {
 
     if (payload.isActive !== undefined) {
       updates.isActive = payload.isActive;
+    }
+
+    if (payload.showAdultContent !== undefined) {
+      updates.showAdultContent = payload.showAdultContent;
     }
 
     if (payload.password) {

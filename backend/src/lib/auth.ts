@@ -19,6 +19,7 @@ export interface AuthenticatedUser {
   role: UserRole;
   bio?: string | null;
   avatarUrl?: string | null;
+  showAdultContent: boolean;
 }
 
 export const hashPassword = (password: string) => bcrypt.hash(password, 12);
@@ -49,7 +50,9 @@ export const verifyAccessToken = (token: string): AuthTokenPayload => {
   return { sub, role, displayName, email };
 };
 
-export const toAuthUser = (user: Pick<User, 'id' | 'email' | 'displayName' | 'role' | 'bio' | 'avatarUrl'>): AuthenticatedUser => {
+export const toAuthUser = (
+  user: Pick<User, 'id' | 'email' | 'displayName' | 'role' | 'bio' | 'avatarUrl' | 'showAdultContent'>,
+): AuthenticatedUser => {
   return {
     id: user.id,
     email: user.email,
@@ -57,5 +60,6 @@ export const toAuthUser = (user: Pick<User, 'id' | 'email' | 'displayName' | 'ro
     role: user.role,
     bio: user.bio,
     avatarUrl: resolveAvatarUrl(user.id, user.avatarUrl ?? null),
+    showAdultContent: user.showAdultContent,
   };
 };

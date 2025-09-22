@@ -167,6 +167,7 @@ export const mapModelAsset = (asset: HydratedModelAsset) => {
     description: asset.description,
     trigger: asset.trigger,
     isPublic: asset.isPublic,
+    isAdult: asset.isAdult,
     version: latestVersion.version,
     fileSize: latestVersion.fileSize,
     checksum: latestVersion.checksum,
