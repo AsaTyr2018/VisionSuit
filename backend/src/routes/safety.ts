@@ -29,6 +29,7 @@ type ModelAdultEvaluationTarget = {
   metadata: Prisma.JsonValue | null;
   isAdult: boolean;
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+  versions: Array<{ metadata: Prisma.JsonValue | null }>;
 };
 
 type ImageAdultEvaluationTarget = {
@@ -67,6 +68,7 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
         metadata: true,
         isAdult: true,
         tags: { include: { tag: true } },
+        versions: { select: { metadata: true } },
       },
     });
 
@@ -76,11 +78,15 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
 
     const updates = models
       .map((model) => {
+        const versionMetadataList = model.versions
+          .map((entry) => entry.metadata ?? null)
+          .filter((entry): entry is Prisma.JsonValue => entry != null);
         const nextIsAdult = determineAdultForModel({
           title: model.title,
           description: model.description,
           trigger: model.trigger,
           metadata: model.metadata ?? null,
+          metadataList: versionMetadataList,
           tags: model.tags,
           adultKeywords,
         });

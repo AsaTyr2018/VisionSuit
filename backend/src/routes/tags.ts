@@ -27,6 +27,7 @@ const recalculateAdultForTag = async (tagId: string) => {
         metadata: true,
         isAdult: true,
         tags: { include: { tag: true } },
+        versions: { select: { metadata: true } },
       },
     }),
     prisma.imageAsset.findMany({
@@ -52,11 +53,15 @@ const recalculateAdultForTag = async (tagId: string) => {
 
   await Promise.all(
     models.map(async (model) => {
+      const versionMetadataList = model.versions
+        .map((entry) => entry.metadata ?? null)
+        .filter((entry): entry is Prisma.JsonValue => entry != null);
       const nextIsAdult = determineAdultForModel({
         title: model.title,
         description: model.description,
         trigger: model.trigger,
         metadata: model.metadata ?? null,
+        metadataList: versionMetadataList,
         tags: model.tags,
         adultKeywords,
       });

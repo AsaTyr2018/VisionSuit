@@ -116,11 +116,15 @@ export const determineAdultForImage = (input: {
   model?: string | null;
   sampler?: string | null;
   metadata?: Prisma.JsonValue | null;
+  metadataList?: Prisma.JsonValue[];
+  additionalTexts?: string[];
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   adultKeywords?: string[];
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
-  const metadataStrings = collectStringsFromJson(input.metadata);
+  const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
+  const metadataStrings = metadataSources.flatMap((entry) => collectStringsFromJson(entry));
+  const freeformTexts = input.additionalTexts?.map((entry) => entry ?? '').filter((entry) => entry.length > 0) ?? [];
   const adultFromTexts = hasAdultSignalFromTexts([
     input.title,
     input.description,
@@ -129,6 +133,7 @@ export const determineAdultForImage = (input: {
     input.model,
     input.sampler,
     ...metadataStrings,
+    ...freeformTexts,
   ], adultKeywords);
 
   const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
@@ -141,16 +146,21 @@ export const determineAdultForModel = (input: {
   description?: string | null;
   trigger?: string | null;
   metadata?: Prisma.JsonValue | null;
+  metadataList?: Prisma.JsonValue[];
+  additionalTexts?: string[];
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   adultKeywords?: string[];
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
-  const metadataStrings = collectStringsFromJson(input.metadata);
+  const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
+  const metadataStrings = metadataSources.flatMap((entry) => collectStringsFromJson(entry));
+  const freeformTexts = input.additionalTexts?.map((entry) => entry ?? '').filter((entry) => entry.length > 0) ?? [];
   const adultFromTexts = hasAdultSignalFromTexts([
     input.title,
     input.description,
     input.trigger,
     ...metadataStrings,
+    ...freeformTexts,
   ], adultKeywords);
 
   const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);

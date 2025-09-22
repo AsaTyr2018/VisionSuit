@@ -3,6 +3,7 @@ import { inflateSync } from 'node:zlib';
 
 import imageSize from 'image-size';
 import { parse as parseExif } from 'exifr';
+import type { Prisma } from '@prisma/client';
 
 export interface ImageMetadataResult {
   width?: number;
@@ -23,6 +24,48 @@ export interface SafetensorsMetadataResult {
   modelName?: string | null;
   modelAliases?: string[];
 }
+
+export const toJsonImageMetadata = (metadata?: ImageMetadataResult | null): Prisma.JsonObject | null => {
+  if (!metadata) {
+    return null;
+  }
+
+  const payload: Prisma.JsonObject = {};
+
+  if (metadata.prompt) {
+    payload.prompt = metadata.prompt;
+  }
+  if (metadata.negativePrompt) {
+    payload.negativePrompt = metadata.negativePrompt;
+  }
+  if (metadata.model) {
+    payload.model = metadata.model;
+  }
+  if (metadata.sampler) {
+    payload.sampler = metadata.sampler;
+  }
+  if (metadata.seed) {
+    payload.seed = metadata.seed;
+  }
+  if (metadata.cfgScale != null) {
+    payload.cfgScale = metadata.cfgScale;
+  }
+  if (metadata.steps != null) {
+    payload.steps = metadata.steps;
+  }
+  if (metadata.width != null) {
+    payload.width = metadata.width;
+  }
+  if (metadata.height != null) {
+    payload.height = metadata.height;
+  }
+
+  if (metadata.extras && Object.keys(metadata.extras).length > 0) {
+    payload.extras = metadata.extras as Prisma.JsonObject;
+  }
+
+  return Object.keys(payload).length > 0 ? payload : null;
+};
 
 const STABLE_DIFFUSION_KEYS = new Set([
   'prompt',

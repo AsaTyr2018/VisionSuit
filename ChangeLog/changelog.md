@@ -762,3 +762,8 @@
 - **Technical Changes**: Suppressed duplicate status banners on the Safety tab, reset adult-tag errors when navigating away, refreshed the home tiles and explorer cards with adult badges gated by the viewer preference, and updated styling plus documentation to explain the workflow.
 - **Data Changes**: None; UI and messaging updates only.
 
+
+## 147 – [Fix] Comprehensive adult-content enforcement
+- **General**: Ensured NSFW governance reacts to admin keywords and preview prompts so adult assets are consistently flagged and hidden from guests.
+- **Technical Changes**: Extended the adult detector to evaluate multiple metadata sources, captured LoRA preview EXIF data during uploads and versioning, recalculated model flags when versions are added or removed, refreshed keyword-driven batch recalculations, and documented the stricter behaviour in the README.
+- **Data Changes**: Newly uploaded or versioned models now persist parsed preview metadata inside their version JSON; existing records are reevaluated without schema changes.
