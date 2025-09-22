@@ -15,6 +15,11 @@ import type {
   RankingSettings,
   User,
 } from '../types/api';
+import { FilterChip } from './FilterChip';
+import { ImageAssetEditDialog } from './ImageAssetEditDialog';
+import { ModelAssetEditDialog } from './ModelAssetEditDialog';
+import { ModelVersionDialog } from './ModelVersionDialog';
+import { ModelVersionEditDialog } from './ModelVersionEditDialog';
 import { UserCreationDialog, type AsyncActionResult } from './UserCreationDialog';
 
 const roleSummaries: Record<
@@ -116,11 +121,7 @@ type TierDraft = {
   isActive: boolean;
 };
 
-const parseCommaList = (value: string) =>
-  value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+type ModelVersionEntry = ModelAsset['versions'][number];
 
 const generatorBaseModelTypeOptions: GeneratorBaseModelConfig['type'][] = ['SD1.5', 'SDXL', 'PonyXL'];
 
@@ -210,6 +211,47 @@ const truncateText = (value: string, limit = 160) => {
   return `${value.slice(0, limit - 1).trimEnd()}…`;
 };
 
+const buildModelDetail = (model: ModelAsset) => {
+  const previewUrl =
+    resolveCachedStorageUrl(
+      model.previewImage,
+      model.previewImageBucket,
+      model.previewImageObject,
+      { updatedAt: model.updatedAt, cacheKey: model.id },
+    ) ?? model.previewImage ?? null;
+  const downloadUrl =
+    resolveStorageUrl(model.storagePath, model.storageBucket, model.storageObject) ?? model.storagePath;
+  const updatedLabel = new Date(model.updatedAt).toLocaleDateString('en-US');
+  const fileSizeLabel = formatFileSize(model.fileSize);
+  const metadataEntries = [
+    { label: 'Slug', value: model.slug },
+    model.storageBucket ? { label: 'Bucket', value: model.storageBucket } : null,
+    {
+      label: 'Storage object',
+      value: model.storageObject ?? model.storagePath,
+      href: downloadUrl,
+    },
+    { label: 'Checksum', value: model.checksum ?? '—' },
+  ].filter((entry): entry is { label: string; value: string; href?: string } => Boolean(entry));
+
+  return { previewUrl, downloadUrl, updatedLabel, fileSizeLabel, metadataEntries };
+};
+
+const buildImageDetail = (image: ImageAsset) => {
+  const previewUrl =
+    resolveCachedStorageUrl(image.storagePath, image.storageBucket, image.storageObject, {
+      updatedAt: image.updatedAt,
+      cacheKey: image.id,
+    }) ?? image.storagePath;
+  const downloadUrl =
+    resolveStorageUrl(image.storagePath, image.storageBucket, image.storageObject) ?? image.storagePath;
+  const updatedLabel = new Date(image.updatedAt).toLocaleDateString('en-US');
+  const fileSizeLabel = formatFileSize(image.fileSize);
+  const dimensionsLabel = image.dimensions ? `${image.dimensions.width}×${image.dimensions.height}` : null;
+
+  return { previewUrl, downloadUrl, updatedLabel, fileSizeLabel, dimensionsLabel };
+};
+
 export const AdminPanel = ({
   users,
   models,
@@ -234,12 +276,34 @@ export const AdminPanel = ({
   const [userFilter, setUserFilter] = useState<{ query: string; role: FilterValue<User['role']>; status: FilterValue<UserStatusFilter> }>(
     { query: '', role: 'all', status: 'all' },
   );
-  const [modelFilter, setModelFilter] = useState<{ query: string; owner: FilterValue<string>; tag: string }>({
+  const [modelFilter, setModelFilter] = useState<{
+    query: string;
+    owner: FilterValue<string>;
+    tag: string;
+    metadata: string;
+    visibility: FilterValue<VisibilityFilter>;
+    sort: 'updated_desc' | 'title_asc' | 'owner_asc';
+  }>({
     query: '',
     owner: 'all',
     tag: '',
+    metadata: '',
+    visibility: 'all',
+    sort: 'updated_desc',
   });
-  const [imageFilter, setImageFilter] = useState<{ query: string; owner: FilterValue<string> }>({ query: '', owner: 'all' });
+  const [imageFilter, setImageFilter] = useState<{
+    query: string;
+    owner: FilterValue<string>;
+    metadata: string;
+    visibility: FilterValue<VisibilityFilter>;
+    sort: 'updated_desc' | 'title_asc' | 'owner_asc';
+  }>({
+    query: '',
+    owner: 'all',
+    metadata: '',
+    visibility: 'all',
+    sort: 'updated_desc',
+  });
   const [galleryFilter, setGalleryFilter] = useState<{
     query: string;
     owner: FilterValue<string>;
@@ -248,9 +312,15 @@ export const AdminPanel = ({
 
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
-  const [activeModelId, setActiveModelId] = useState<string | null>(null);
+  const [expandedModelId, setExpandedModelId] = useState<string | null>(null);
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [expandedImageId, setExpandedImageId] = useState<string | null>(null);
+  const [modelDensity, setModelDensity] = useState<'comfortable' | 'compact'>('compact');
+  const [imageDensity, setImageDensity] = useState<'comfortable' | 'compact'>('compact');
+  const [modelToEdit, setModelToEdit] = useState<ModelAsset | null>(null);
+  const [imageToEdit, setImageToEdit] = useState<ImageAsset | null>(null);
+  const [modelForVersionUpload, setModelForVersionUpload] = useState<ModelAsset | null>(null);
+  const [modelVersionToEdit, setModelVersionToEdit] = useState<{ model: ModelAsset; version: ModelVersionEntry } | null>(null);
   const [weightDraft, setWeightDraft] = useState<{ modelWeight: string; galleryWeight: string; imageWeight: string }>({
     modelWeight: '',
     galleryWeight: '',
@@ -501,23 +571,51 @@ export const AdminPanel = ({
     });
   }, [users, userFilter]);
 
+  const modelMetadataOptions = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    models.forEach((model) => {
+      collectModelMetadataStrings(model.metadata).forEach((entry) => {
+        const normalized = entry.trim();
+        if (!normalized) {
+          return;
+        }
+        const key = normalized.toLowerCase();
+        const existing = counts.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          counts.set(key, { label: normalized, count: 1 });
+        }
+      });
+    });
+
+    return Array.from(counts.values())
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.label.localeCompare(b.label);
+      })
+      .slice(0, 12);
+  }, [models]);
+
   const filteredModels = useMemo(() => {
     const tagQuery = modelFilter.tag.trim().toLowerCase();
+    const metadataQuery = modelFilter.metadata.trim().toLowerCase();
+    const searchQuery = modelFilter.query.trim();
 
-    return models.filter((model) => {
-      const metadataMatches =
-        modelFilter.query.trim().length > 0 &&
-        collectModelMetadataStrings(model.metadata).some((value) => matchText(value, modelFilter.query));
+    const filtered = models.filter((model) => {
+      const metadataValues = collectModelMetadataStrings(model.metadata);
+      const matchesSearch =
+        searchQuery.length === 0 ||
+        matchText(model.title, searchQuery) ||
+        matchText(model.description ?? '', searchQuery) ||
+        matchText(model.version, searchQuery) ||
+        matchText(model.owner.displayName, searchQuery) ||
+        matchText(model.trigger ?? '', searchQuery) ||
+        metadataValues.some((value) => matchText(value, searchQuery));
 
-      const matchesQuery =
-        matchText(model.title, modelFilter.query) ||
-        matchText(model.description ?? '', modelFilter.query) ||
-        matchText(model.version, modelFilter.query) ||
-        matchText(model.owner.displayName, modelFilter.query) ||
-        matchText(model.trigger ?? '', modelFilter.query) ||
-        metadataMatches;
-
-      if (!matchesQuery) {
+      if (!matchesSearch) {
         return false;
       }
 
@@ -529,87 +627,88 @@ export const AdminPanel = ({
         return false;
       }
 
+      if (metadataQuery && !metadataValues.some((value) => value.toLowerCase().includes(metadataQuery))) {
+        return false;
+      }
+
+      if (modelFilter.visibility !== 'all') {
+        const visibility = model.isPublic ? 'public' : 'private';
+        if (visibility !== modelFilter.visibility) {
+          return false;
+        }
+      }
+
       return true;
     });
+
+    const sorted = [...filtered];
+    if (modelFilter.sort === 'title_asc') {
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (modelFilter.sort === 'owner_asc') {
+      sorted.sort((a, b) => a.owner.displayName.localeCompare(b.owner.displayName));
+    } else {
+      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    }
+
+    return sorted;
   }, [models, modelFilter]);
 
-  const activeModel = useMemo(() => {
-    if (!activeModelId) {
-      return null;
-    }
-
-    return models.find((model) => model.id === activeModelId) ?? null;
-  }, [models, activeModelId]);
-
-  const activeModelDetails = useMemo(() => {
-    if (!activeModel) {
-      return null;
-    }
-
-    const previewUrl =
-      resolveCachedStorageUrl(
-        activeModel.previewImage,
-        activeModel.previewImageBucket,
-        activeModel.previewImageObject,
-        { updatedAt: activeModel.updatedAt, cacheKey: activeModel.id },
-      ) ??
-      activeModel.previewImage ??
-      null;
-    const downloadUrl =
-      resolveStorageUrl(activeModel.storagePath, activeModel.storageBucket, activeModel.storageObject) ??
-      activeModel.storagePath;
-    const updatedLabel = new Date(activeModel.updatedAt).toLocaleDateString('en-US');
-    const fileSizeLabel = formatFileSize(activeModel.fileSize);
-    const versionCount = activeModel.versions.length;
-    const metadataEntries = [
-      { label: 'Slug', value: activeModel.slug },
-      activeModel.storageBucket ? { label: 'Bucket', value: activeModel.storageBucket } : null,
-      {
-        label: 'Storage object',
-        value: activeModel.storageObject ?? activeModel.storagePath,
-        href: downloadUrl,
-      },
-      {
-        label: 'Checksum',
-        value: activeModel.checksum ?? '—',
-      },
-    ].filter((entry): entry is { label: string; value: string; href?: string } => Boolean(entry));
-
-    return {
-      previewUrl,
-      downloadUrl,
-      updatedLabel,
-      fileSizeLabel,
-      versionCount,
-      metadataEntries,
-    };
-  }, [activeModel]);
-
   useEffect(() => {
-    if (!activeModelId) {
+    if (!expandedModelId) {
       return;
     }
 
-    const isVisible = filteredModels.some((model) => model.id === activeModelId);
+    const isVisible = filteredModels.some((model) => model.id === expandedModelId);
     if (!isVisible) {
-      setActiveModelId(null);
+      setExpandedModelId(null);
     }
-  }, [activeModelId, filteredModels]);
+  }, [expandedModelId, filteredModels]);
+
+  const imageMetadataOptions = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    images.forEach((image) => {
+      collectImageMetadataStrings(image.metadata).forEach((entry) => {
+        const normalized = entry.trim();
+        if (!normalized) {
+          return;
+        }
+        const key = normalized.toLowerCase();
+        const existing = counts.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          counts.set(key, { label: normalized, count: 1 });
+        }
+      });
+    });
+
+    return Array.from(counts.values())
+      .sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return a.label.localeCompare(b.label);
+      })
+      .slice(0, 12);
+  }, [images]);
 
   const filteredImages = useMemo(() => {
-    return images.filter((image) => {
-      const metadataMatches =
-        imageFilter.query.trim().length > 0 &&
-        collectImageMetadataStrings(image.metadata).some((value) => matchText(value, imageFilter.query));
-      const matchesQuery =
-        matchText(image.title, imageFilter.query) ||
-        matchText(image.description ?? '', imageFilter.query) ||
-        matchText(image.prompt ?? '', imageFilter.query) ||
-        matchText(image.negativePrompt ?? '', imageFilter.query) ||
-        metadataMatches ||
-        getTagLabels(image.tags).some((tag) => tag.includes(imageFilter.query.toLowerCase()));
+    const metadataQuery = imageFilter.metadata.trim().toLowerCase();
+    const searchQuery = imageFilter.query.trim();
 
-      if (!matchesQuery) {
+    const filtered = images.filter((image) => {
+      const metadataValues = collectImageMetadataStrings(image.metadata);
+      const matchesSearch =
+        searchQuery.length === 0 ||
+        matchText(image.title, searchQuery) ||
+        matchText(image.description ?? '', searchQuery) ||
+        matchText(image.prompt ?? '', searchQuery) ||
+        matchText(image.negativePrompt ?? '', searchQuery) ||
+        matchText(image.owner.displayName, searchQuery) ||
+        metadataValues.some((value) => matchText(value, searchQuery)) ||
+        image.tags.some((tag) => matchText(tag.label, searchQuery));
+
+      if (!matchesSearch) {
         return false;
       }
 
@@ -617,9 +716,42 @@ export const AdminPanel = ({
         return false;
       }
 
+      if (metadataQuery && !metadataValues.some((value) => value.toLowerCase().includes(metadataQuery))) {
+        return false;
+      }
+
+      if (imageFilter.visibility !== 'all') {
+        const visibility = image.isPublic ? 'public' : 'private';
+        if (visibility !== imageFilter.visibility) {
+          return false;
+        }
+      }
+
       return true;
     });
+
+    const sorted = [...filtered];
+    if (imageFilter.sort === 'title_asc') {
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+    } else if (imageFilter.sort === 'owner_asc') {
+      sorted.sort((a, b) => a.owner.displayName.localeCompare(b.owner.displayName));
+    } else {
+      sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    }
+
+    return sorted;
   }, [images, imageFilter]);
+
+  useEffect(() => {
+    if (!expandedImageId) {
+      return;
+    }
+
+    const isVisible = filteredImages.some((image) => image.id === expandedImageId);
+    if (!isVisible) {
+      setExpandedImageId(null);
+    }
+  }, [expandedImageId, filteredImages]);
 
   const filteredGalleries = useMemo(() => {
     return galleries.filter((gallery) => {
@@ -746,28 +878,6 @@ export const AdminPanel = ({
     );
   };
 
-  const handleUpdateModel = async (event: FormEvent<HTMLFormElement>, model: ModelAsset) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const title = (formData.get('title') as string | null)?.trim();
-    const version = (formData.get('version') as string | null)?.trim();
-    const trigger = (formData.get('trigger') as string | null)?.trim();
-    const description = (formData.get('description') as string | null)?.trim();
-    const tagsValue = (formData.get('tags') as string | null) ?? '';
-    const ownerId = (formData.get('ownerId') as string | null) ?? model.owner.id;
-
-    const payload = {
-      title: title ?? undefined,
-      version: version ?? undefined,
-      trigger: trigger && trigger.length > 0 ? trigger : null,
-      description: description && description.length > 0 ? description : null,
-      tags: parseCommaList(tagsValue),
-      ownerId,
-    };
-
-    await withStatus(() => api.updateModelAsset(token, model.id, payload), 'Model updated.');
-  };
-
   const handlePromoteModelVersion = async (model: ModelAsset, version: ModelAsset['versions'][number]) => {
     const label = version.version.trim() || 'this version';
     if (!window.confirm(`Make ${label} the primary version for ${model.title}?`)) {
@@ -777,30 +887,6 @@ export const AdminPanel = ({
     await withStatus(
       () => api.promoteModelVersion(token, model.id, version.id).then(() => undefined),
       'Primary version updated.',
-    );
-  };
-
-  const handleRenameModelVersion = async (model: ModelAsset, version: ModelAsset['versions'][number]) => {
-    const original = version.version.trim();
-    const nextLabel = window.prompt('Enter a new label for this version', original);
-
-    if (nextLabel === null) {
-      return;
-    }
-
-    const trimmed = nextLabel.trim();
-    if (trimmed.length === 0) {
-      setStatus({ type: 'error', message: 'Version label cannot be empty.' });
-      return;
-    }
-
-    if (trimmed === original) {
-      return;
-    }
-
-    await withStatus(
-      () => api.updateModelVersion(token, model.id, version.id, { version: trimmed }).then(() => undefined),
-      'Version label updated.',
     );
   };
 
@@ -833,43 +919,69 @@ export const AdminPanel = ({
         }),
       `${ids.length} models removed.`,
     );
-    setActiveModelId(null);
+    setExpandedModelId((previous) => {
+      if (!previous) {
+        return previous;
+      }
+      return ids.includes(previous) ? null : previous;
+    });
   };
 
-  const handleUpdateImage = async (event: FormEvent<HTMLFormElement>, image: ImageAsset) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const title = (formData.get('title') as string | null)?.trim();
-    const description = (formData.get('description') as string | null)?.trim();
-    const prompt = (formData.get('prompt') as string | null)?.trim();
-    const negativePrompt = (formData.get('negativePrompt') as string | null)?.trim();
-    const tagsValue = (formData.get('tags') as string | null) ?? '';
-    const ownerId = (formData.get('ownerId') as string | null) ?? image.owner.id;
-    const seed = (formData.get('seed') as string | null)?.trim();
-    const modelName = (formData.get('model') as string | null)?.trim();
-    const sampler = (formData.get('sampler') as string | null)?.trim();
-    const cfgScaleRaw = (formData.get('cfgScale') as string | null)?.trim();
-    const stepsRaw = (formData.get('steps') as string | null)?.trim();
-    const cfgScale = cfgScaleRaw && cfgScaleRaw.length > 0 ? Number.parseFloat(cfgScaleRaw) : null;
-    const steps = stepsRaw && stepsRaw.length > 0 ? Number.parseInt(stepsRaw, 10) : null;
+  const handleDeleteModel = async (model: ModelAsset) => {
+    if (!window.confirm(`Delete model "${model.title}"?`)) {
+      return;
+    }
 
-    const payload = {
-      title: title ?? undefined,
-      description: description && description.length > 0 ? description : null,
-      prompt: prompt && prompt.length > 0 ? prompt : null,
-      negativePrompt: negativePrompt && negativePrompt.length > 0 ? negativePrompt : null,
-      tags: parseCommaList(tagsValue),
-      ownerId,
-      metadata: {
-        seed: seed && seed.length > 0 ? seed : null,
-        model: modelName && modelName.length > 0 ? modelName : null,
-        sampler: sampler && sampler.length > 0 ? sampler : null,
-        cfgScale: cfgScale !== null && !Number.isNaN(cfgScale) ? cfgScale : null,
-        steps: steps !== null && !Number.isNaN(steps) ? steps : null,
-      },
-    };
+    await withStatus(() => api.deleteModelAsset(token, model.id), 'Model deleted.');
+    setSelectedModels((previous) => {
+      const next = new Set(previous);
+      next.delete(model.id);
+      return next;
+    });
+    setExpandedModelId((previous) => (previous === model.id ? null : previous));
+  };
 
-    await withStatus(() => api.updateImageAsset(token, image.id, payload), 'Image updated.');
+  const handleOpenModelEdit = (model: ModelAsset) => {
+    setModelToEdit(model);
+    resetStatus();
+  };
+
+  const handleModelEditSuccess = async (updated: ModelAsset) => {
+    setStatus({ type: 'success', message: 'Model details updated.' });
+    await onRefresh();
+    setExpandedModelId((previous) => previous ?? updated.id);
+  };
+
+  const handleOpenVersionUpload = (model: ModelAsset) => {
+    setModelForVersionUpload(model);
+    resetStatus();
+  };
+
+  const handleVersionUploadSuccess = async (updated: ModelAsset) => {
+    setStatus({ type: 'success', message: 'New model version uploaded.' });
+    await onRefresh();
+    setExpandedModelId(updated.id);
+  };
+
+  const handleOpenVersionRename = (model: ModelAsset, version: ModelVersionEntry) => {
+    setModelVersionToEdit({ model, version });
+    resetStatus();
+  };
+
+  const handleVersionRenameSuccess = async (updated: ModelAsset) => {
+    setStatus({ type: 'success', message: 'Version label updated.' });
+    await onRefresh();
+    setExpandedModelId(updated.id);
+  };
+
+  const handleOpenImageEdit = (image: ImageAsset) => {
+    setImageToEdit(image);
+    resetStatus();
+  };
+
+  const handleImageEditSuccess = async () => {
+    setStatus({ type: 'success', message: 'Image details updated.' });
+    await onRefresh();
   };
 
   const handleDeleteImage = async (image: ImageAsset) => {
@@ -1465,56 +1577,159 @@ export const AdminPanel = ({
       {activeTab === 'models' ? (
         <div className="admin__panel">
           <section className="admin__section">
-            <div className="admin__section-header">
-              <h3>Manage models</h3>
-              <div className="admin__filters">
-                <label>
-                  <span>Search</span>
-                  <input
-                    type="search"
-                    value={modelFilter.query}
-                    onChange={(event) => {
-                      const { value } = event.currentTarget;
-                      setModelFilter((previous) => ({ ...previous, query: value }));
-                    }}
-                    placeholder="Title, description, or owner"
-                    disabled={isBusy}
-                  />
-                </label>
-                <label>
-                  <span>Owner</span>
-                  <select
-                    value={modelFilter.owner}
-                    onChange={(event) => {
-                      const { value } = event.currentTarget;
-                      setModelFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
-                    }}
-                    disabled={isBusy}
-                  >
-                    <option value="all">All</option>
-                    {userOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Tag search</span>
-                  <input
-                    type="search"
-                    value={modelFilter.tag}
-                    onChange={(event) => {
-                      const { value } = event.currentTarget;
-                      setModelFilter((previous) => ({ ...previous, tag: value }));
-                    }}
-                    placeholder="Tag filter"
-                    disabled={isBusy}
-                  />
-                </label>
+            <div className="admin__section-header admin__section-header--split">
+              <div>
+                <h3>Models library</h3>
+                <p className="admin__section-description">
+                  Curate thousands of LoRA checkpoints with dense filters and drawer-style details.
+                </p>
+              </div>
+              <div className="admin-collection__chip-group" role="group" aria-label="Model row density">
+                <FilterChip
+                  label="Comfortable"
+                  isActive={modelDensity === 'comfortable'}
+                  tone={modelDensity === 'comfortable' ? 'solid' : 'default'}
+                  onClick={() => setModelDensity('comfortable')}
+                  aria-pressed={modelDensity === 'comfortable'}
+                />
+                <FilterChip
+                  label="Compact"
+                  isActive={modelDensity === 'compact'}
+                  tone={modelDensity === 'compact' ? 'solid' : 'default'}
+                  onClick={() => setModelDensity('compact')}
+                  aria-pressed={modelDensity === 'compact'}
+                />
               </div>
             </div>
-
+            <div className="admin__filters admin__filters--grid">
+              <label>
+                <span>Search</span>
+                <input
+                  type="search"
+                  value={modelFilter.query}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setModelFilter((previous) => ({ ...previous, query: value }));
+                  }}
+                  placeholder="Title, description, owner, metadata"
+                  disabled={isBusy}
+                />
+              </label>
+              <label>
+                <span>Owner</span>
+                <select
+                  value={modelFilter.owner}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setModelFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
+                  }}
+                  disabled={isBusy}
+                >
+                  <option value="all">All</option>
+                  {userOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Tag search</span>
+                <input
+                  type="search"
+                  value={modelFilter.tag}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setModelFilter((previous) => ({ ...previous, tag: value }));
+                  }}
+                  placeholder="Tag filter"
+                  disabled={isBusy}
+                />
+              </label>
+              <label>
+                <span>Metadata</span>
+                <input
+                  type="search"
+                  value={modelFilter.metadata}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setModelFilter((previous) => ({ ...previous, metadata: value }));
+                  }}
+                  placeholder="Base model, checksum, filename…"
+                  disabled={isBusy}
+                />
+              </label>
+              <label>
+                <span>Sort by</span>
+                <select
+                  value={modelFilter.sort}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setModelFilter((previous) => ({ ...previous, sort: value as typeof previous.sort }));
+                  }}
+                  disabled={isBusy}
+                >
+                  <option value="updated_desc">Recently updated</option>
+                  <option value="title_asc">Title A → Z</option>
+                  <option value="owner_asc">Owner A → Z</option>
+                </select>
+              </label>
+            </div>
+            <div className="admin-collection__chip-toolbar">
+              <div className="admin-collection__chip-group" role="group" aria-label="Model visibility filter">
+                <FilterChip
+                  label="All visibility"
+                  isActive={modelFilter.visibility === 'all'}
+                  tone={modelFilter.visibility === 'all' ? 'solid' : 'default'}
+                  onClick={() => setModelFilter((previous) => ({ ...previous, visibility: 'all' }))}
+                  aria-pressed={modelFilter.visibility === 'all'}
+                />
+                <FilterChip
+                  label="Public"
+                  isActive={modelFilter.visibility === 'public'}
+                  tone={modelFilter.visibility === 'public' ? 'solid' : 'default'}
+                  onClick={() => setModelFilter((previous) => ({ ...previous, visibility: 'public' }))}
+                  aria-pressed={modelFilter.visibility === 'public'}
+                />
+                <FilterChip
+                  label="Private"
+                  isActive={modelFilter.visibility === 'private'}
+                  tone={modelFilter.visibility === 'private' ? 'solid' : 'default'}
+                  onClick={() => setModelFilter((previous) => ({ ...previous, visibility: 'private' }))}
+                  aria-pressed={modelFilter.visibility === 'private'}
+                />
+              </div>
+            </div>
+            {modelMetadataOptions.length > 0 ? (
+              <div
+                className="admin-collection__chip-group admin-collection__chip-group--scroll"
+                role="group"
+                aria-label="Popular model metadata"
+              >
+                <FilterChip
+                  label="Any metadata"
+                  isActive={modelFilter.metadata.trim().length === 0}
+                  tone={modelFilter.metadata.trim().length === 0 ? 'solid' : 'default'}
+                  onClick={() => setModelFilter((previous) => ({ ...previous, metadata: '' }))}
+                  aria-pressed={modelFilter.metadata.trim().length === 0}
+                />
+                {modelMetadataOptions.map((option) => {
+                  const normalized = option.label.toLowerCase();
+                  const isActive = modelFilter.metadata.trim().toLowerCase() === normalized;
+                  return (
+                    <FilterChip
+                      key={option.label}
+                      label={option.label}
+                      count={option.count}
+                      isActive={isActive}
+                      tone={isActive ? 'solid' : 'default'}
+                      onClick={() => setModelFilter((previous) => ({ ...previous, metadata: option.label }))}
+                      aria-pressed={isActive}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
             {renderSelectionToolbar(
               filteredModels.length,
               selectedModels.size,
@@ -1522,471 +1737,68 @@ export const AdminPanel = ({
               () => setSelectedModels(new Set()),
               handleBulkDeleteModels,
             )}
-
             {filteredModels.length === 0 ? (
-              <p className="admin__empty">No models available.</p>
+              <p className="admin__empty">No models match your filters.</p>
             ) : (
-              <div className="admin-model-grid" role="list">
+              <div
+                className={`admin-collection ${modelDensity === 'compact' ? 'admin-collection--compact' : ''}`}
+                role="list"
+              >
                 {filteredModels.map((model) => {
-                    const previewUrl =
-                      resolveCachedStorageUrl(
-                        model.previewImage,
-                        model.previewImageBucket,
-                        model.previewImageObject,
-                        { updatedAt: model.updatedAt, cacheKey: model.id },
-                      ) ??
-                      model.previewImage ??
-                      null;
-                  const isActive = activeModelId === model.id;
-
+                  const isExpanded = expandedModelId === model.id;
+                  const modelDetails = buildModelDetail(model);
+                  const visibleTags = model.tags.slice(0, modelDensity === 'compact' ? 3 : 6);
+                  const remainingTagCount = model.tags.length - visibleTags.length;
                   return (
                     <article
                       key={model.id}
-                      className={`admin-model-card${isActive ? ' admin-model-card--active' : ''}`}
+                      className={`admin-collection__row${isExpanded ? ' admin-collection__row--expanded' : ''}`}
                       role="listitem"
                     >
-                      <label className="admin-model-card__checkbox">
-                        <input
-                          type="checkbox"
-                          checked={selectedModels.has(model.id)}
-                          onChange={(event) =>
-                            toggleSelection(setSelectedModels, model.id, event.currentTarget.checked)
-                          }
-                          disabled={isBusy}
-                          aria-label={`Select ${model.title}`}
-                        />
-                        <span className="sr-only">Select {model.title}</span>
-                      </label>
-                      <div className="admin-model-card__media">
-                        {previewUrl ? (
-                          <img src={previewUrl} alt={model.title} loading="lazy" />
-                        ) : (
-                          <div className="admin-model-card__placeholder">No preview</div>
-                        )}
-                      </div>
-                      <h4 className="admin-model-card__title">{model.title}</h4>
-                      <button
-                        type="button"
-                        className="button button--primary admin-model-card__manage"
-                        onClick={() => setActiveModelId(model.id)}
-                        aria-controls="admin-model-mainframe"
-                      >
-                        Manage
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-          {activeModel && activeModelDetails ? (
-            <section
-              className="admin__section admin-model-mainframe"
-              id="admin-model-mainframe"
-              aria-labelledby="admin-model-mainframe-title"
-            >
-              <div className="admin-model-mainframe__header">
-                <div>
-                  <h3 id="admin-model-mainframe-title">{activeModel.title}</h3>
-                  <p className="admin-model-mainframe__subtitle">
-                    Owned by{' '}
-                    {onOpenProfile ? (
-                      <button
-                        type="button"
-                        className="curator-link"
-                        onClick={() => onOpenProfile(activeModel.owner.id)}
-                      >
-                        {activeModel.owner.displayName}
-                      </button>
-                    ) : (
-                      activeModel.owner.displayName
-                    )}
-                  </p>
-                </div>
-                <div className="admin-model-mainframe__actions">
-                  <button
-                    type="button"
-                    className="button button--ghost"
-                    onClick={() => setActiveModelId(null)}
-                    disabled={isBusy}
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-              <div className="admin-model-mainframe__layout">
-                <div className="admin-model-mainframe__overview">
-                  <div className="admin-model-mainframe__media admin-model-card__media">
-                    {activeModelDetails.previewUrl ? (
-                      <img src={activeModelDetails.previewUrl} alt={activeModel.title} />
-                    ) : (
-                      <div className="admin-model-card__placeholder">No preview</div>
-                    )}
-                  </div>
-                  <div className="admin-model-mainframe__badges">
-                    <span className="admin-badge">{activeModel.version}</span>
-                    <span className="admin-badge admin-badge--muted">{activeModelDetails.updatedLabel}</span>
-                    {activeModelDetails.fileSizeLabel ? (
-                      <span className="admin-badge admin-badge--muted">{activeModelDetails.fileSizeLabel}</span>
-                    ) : null}
-                    <span className="admin-badge admin-badge--muted">
-                      {activeModelDetails.versionCount} versions
-                    </span>
-                  </div>
-                  {activeModel.tags.length > 0 ? (
-                    <div className="admin-model-card__tags">
-                      {activeModel.tags.map((tag) => (
-                        <span key={tag.id} className="admin-badge">
-                          {tag.label}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  {activeModel.description ? (
-                    <p className="admin-model-card__description">{activeModel.description}</p>
-                  ) : null}
-                  {activeModel.trigger ? (
-                    <p className="admin-model-card__trigger">
-                      <strong>Trigger:</strong> {activeModel.trigger}
-                    </p>
-                  ) : null}
-                  <ul className="admin-model-card__metadata">
-                    {activeModelDetails.metadataEntries.map((entry) => (
-                      <li key={entry.label}>
-                        <span>{entry.label}</span>
-                        {entry.href ? (
-                          <strong>
-                            <a href={entry.href} target="_blank" rel="noreferrer">
-                              {entry.value}
-                            </a>
-                          </strong>
-                        ) : (
-                          <strong>{entry.value}</strong>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="admin-model-card__quick-actions">
-                    {activeModelDetails.previewUrl ? (
-                      <a
-                        className="button button--subtle"
-                        href={activeModelDetails.previewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Preview
-                      </a>
-                    ) : null}
-                    <a
-                      className="button button--subtle"
-                      href={activeModelDetails.downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Download latest
-                    </a>
-                  </div>
-                </div>
-                <form
-                  className="admin-model-card__form admin__form admin-model-mainframe__form"
-                  onSubmit={(event) => handleUpdateModel(event, activeModel)}
-                  aria-label={`Settings for ${activeModel.title}`}
-                >
-                  <div className="admin-model-card__form-fields">
-                    <label className="admin-model-card__form-item admin-model-card__form-item--full">
-                      <span>Title</span>
-                      <input name="title" defaultValue={activeModel.title} disabled={isBusy} />
-                    </label>
-                    <label className="admin-model-card__form-item">
-                      <span>Owner</span>
-                      <select name="ownerId" defaultValue={activeModel.owner.id} disabled={isBusy}>
-                        {userOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="admin-model-card__form-item">
-                      <span>Primary version</span>
-                      <input name="version" defaultValue={activeModel.version} disabled={isBusy} />
-                    </label>
-                    <label className="admin-model-card__form-item">
-                      <span>Trigger / Activator</span>
-                      <input
-                        name="trigger"
-                        defaultValue={activeModel.trigger ?? ''}
-                        placeholder="Primary activation phrase"
-                        disabled={isBusy}
-                        required
-                      />
-                    </label>
-                    <label className="admin-model-card__form-item">
-                      <span>Tags</span>
-                      <input
-                        name="tags"
-                        defaultValue={activeModel.tags.map((tag) => tag.label).join(', ')}
-                        placeholder="Comma separated"
-                        disabled={isBusy}
-                      />
-                    </label>
-                    <label className="admin-model-card__form-item admin-model-card__form-item--full">
-                      <span>Description</span>
-                      <textarea
-                        name="description"
-                        rows={3}
-                        defaultValue={activeModel.description ?? ''}
-                        disabled={isBusy}
-                      />
-                    </label>
-                  </div>
-                  <div className="admin-model-card__form-footer">
-                    <button type="submit" className="button button--primary" disabled={isBusy}>
-                      Save changes
-                    </button>
-                  </div>
-                </form>
-              </div>
-              <div className="admin-model-mainframe__versions">
-                <div className="admin-model-card__versions">
-                  <div className="admin-model-card__versions-header">
-                    <h5>Version history</h5>
-                    <span className="admin-badge admin-badge--muted">Belongs to {activeModel.title}</span>
-                  </div>
-                  <ul className="admin-model-card__version-list">
-                    {activeModel.versions.map((version) => {
-                      const versionDownloadUrl =
-                        resolveStorageUrl(
-                          version.storagePath,
-                          version.storageBucket,
-                          version.storageObject,
-                        ) ?? version.storagePath;
-                      const versionPreviewUrl =
-                        resolveCachedStorageUrl(
-                          version.previewImage,
-                          version.previewImageBucket,
-                          version.previewImageObject,
-                          { updatedAt: version.updatedAt, cacheKey: version.id },
-                        ) ?? version.previewImage ?? null;
-                      const versionUpdatedLabel = new Date(version.updatedAt).toLocaleDateString('en-US');
-                      const versionFileSizeLabel = formatFileSize(version.fileSize);
-
-                      return (
-                        <li key={version.id} className="admin-model-card__version">
-                          <div className="admin-model-card__version-main">
-                            <strong>{version.version}</strong>
-                            <div className="admin-model-card__version-badges">
-                              {version.id === activeModel.primaryVersionId ? (
-                                <span className="admin-badge">Primary</span>
-                              ) : null}
-                              {version.id === activeModel.latestVersionId ? (
-                                <span className="admin-badge admin-badge--muted">Latest</span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="admin-model-card__version-meta">
-                            <span>{versionUpdatedLabel}</span>
-                            {versionFileSizeLabel ? <span>{versionFileSizeLabel}</span> : null}
-                          </div>
-                          <div className="admin-model-card__version-actions">
-                            {versionPreviewUrl ? (
-                              <a
-                                className="button button--subtle"
-                                href={versionPreviewUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                Preview
-                              </a>
+                      <div className="admin-collection__row-main">
+                        <label className="admin-collection__checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedModels.has(model.id)}
+                            onChange={(event) =>
+                              toggleSelection(setSelectedModels, model.id, event.currentTarget.checked)
+                            }
+                            disabled={isBusy}
+                          />
+                          <span className="sr-only">Select {model.title}</span>
+                        </label>
+                        <div className="admin-collection__primary">
+                          <button
+                            type="button"
+                            className="admin-collection__title-button"
+                            onClick={() => setExpandedModelId(isExpanded ? null : model.id)}
+                            aria-expanded={isExpanded}
+                          >
+                            <span className="admin-collection__title">{model.title}</span>
+                            <span className="admin-collection__subtitle">
+                              v{model.version || '—'} · {modelDetails.updatedLabel}
+                            </span>
+                          </button>
+                          <div className="admin-collection__badge-row">
+                            <span className="admin-badge admin-badge--muted">{model.versions.length} versions</span>
+                            {modelDetails.fileSizeLabel ? (
+                              <span className="admin-badge admin-badge--muted">{modelDetails.fileSizeLabel}</span>
                             ) : null}
-                            <a
-                              className="button button--subtle"
-                              href={versionDownloadUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Download
-                            </a>
-                            {version.id !== activeModel.primaryVersionId ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="button button--subtle"
-                                  onClick={() => handlePromoteModelVersion(activeModel, version)}
-                                  disabled={isBusy}
-                                >
-                                  Make primary
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button button--subtle"
-                                  onClick={() => handleRenameModelVersion(activeModel, version)}
-                                  disabled={isBusy}
-                                >
-                                  Rename
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button button--danger"
-                                  onClick={() => handleDeleteModelVersion(activeModel, version)}
-                                  disabled={isBusy}
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            ) : null}
+                            <span className={`admin-badge ${model.isPublic ? 'admin-badge--success' : 'admin-badge--muted'}`}>
+                              {model.isPublic ? 'Public' : 'Private'}
+                            </span>
                           </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              </div>
-            </section>
-          ) : null}
-        </div>
-      ) : null}
-
-      {activeTab === 'images' ? (
-        <div className="admin__panel">
-          <section className="admin__section">
-            <div className="admin__section-header">
-              <h3>Manage images</h3>
-              <div className="admin__filters">
-                <label>
-                  <span>Search</span>
-                  <input
-                    type="search"
-                    value={imageFilter.query}
-                    onChange={(event) => {
-                      const { value } = event.currentTarget;
-                      setImageFilter((previous) => ({ ...previous, query: value }));
-                    }}
-                    placeholder="Title, prompt, or tags"
-                    disabled={isBusy}
-                  />
-                </label>
-                <label>
-                  <span>Owner</span>
-                  <select
-                    value={imageFilter.owner}
-                    onChange={(event) => {
-                      const { value } = event.currentTarget;
-                      setImageFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
-                    }}
-                    disabled={isBusy}
-                  >
-                    <option value="all">All</option>
-                    {userOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            {renderSelectionToolbar(
-              filteredImages.length,
-              selectedImages.size,
-              (checked) => toggleSelectAll(setSelectedImages, filteredImages.map((image) => image.id), checked),
-              () => setSelectedImages(new Set()),
-              handleBulkDeleteImages,
-            )}
-
-            {filteredImages.length === 0 ? (
-              <p className="admin__empty">No images available.</p>
-            ) : (
-              <div className="admin-image-grid" role="list">
-                {filteredImages.map((image) => {
-                    const previewUrl =
-                      resolveCachedStorageUrl(image.storagePath, image.storageBucket, image.storageObject, {
-                        updatedAt: image.updatedAt,
-                        cacheKey: image.id,
-                      }) ?? image.storagePath;
-                  const metadataEntries = [
-                    image.metadata?.seed ? { label: 'Seed', value: image.metadata.seed } : null,
-                    image.metadata?.model ? { label: 'Model', value: image.metadata.model } : null,
-                    image.metadata?.sampler ? { label: 'Sampler', value: image.metadata.sampler } : null,
-                    image.metadata?.cfgScale !== undefined && image.metadata?.cfgScale !== null
-                      ? { label: 'CFG', value: image.metadata.cfgScale.toString() }
-                      : null,
-                    image.metadata?.steps !== undefined && image.metadata?.steps !== null
-                      ? { label: 'Steps', value: image.metadata.steps.toString() }
-                      : null,
-                  ].filter((entry): entry is { label: string; value: string } => {
-                    if (!entry) {
-                      return false;
-                    }
-                    return entry.value.trim().length > 0;
-                  });
-                  const visibleTags = image.tags.slice(0, 5);
-                  const remainingTagCount = image.tags.length - visibleTags.length;
-                  const isExpanded = expandedImageId === image.id;
-                  const dimensionsLabel = image.dimensions
-                    ? `${image.dimensions.width}×${image.dimensions.height}`
-                    : null;
-                  const fileSizeLabel = formatFileSize(image.fileSize);
-                  const updatedLabel = new Date(image.updatedAt).toLocaleDateString('en-US');
-
-                  return (
-                    <form
-                      key={image.id}
-                      className={`admin-image-card${isExpanded ? ' admin-image-card--expanded' : ''}`}
-                      onSubmit={(event) => handleUpdateImage(event, image)}
-                      aria-label={`Settings for ${image.title}`}
-                      role="listitem"
-                    >
-                      <div className="admin-image-card__body">
-                        <div className="admin-image-card__media">
-                          {previewUrl ? (
-                            <img src={previewUrl} alt={image.title} loading="lazy" />
-                          ) : (
-                            <div className="admin-image-card__placeholder">No preview</div>
-                          )}
-                        </div>
-                        <div className="admin-image-card__summary">
-                          <div className="admin-image-card__summary-header">
-                            <label className="admin-image-card__checkbox">
-                              <input
-                                type="checkbox"
-                                checked={selectedImages.has(image.id)}
-                                onChange={(event) =>
-                                  toggleSelection(setSelectedImages, image.id, event.currentTarget.checked)
-                                }
-                                disabled={isBusy}
-                                aria-label={`Select ${image.title}`}
-                              />
-                            </label>
-                            <div className="admin-image-card__titles">
-                              <h4>{image.title}</h4>
-                              <span className="admin-image-card__subtitle">
-                                by{' '}
-                                {onOpenProfile ? (
-                                  <button
-                                    type="button"
-                                    className="curator-link"
-                                    onClick={() => onOpenProfile(image.owner.id)}
-                                  >
-                                    {image.owner.displayName}
-                                  </button>
-                                ) : (
-                                  image.owner.displayName
-                                )}
-                              </span>
-                            </div>
-                            <div className="admin-image-card__meta">
-                              <span className="admin-badge admin-badge--muted">{updatedLabel}</span>
-                              {dimensionsLabel ? (
-                                <span className="admin-badge admin-badge--muted">{dimensionsLabel}</span>
-                              ) : null}
-                              {fileSizeLabel ? (
-                                <span className="admin-badge admin-badge--muted">{fileSizeLabel}</span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="admin-image-card__tags">
+                          {model.description ? (
+                            <p className="admin-collection__excerpt">
+                              {truncateText(model.description, modelDensity === 'compact' ? 120 : 220)}
+                            </p>
+                          ) : null}
+                          {model.trigger ? (
+                            <p className="admin-collection__muted">
+                              Trigger: <strong>{model.trigger}</strong>
+                            </p>
+                          ) : null}
+                          <div className="admin-collection__tag-row">
                             {visibleTags.map((tag) => (
                               <span key={tag.id} className="admin-badge">
                                 {tag.label}
@@ -1996,136 +1808,548 @@ export const AdminPanel = ({
                               <span className="admin-badge admin-badge--muted">+{remainingTagCount} more</span>
                             ) : null}
                           </div>
-                          {metadataEntries.length > 0 ? (
-                            <ul className="admin-image-card__metadata">
-                              {metadataEntries.map((entry) => (
-                                <li key={entry.label}>
-                                  <span>{entry.label}</span>
-                                  <strong>{entry.value}</strong>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                          <div className="admin-image-card__prompts">
-                            {image.prompt ? (
-                              <p>
-                                <strong>Prompt:</strong> {truncateText(image.prompt)}
-                              </p>
-                            ) : null}
-                            {image.negativePrompt ? (
-                              <p>
-                                <strong>Negative:</strong> {truncateText(image.negativePrompt)}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="admin-image-card__quick-actions">
-                            {previewUrl ? (
-                              <a className="button button--subtle" href={previewUrl} target="_blank" rel="noreferrer">
-                                Open
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="button button--subtle"
-                              onClick={() =>
-                                setExpandedImageId((previous) => (previous === image.id ? null : image.id))
-                              }
-                            >
-                              {isExpanded ? 'Collapse' : 'Edit'}
-                            </button>
-                            <button
-                              type="button"
-                              className="button button--danger"
-                              onClick={() => handleDeleteImage(image)}
-                              disabled={isBusy}
-                            >
-                              Delete
-                            </button>
-                          </div>
+                        </div>
+                        <div className="admin-collection__meta">
+                          <span className="admin-collection__owner">
+                            by{' '}
+                            {onOpenProfile ? (
+                              <button
+                                type="button"
+                                className="curator-link"
+                                onClick={() => onOpenProfile(model.owner.id)}
+                              >
+                                {model.owner.displayName}
+                              </button>
+                            ) : (
+                              model.owner.displayName
+                            )}
+                          </span>
+                        </div>
+                        <div className="admin-collection__actions">
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => setExpandedModelId(isExpanded ? null : model.id)}
+                          >
+                            {isExpanded ? 'Hide details' : 'Details'}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => handleOpenModelEdit(model)}
+                            disabled={isBusy}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => handleOpenVersionUpload(model)}
+                            disabled={isBusy}
+                          >
+                            New version
+                          </button>
+                          <button
+                            type="button"
+                            className="button button--danger"
+                            onClick={() => handleDeleteModel(model)}
+                            disabled={isBusy}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </div>
                       {isExpanded ? (
-                        <div className="admin-image-card__form admin__form">
-                          <div className="admin-image-card__form-fields">
-                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
-                              <span>Title</span>
-                              <input name="title" defaultValue={image.title} disabled={isBusy} />
-                            </label>
-                            <label className="admin-image-card__form-item">
-                              <span>Owner</span>
-                              <select name="ownerId" defaultValue={image.owner.id} disabled={isBusy}>
-                                {userOptions.map((option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="admin-image-card__form-item">
-                              <span>Tags</span>
-                              <input
-                                name="tags"
-                                defaultValue={image.tags.map((tag) => tag.label).join(', ')}
-                                placeholder="Comma separated"
-                                disabled={isBusy}
-                              />
-                            </label>
-                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
-                              <span>Description</span>
-                              <textarea name="description" rows={3} defaultValue={image.description ?? ''} disabled={isBusy} />
-                            </label>
-                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
-                              <span>Prompt</span>
-                              <textarea name="prompt" rows={3} defaultValue={image.prompt ?? ''} disabled={isBusy} />
-                            </label>
-                            <label className="admin-image-card__form-item admin-image-card__form-item--full">
-                              <span>Negative prompt</span>
-                              <textarea
-                                name="negativePrompt"
-                                rows={3}
-                                defaultValue={image.negativePrompt ?? ''}
-                                disabled={isBusy}
-                              />
-                            </label>
-                          </div>
-                          <div className="admin__form-grid admin-image-card__form-grid">
-                            <label>
-                              <span>Seed</span>
-                              <input name="seed" defaultValue={image.metadata?.seed ?? ''} disabled={isBusy} />
-                            </label>
-                            <label>
-                              <span>Model</span>
-                              <input name="model" defaultValue={image.metadata?.model ?? ''} disabled={isBusy} />
-                            </label>
-                            <label>
-                              <span>Sampler</span>
-                              <input name="sampler" defaultValue={image.metadata?.sampler ?? ''} disabled={isBusy} />
-                            </label>
-                            <label>
-                              <span>CFG</span>
-                              <input
-                                name="cfgScale"
-                                defaultValue={image.metadata?.cfgScale?.toString() ?? ''}
-                                disabled={isBusy}
-                              />
-                            </label>
-                            <label>
-                              <span>Steps</span>
-                              <input
-                                name="steps"
-                                defaultValue={image.metadata?.steps?.toString() ?? ''}
-                                disabled={isBusy}
-                              />
-                            </label>
-                          </div>
-                          <div className="admin-image-card__form-footer">
-                            <button type="submit" className="button button--primary" disabled={isBusy}>
-                              Save changes
-                            </button>
+                        <div className="admin-collection__details">
+                          <div className="admin-collection__detail-grid">
+                            <div className="admin-collection__detail-column">
+                              <div className="admin-collection__preview">
+                                {modelDetails.previewUrl ? (
+                                  <img src={modelDetails.previewUrl} alt={model.title} loading="lazy" />
+                                ) : (
+                                  <div className="admin-collection__preview-placeholder">No preview</div>
+                                )}
+                              </div>
+                              <div className="admin-collection__metadata">
+                                <dl>
+                                  {modelDetails.metadataEntries.map((entry) => (
+                                    <div key={entry.label} className="admin-collection__metadata-row">
+                                      <dt>{entry.label}</dt>
+                                      <dd>
+                                        {entry.href ? (
+                                          <a href={entry.href} target="_blank" rel="noreferrer">
+                                            {entry.value}
+                                          </a>
+                                        ) : (
+                                          entry.value
+                                        )}
+                                      </dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              </div>
+                              <div className="admin-collection__detail-actions">
+                                {modelDetails.previewUrl ? (
+                                  <a
+                                    className="button button--subtle"
+                                    href={modelDetails.previewUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Preview
+                                  </a>
+                                ) : null}
+                                <a
+                                  className="button button--subtle"
+                                  href={modelDetails.downloadUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Download latest
+                                </a>
+                              </div>
+                            </div>
+                            <div className="admin-collection__detail-column admin-collection__detail-column--wide">
+                              <header className="admin-collection__detail-header">
+                                <h5>Version history</h5>
+                                <span className="admin-badge admin-badge--muted">{model.versions.length} total</span>
+                              </header>
+                              <ul className="admin-collection__version-list">
+                                {model.versions.map((version) => {
+                                  const versionDownloadUrl =
+                                    resolveStorageUrl(
+                                      version.storagePath,
+                                      version.storageBucket,
+                                      version.storageObject,
+                                    ) ?? version.storagePath;
+                                  const versionPreviewUrl =
+                                    resolveCachedStorageUrl(
+                                      version.previewImage,
+                                      version.previewImageBucket,
+                                      version.previewImageObject,
+                                      { updatedAt: version.updatedAt, cacheKey: version.id },
+                                    ) ?? version.previewImage ?? null;
+                                  const versionUpdatedLabel = new Date(version.updatedAt).toLocaleDateString('en-US');
+                                  const versionFileSizeLabel = formatFileSize(version.fileSize);
+                                  return (
+                                    <li key={version.id} className="admin-collection__version-row">
+                                      <div className="admin-collection__version-main">
+                                        <strong>{version.version}</strong>
+                                        <div className="admin-collection__badge-row">
+                                          {version.id === model.primaryVersionId ? (
+                                            <span className="admin-badge">Primary</span>
+                                          ) : null}
+                                          {version.id === model.latestVersionId ? (
+                                            <span className="admin-badge admin-badge--muted">Latest</span>
+                                          ) : null}
+                                          <span className="admin-badge admin-badge--muted">{versionUpdatedLabel}</span>
+                                          {versionFileSizeLabel ? (
+                                            <span className="admin-badge admin-badge--muted">{versionFileSizeLabel}</span>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                      <div className="admin-collection__version-actions">
+                                        {versionPreviewUrl ? (
+                                          <a
+                                            className="button button--subtle"
+                                            href={versionPreviewUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                          >
+                                            Preview
+                                          </a>
+                                        ) : null}
+                                        <a
+                                          className="button button--subtle"
+                                          href={versionDownloadUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                        >
+                                          Download
+                                        </a>
+                                        {version.id !== model.primaryVersionId ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="button button--subtle"
+                                              onClick={() => handlePromoteModelVersion(model, version)}
+                                              disabled={isBusy}
+                                            >
+                                              Make primary
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="button button--subtle"
+                                              onClick={() => handleOpenVersionRename(model, version)}
+                                              disabled={isBusy}
+                                            >
+                                              Rename
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="button button--danger"
+                                              onClick={() => handleDeleteModelVersion(model, version)}
+                                              disabled={isBusy}
+                                            >
+                                              Delete
+                                            </button>
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
                           </div>
                         </div>
                       ) : null}
-                    </form>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {activeTab === 'images' ? (
+        <div className="admin__panel">
+          <section className="admin__section">
+            <div className="admin__section-header admin__section-header--split">
+              <div>
+                <h3>Image archive</h3>
+                <p className="admin__section-description">
+                  Review curated renders with metadata drill-downs and instant bulk actions.
+                </p>
+              </div>
+              <div className="admin-collection__chip-group" role="group" aria-label="Image row density">
+                <FilterChip
+                  label="Comfortable"
+                  isActive={imageDensity === 'comfortable'}
+                  tone={imageDensity === 'comfortable' ? 'solid' : 'default'}
+                  onClick={() => setImageDensity('comfortable')}
+                  aria-pressed={imageDensity === 'comfortable'}
+                />
+                <FilterChip
+                  label="Compact"
+                  isActive={imageDensity === 'compact'}
+                  tone={imageDensity === 'compact' ? 'solid' : 'default'}
+                  onClick={() => setImageDensity('compact')}
+                  aria-pressed={imageDensity === 'compact'}
+                />
+              </div>
+            </div>
+            <div className="admin__filters admin__filters--grid">
+              <label>
+                <span>Search</span>
+                <input
+                  type="search"
+                  value={imageFilter.query}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setImageFilter((previous) => ({ ...previous, query: value }));
+                  }}
+                  placeholder="Title, prompt, metadata"
+                  disabled={isBusy}
+                />
+              </label>
+              <label>
+                <span>Owner</span>
+                <select
+                  value={imageFilter.owner}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setImageFilter((previous) => ({ ...previous, owner: value as FilterValue<string> }));
+                  }}
+                  disabled={isBusy}
+                >
+                  <option value="all">All</option>
+                  {userOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Metadata</span>
+                <input
+                  type="search"
+                  value={imageFilter.metadata}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setImageFilter((previous) => ({ ...previous, metadata: value }));
+                  }}
+                  placeholder="Seed, model, sampler…"
+                  disabled={isBusy}
+                />
+              </label>
+              <label>
+                <span>Sort by</span>
+                <select
+                  value={imageFilter.sort}
+                  onChange={(event) => {
+                    const { value } = event.currentTarget;
+                    setImageFilter((previous) => ({ ...previous, sort: value as typeof previous.sort }));
+                  }}
+                  disabled={isBusy}
+                >
+                  <option value="updated_desc">Recently updated</option>
+                  <option value="title_asc">Title A → Z</option>
+                  <option value="owner_asc">Owner A → Z</option>
+                </select>
+              </label>
+            </div>
+            <div className="admin-collection__chip-toolbar">
+              <div className="admin-collection__chip-group" role="group" aria-label="Image visibility filter">
+                <FilterChip
+                  label="All visibility"
+                  isActive={imageFilter.visibility === 'all'}
+                  tone={imageFilter.visibility === 'all' ? 'solid' : 'default'}
+                  onClick={() => setImageFilter((previous) => ({ ...previous, visibility: 'all' }))}
+                  aria-pressed={imageFilter.visibility === 'all'}
+                />
+                <FilterChip
+                  label="Public"
+                  isActive={imageFilter.visibility === 'public'}
+                  tone={imageFilter.visibility === 'public' ? 'solid' : 'default'}
+                  onClick={() => setImageFilter((previous) => ({ ...previous, visibility: 'public' }))}
+                  aria-pressed={imageFilter.visibility === 'public'}
+                />
+                <FilterChip
+                  label="Private"
+                  isActive={imageFilter.visibility === 'private'}
+                  tone={imageFilter.visibility === 'private' ? 'solid' : 'default'}
+                  onClick={() => setImageFilter((previous) => ({ ...previous, visibility: 'private' }))}
+                  aria-pressed={imageFilter.visibility === 'private'}
+                />
+              </div>
+            </div>
+            {imageMetadataOptions.length > 0 ? (
+              <div
+                className="admin-collection__chip-group admin-collection__chip-group--scroll"
+                role="group"
+                aria-label="Popular image metadata"
+              >
+                <FilterChip
+                  label="Any metadata"
+                  isActive={imageFilter.metadata.trim().length === 0}
+                  tone={imageFilter.metadata.trim().length === 0 ? 'solid' : 'default'}
+                  onClick={() => setImageFilter((previous) => ({ ...previous, metadata: '' }))}
+                  aria-pressed={imageFilter.metadata.trim().length === 0}
+                />
+                {imageMetadataOptions.map((option) => {
+                  const normalized = option.label.toLowerCase();
+                  const isActive = imageFilter.metadata.trim().toLowerCase() === normalized;
+                  return (
+                    <FilterChip
+                      key={option.label}
+                      label={option.label}
+                      count={option.count}
+                      isActive={isActive}
+                      tone={isActive ? 'solid' : 'default'}
+                      onClick={() => setImageFilter((previous) => ({ ...previous, metadata: option.label }))}
+                      aria-pressed={isActive}
+                    />
+                  );
+                })}
+              </div>
+            ) : null}
+            {renderSelectionToolbar(
+              filteredImages.length,
+              selectedImages.size,
+              (checked) => toggleSelectAll(setSelectedImages, filteredImages.map((image) => image.id), checked),
+              () => setSelectedImages(new Set()),
+              handleBulkDeleteImages,
+            )}
+            {filteredImages.length === 0 ? (
+              <p className="admin__empty">No images match your filters.</p>
+            ) : (
+              <div
+                className={`admin-collection ${imageDensity === 'compact' ? 'admin-collection--compact' : ''}`}
+                role="list"
+              >
+                {filteredImages.map((image) => {
+                  const isExpanded = expandedImageId === image.id;
+                  const imageDetails = buildImageDetail(image);
+                  const metadataEntries = [
+                    image.metadata?.seed ? { label: 'Seed', value: image.metadata.seed } : null,
+                    image.metadata?.model ? { label: 'Model', value: image.metadata.model } : null,
+                    image.metadata?.sampler ? { label: 'Sampler', value: image.metadata.sampler } : null,
+                    image.metadata?.cfgScale != null
+                      ? { label: 'CFG', value: image.metadata.cfgScale.toString() }
+                      : null,
+                    image.metadata?.steps != null
+                      ? { label: 'Steps', value: image.metadata.steps.toString() }
+                      : null,
+                  ].filter((entry): entry is { label: string; value: string } => Boolean(entry));
+                  const visibleTags = image.tags.slice(0, imageDensity === 'compact' ? 4 : 8);
+                  const remainingTagCount = image.tags.length - visibleTags.length;
+                  return (
+                    <article
+                      key={image.id}
+                      className={`admin-collection__row${isExpanded ? ' admin-collection__row--expanded' : ''}`}
+                      role="listitem"
+                    >
+                      <div className="admin-collection__row-main">
+                        <label className="admin-collection__checkbox">
+                          <input
+                            type="checkbox"
+                            checked={selectedImages.has(image.id)}
+                            onChange={(event) =>
+                              toggleSelection(setSelectedImages, image.id, event.currentTarget.checked)
+                            }
+                            disabled={isBusy}
+                          />
+                          <span className="sr-only">Select {image.title}</span>
+                        </label>
+                        <div className="admin-collection__primary">
+                          <button
+                            type="button"
+                            className="admin-collection__title-button"
+                            onClick={() => setExpandedImageId(isExpanded ? null : image.id)}
+                            aria-expanded={isExpanded}
+                          >
+                            <span className="admin-collection__title">{image.title}</span>
+                            <span className="admin-collection__subtitle">{imageDetails.updatedLabel}</span>
+                          </button>
+                          <div className="admin-collection__badge-row">
+                            {imageDetails.dimensionsLabel ? (
+                              <span className="admin-badge admin-badge--muted">{imageDetails.dimensionsLabel}</span>
+                            ) : null}
+                            {imageDetails.fileSizeLabel ? (
+                              <span className="admin-badge admin-badge--muted">{imageDetails.fileSizeLabel}</span>
+                            ) : null}
+                            <span className={`admin-badge ${image.isPublic ? 'admin-badge--success' : 'admin-badge--muted'}`}>
+                              {image.isPublic ? 'Public' : 'Private'}
+                            </span>
+                          </div>
+                          {image.prompt ? (
+                            <p className="admin-collection__excerpt">
+                              <strong>Prompt:</strong>{' '}
+                              {truncateText(image.prompt, imageDensity === 'compact' ? 120 : 220)}
+                            </p>
+                          ) : null}
+                          {image.negativePrompt ? (
+                            <p className="admin-collection__muted">
+                              <strong>Negative:</strong>{' '}
+                              {truncateText(image.negativePrompt, 160)}
+                            </p>
+                          ) : null}
+                          <div className="admin-collection__tag-row">
+                            {visibleTags.map((tag) => (
+                              <span key={tag.id} className="admin-badge">
+                                {tag.label}
+                              </span>
+                            ))}
+                            {remainingTagCount > 0 ? (
+                              <span className="admin-badge admin-badge--muted">+{remainingTagCount} more</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="admin-collection__meta">
+                          <span className="admin-collection__owner">
+                            by{' '}
+                            {onOpenProfile ? (
+                              <button
+                                type="button"
+                                className="curator-link"
+                                onClick={() => onOpenProfile(image.owner.id)}
+                              >
+                                {image.owner.displayName}
+                              </button>
+                            ) : (
+                              image.owner.displayName
+                            )}
+                          </span>
+                        </div>
+                        <div className="admin-collection__actions">
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => setExpandedImageId(isExpanded ? null : image.id)}
+                          >
+                            {isExpanded ? 'Hide details' : 'Details'}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button--ghost"
+                            onClick={() => handleOpenImageEdit(image)}
+                            disabled={isBusy}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="button button--danger"
+                            onClick={() => handleDeleteImage(image)}
+                            disabled={isBusy}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      {isExpanded ? (
+                        <div className="admin-collection__details">
+                          <div className="admin-collection__detail-grid">
+                            <div className="admin-collection__detail-column admin-collection__detail-column--media">
+                              <div className="admin-collection__preview admin-collection__preview--image">
+                                {imageDetails.previewUrl ? (
+                                  <img src={imageDetails.previewUrl} alt={image.title} loading="lazy" />
+                                ) : (
+                                  <div className="admin-collection__preview-placeholder">No preview</div>
+                                )}
+                              </div>
+                              <div className="admin-collection__detail-actions">
+                                {imageDetails.previewUrl ? (
+                                  <a
+                                    className="button button--subtle"
+                                    href={imageDetails.previewUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Open
+                                  </a>
+                                ) : null}
+                                <a
+                                  className="button button--subtle"
+                                  href={imageDetails.downloadUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Download
+                                </a>
+                              </div>
+                            </div>
+                            <div className="admin-collection__detail-column admin-collection__detail-column--wide">
+                              <div className="admin-collection__metadata">
+                                <dl>
+                                  {metadataEntries.map((entry) => (
+                                    <div key={entry.label} className="admin-collection__metadata-row">
+                                      <dt>{entry.label}</dt>
+                                      <dd>{entry.value}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              </div>
+                              <div className="admin-collection__prompts">
+                                {image.prompt ? (
+                                  <p>
+                                    <strong>Prompt:</strong> {image.prompt}
+                                  </p>
+                                ) : null}
+                                {image.negativePrompt ? (
+                                  <p>
+                                    <strong>Negative:</strong> {image.negativePrompt}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </article>
                   );
                 })}
               </div>
@@ -2782,6 +3006,53 @@ export const AdminPanel = ({
             </div>
           </section>
         </div>
+      ) : null}
+      {modelToEdit ? (
+        <ModelAssetEditDialog
+          isOpen
+          onClose={() => setModelToEdit(null)}
+          model={modelToEdit}
+          token={token}
+          onSuccess={(updated) => {
+            void handleModelEditSuccess(updated);
+          }}
+          owners={userOptions}
+        />
+      ) : null}
+      {modelForVersionUpload ? (
+        <ModelVersionDialog
+          isOpen
+          onClose={() => setModelForVersionUpload(null)}
+          model={modelForVersionUpload}
+          token={token}
+          onSuccess={(updated) => {
+            void handleVersionUploadSuccess(updated);
+          }}
+        />
+      ) : null}
+      {modelVersionToEdit ? (
+        <ModelVersionEditDialog
+          isOpen
+          onClose={() => setModelVersionToEdit(null)}
+          model={modelVersionToEdit.model}
+          version={modelVersionToEdit.version}
+          token={token}
+          onSuccess={(updated) => {
+            void handleVersionRenameSuccess(updated);
+          }}
+        />
+      ) : null}
+      {imageToEdit ? (
+        <ImageAssetEditDialog
+          isOpen
+          onClose={() => setImageToEdit(null)}
+          image={imageToEdit}
+          token={token}
+          onSuccess={() => {
+            void handleImageEditSuccess();
+          }}
+          owners={userOptions}
+        />
       ) : null}
     </section>
   );

@@ -666,3 +666,13 @@
 - **General**: Ensured the On-Site Generator surfaces the exact base-model names curated in Administration → Generator so admins control the dropdown wording members see.
 - **Technical Changes**: Updated the generator wizard to render curated labels in the picker, review step, and preview pane while still surfacing catalog metadata for verification, and refreshed the README highlight to reflect the mirrored naming behavior.
 - **Data Changes**: None; existing generator settings and assets are read without mutation.
+
+## 132 – [Addition] Admin asset console densification
+- **General**: Reimagined Administration → Models and Images with compact tables, quick filters, and drawer-style details that stay responsive even with massive asset libraries.
+- **Technical Changes**: Replaced the legacy card grid with density-toggleable collections, added visibility/metadata chips, wired dialog-driven model and image editing, connected version upload/rename flows, and introduced a new styling system to support the streamlined layout.
+- **Data Changes**: None; the overhaul only touches front-end presentation and API interactions.
+
+## 133 – [Addition] Admin asset editor tab workflows
+- **General**: Streamlined model and image editing inside the admin console with tabbed dialogs, quick owner reassignment, and contextual sidebars that keep critical metadata in view.
+- **Technical Changes**: Reworked the `ModelAssetEditDialog` and `ImageAssetEditDialog` components with accessible tab navigation, owner selection, and summary rails, updated the admin panel to pass curator options, and introduced supporting styles for the new layout.
+- **Data Changes**: None; edits only modify front-end workflows and reuse existing API endpoints.
