@@ -1918,6 +1918,7 @@ export const AssetExplorer = ({
           onClose={() => setEditDialogOpen(false)}
           model={activeAsset}
           token={authToken ?? null}
+          owners={ownerOptions}
           onSuccess={(updated) => {
             onAssetUpdated?.(updated);
             setVersionFeedback('Model details updated.');

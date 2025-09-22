@@ -692,3 +692,8 @@
 - **Technical Changes**: Limited extra-large edit dialogs to half-width with responsive bounds and centered the tab list for clearer navigation.
 - **Data Changes**: None.
 
+## 137 – [Fix] Model edit dialog ownership fallback
+- **General**: Prevented the model edit dialog from crashing when opened via the explorer by guaranteeing owner options are always available.
+- **Technical Changes**: Made the dialog tolerate missing owner lists by defaulting to an empty array and wired the asset explorer to pass its curated owner options into the component.
+- **Data Changes**: None.
+

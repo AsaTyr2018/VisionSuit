@@ -10,7 +10,7 @@ interface ModelAssetEditDialogProps {
   model: ModelAsset;
   token: string | null | undefined;
   onSuccess?: (updated: ModelAsset) => void;
-  owners: { id: string; label: string }[];
+  owners?: { id: string; label: string }[];
 }
 
 const parseTags = (value: string) =>
@@ -64,7 +64,7 @@ export const ModelAssetEditDialog = ({
   model,
   token,
   onSuccess,
-  owners,
+  owners = [],
 }: ModelAssetEditDialogProps) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
