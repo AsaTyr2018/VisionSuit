@@ -181,6 +181,28 @@ The PowerShell helper mirrors the Linux workflow: it authenticates, verifies adm
 
 > Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
 
+### MyLora migration
+
+Use `scripts/migrate_mylora_to_visionsuit.py` to pull an existing MyLora library into VisionSuit without touching databases directly.
+
+- Install the lone dependency once on the machine running the migration helper:
+  ```bash
+  pip install requests
+  ```
+- Provide the base URLs and admin credentials for both platforms:
+  ```bash
+  python3 scripts/migrate_mylora_to_visionsuit.py \
+    --mylora-base-url http://127.0.0.1:5000 \
+    --mylora-username admin \
+    --mylora-password "mylora-secret" \
+    --visionsuit-base-url http://127.0.0.1:4000/api \
+    --visionsuit-email admin@example.com \
+    --visionsuit-password "visionsuit-secret"
+  ```
+- Optional `--visibility public` publishes the migrated models instantly; omit it to stage imports as private drafts.
+
+The script logs into MyLora, walks the grid API in batches, downloads each safetensor and its preview images, then creates matching VisionSuit model entries with categories and tags preserved as labels. Existing VisionSuit models are skipped automatically to avoid duplicates when a run is interrupted or repeated.
+
 ### Backend service
 
 1. `cd backend`
