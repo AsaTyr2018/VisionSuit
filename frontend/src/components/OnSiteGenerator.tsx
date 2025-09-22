@@ -41,6 +41,46 @@ const normalizedBaseModelBucket = generatorBaseModelBucket.trim().toLowerCase();
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const extractStorageObjectKey = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith('s3://')) {
+    const withoutScheme = trimmed.slice('s3://'.length);
+    const [, ...rest] = withoutScheme.split('/');
+    const objectKey = rest.join('/');
+    return objectKey.trim() || null;
+  }
+
+  return trimmed.replace(/^\/+/, '') || null;
+};
+
+const registerCatalogAsset = (map: Map<string, ModelAsset>, asset: ModelAsset, key?: string | null) => {
+  if (!key) {
+    return;
+  }
+
+  const normalized = extractStorageObjectKey(key);
+  if (!normalized) {
+    return;
+  }
+
+  if (!map.has(normalized)) {
+    map.set(normalized, asset);
+  }
+
+  const tail = normalized.includes('/') ? normalized.slice(normalized.lastIndexOf('/') + 1) : normalized;
+  if (tail && !map.has(tail)) {
+    map.set(tail, asset);
+  }
+};
+
 const extractTriggerPhrases = (asset: ModelAsset): string[] => {
   const phrases = new Set<string>();
 
@@ -162,6 +202,9 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [baseModels, setBaseModels] = useState<GeneratorBaseModelOption[]>([]);
   const [isBaseModelsLoading, setIsBaseModelsLoading] = useState(false);
   const [baseModelError, setBaseModelError] = useState<string | null>(null);
+  const [baseModelCatalog, setBaseModelCatalog] = useState<ModelAsset[]>([]);
+  const [isBaseModelCatalogLoading, setIsBaseModelCatalogLoading] = useState(false);
+  const [baseModelCatalogError, setBaseModelCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -203,18 +246,105 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     };
   }, [token]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCatalog = async () => {
+      if (!token) {
+        setBaseModelCatalog([]);
+        setBaseModelCatalogError(null);
+        return;
+      }
+
+      try {
+        setIsBaseModelCatalogLoading(true);
+        setBaseModelCatalogError(null);
+        const entries = await api.getGeneratorBaseModelCatalog(token);
+        if (!isMounted) {
+          return;
+        }
+        setBaseModelCatalog(entries);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+        console.error('Failed to load generator base model catalog', error);
+        const message = error instanceof ApiError ? error.message : 'Could not load base models from the database.';
+        setBaseModelCatalog([]);
+        setBaseModelCatalogError(message);
+      } finally {
+        if (isMounted) {
+          setIsBaseModelCatalogLoading(false);
+        }
+      }
+    };
+
+    loadCatalog();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  const baseModelCatalogById = useMemo(() => new Map(baseModelCatalog.map((asset) => [asset.id, asset])), [baseModelCatalog]);
+
+  const baseModelCatalogLookup = useMemo(() => {
+    const lookup = new Map<string, ModelAsset>();
+    baseModelCatalog.forEach((asset) => {
+      registerCatalogAsset(lookup, asset, asset.storagePath);
+      registerCatalogAsset(lookup, asset, asset.storageObject);
+      asset.versions.forEach((version) => {
+        registerCatalogAsset(lookup, asset, version.storagePath);
+        registerCatalogAsset(lookup, asset, version.storageObject);
+      });
+    });
+    return lookup;
+  }, [baseModelCatalog]);
+
   const resolvedBaseModels = useMemo(
     () =>
-      baseModels
-        .filter((entry): entry is GeneratorBaseModelOption & { asset: ModelAsset } => Boolean(entry.asset))
-        .map((entry) => ({ ...entry, asset: entry.asset as ModelAsset }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [baseModels],
+      baseModels.map((entry) => {
+        const existingAsset = entry.asset ? baseModelCatalogById.get(entry.asset.id) ?? entry.asset : null;
+
+        let asset: ModelAsset | null = existingAsset ?? null;
+        if (!asset) {
+          const filenameKey = extractStorageObjectKey(entry.filename);
+          if (filenameKey) {
+            asset = baseModelCatalogLookup.get(filenameKey) ?? null;
+          }
+
+          if (!asset && entry.filename.trim()) {
+            const trimmed = entry.filename.trim();
+            asset =
+              baseModelCatalogLookup.get(trimmed) ??
+              baseModelCatalogLookup.get(trimmed.replace(/^s3:\/\//i, '')) ??
+              null;
+          }
+        }
+
+        return {
+          ...entry,
+          asset: asset ?? null,
+          isMissing: !asset,
+        };
+      }),
+    [baseModels, baseModelCatalogById, baseModelCatalogLookup],
   );
-  const hasMissingBaseModels = useMemo(() => baseModels.some((entry) => entry.isMissing), [baseModels]);
+  const selectableBaseModels = useMemo(
+    () =>
+      resolvedBaseModels.filter((entry): entry is GeneratorBaseModelOption & { asset: ModelAsset } => Boolean(entry.asset)),
+    [resolvedBaseModels],
+  );
+  const hasMissingBaseModels = useMemo(
+    () => resolvedBaseModels.some((entry) => entry.isMissing),
+    [resolvedBaseModels],
+  );
+
+  const isBaseModelDataLoading = isBaseModelsLoading || isBaseModelCatalogLoading;
+  const combinedBaseModelError = baseModelError ?? baseModelCatalogError;
 
   const loraOptions = useMemo(() => {
-    const baseModelIds = new Set(resolvedBaseModels.map((entry) => entry.asset.id));
+    const baseModelIds = new Set(selectableBaseModels.map((entry) => entry.asset.id));
     const candidates = models.filter((asset) => isLikelyLora(asset) && !baseModelIds.has(asset.id));
     if (candidates.length > 0) {
       return candidates.sort((a, b) => a.title.localeCompare(b.title));
@@ -223,24 +353,24 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     return models
       .filter((asset) => asset.id !== selectedBaseModelId && !baseModelIds.has(asset.id))
       .sort((a, b) => a.title.localeCompare(b.title));
-  }, [models, selectedBaseModelId, resolvedBaseModels]);
+  }, [models, selectedBaseModelId, selectableBaseModels]);
 
   const loraLookup = useMemo(() => new Map(models.map((asset) => [asset.id, asset])), [models]);
 
   useEffect(() => {
-    if (resolvedBaseModels.length === 0) {
+    if (selectableBaseModels.length === 0) {
       setSelectedBaseModelId('');
       return;
     }
 
-    if (!selectedBaseModelId || !resolvedBaseModels.some((entry) => entry.asset.id === selectedBaseModelId)) {
-      setSelectedBaseModelId(resolvedBaseModels[0].asset.id);
+    if (!selectedBaseModelId || !selectableBaseModels.some((entry) => entry.asset.id === selectedBaseModelId)) {
+      setSelectedBaseModelId(selectableBaseModels[0].asset.id);
     }
-  }, [resolvedBaseModels, selectedBaseModelId]);
+  }, [selectableBaseModels, selectedBaseModelId]);
 
   const selectedBaseModel = useMemo(
-    () => resolvedBaseModels.find((entry) => entry.asset.id === selectedBaseModelId) ?? null,
-    [resolvedBaseModels, selectedBaseModelId],
+    () => selectableBaseModels.find((entry) => entry.asset.id === selectedBaseModelId) ?? null,
+    [selectableBaseModels, selectedBaseModelId],
   );
 
   const filteredLoras = useMemo(() => {
@@ -484,7 +614,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   );
 
   const renderBaseModelPreview = () => {
-    if (isBaseModelsLoading) {
+    if (isBaseModelDataLoading) {
       return (
         <div className="generator-preview generator-preview--empty">
           <p>Loading base model metadata…</p>
@@ -492,16 +622,16 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       );
     }
 
-    if (baseModelError) {
+    if (combinedBaseModelError) {
       return (
         <div className="generator-preview generator-preview--empty">
-          <p>{baseModelError}</p>
+          <p>{combinedBaseModelError}</p>
         </div>
       );
     }
 
     if (!selectedBaseModel) {
-      if (resolvedBaseModels.length === 0) {
+      if (selectableBaseModels.length === 0) {
         return (
           <div className="generator-preview generator-preview--empty">
             <p>Configure base models in the Administration → Generator tab to unlock the On-Site Generator.</p>
@@ -526,7 +656,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       <div className="generator-preview">
         {previewUrl ? <img src={previewUrl} alt="Base model preview" /> : <div className="generator-preview__fallback">No preview</div>}
         <div className="generator-preview__details">
-          <h3>{selectedBaseModel.name}</h3>
+          <h3>{selectedBaseModel.asset.title}</h3>
           <dl>
             <div>
               <dt>Type</dt>
@@ -768,7 +898,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         <dl>
           <div>
             <dt>Base model</dt>
-            <dd>{selectedBaseModel ? selectedBaseModel.name : 'Not selected'}</dd>
+            <dd>{selectedBaseModel ? selectedBaseModel.asset.title : 'Not selected'}</dd>
           </div>
           <div>
             <dt>Prompt</dt>
@@ -824,27 +954,27 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               id="generator-base-model"
               value={selectedBaseModelId}
               onChange={(event) => setSelectedBaseModelId(event.target.value)}
-              disabled={isBaseModelsLoading || resolvedBaseModels.length === 0}
+              disabled={isBaseModelDataLoading || selectableBaseModels.length === 0}
             >
-              {resolvedBaseModels.length === 0 ? (
+              {selectableBaseModels.length === 0 ? (
                 <option value="">
-                  {isBaseModelsLoading ? 'Loading base models…' : 'No base models available'}
+                  {isBaseModelDataLoading ? 'Loading base models…' : 'No base models available'}
                 </option>
               ) : null}
-              {resolvedBaseModels.map((entry) => (
+              {selectableBaseModels.map((entry) => (
                 <option key={entry.asset.id} value={entry.asset.id}>
-                  {entry.name} — {entry.type}
+                  {entry.asset.title} — {entry.type}
                 </option>
               ))}
             </select>
-            {isBaseModelsLoading ? (
+            {isBaseModelDataLoading ? (
               <p className="generator-field__status">Loading base model definitions…</p>
             ) : null}
-            {baseModelError ? <p className="generator-field__error">{baseModelError}</p> : null}
-            {!isBaseModelsLoading && hasMissingBaseModels && !baseModelError ? (
+            {combinedBaseModelError ? <p className="generator-field__error">{combinedBaseModelError}</p> : null}
+            {!isBaseModelDataLoading && hasMissingBaseModels && !combinedBaseModelError ? (
               <p className="generator-field__status">Some configured base models could not be located. Check the filenames in Administration → Generator.</p>
             ) : null}
-            {!isBaseModelsLoading && resolvedBaseModels.length === 0 && !baseModelError ? (
+            {!isBaseModelDataLoading && selectableBaseModels.length === 0 && !combinedBaseModelError ? (
               <p className="generator-field__empty">
                 No base models configured. Ask an administrator to add entries under Administration → Generator.
               </p>
