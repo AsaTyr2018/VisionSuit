@@ -52,9 +52,14 @@ const getInitials = (name: string) => {
     .join('');
 };
 
+type ModelCardOptions = {
+  onOpenModel?: (modelId: string) => void;
+  viewerCanAudit?: boolean;
+};
+
 const renderModelCard = (
   model: UserProfileModelSummary,
-  onOpenModel?: (modelId: string) => void,
+  { onOpenModel, viewerCanAudit }: ModelCardOptions = {},
 ) => {
   const previewUrl =
     resolveCachedStorageUrl(model.previewImage, model.previewImageBucket, model.previewImageObject, {
@@ -63,31 +68,58 @@ const renderModelCard = (
     }) ?? model.previewImage ?? undefined;
   const tagList = model.tags.slice(0, 4);
   const remainingTags = model.tags.length - tagList.length;
+  const isFlagged = model.moderationStatus === 'FLAGGED';
+  const canBypassModeration = Boolean(viewerCanAudit);
+  const shouldObscure = isFlagged && !canBypassModeration;
+  const mediaClasses = [
+    'profile-view__model-media',
+    previewUrl ? '' : 'profile-view__model-media--empty',
+    isFlagged ? 'moderation-overlay' : '',
+    isFlagged && canBypassModeration ? 'moderation-overlay--visible' : '',
+    shouldObscure ? 'moderation-overlay--blurred' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const media = (
+    <div className={mediaClasses}>
+      {previewUrl ? <img src={previewUrl} alt={model.title} loading="lazy" /> : <span>No preview</span>}
+      {isFlagged ? <span className="moderation-overlay__label">In audit</span> : null}
+    </div>
+  );
+
+  const body = (
+    <div className="profile-view__model-body">
+      <div className="profile-view__model-header">
+        <h3>{model.title}</h3>
+        {!model.isPublic ? <span className="profile-view__badge profile-view__badge--private">Private</span> : null}
+      </div>
+      <p>Version {model.version}</p>
+      <p className="profile-view__model-updated">Updated {formatDate(model.updatedAt)}</p>
+      {isFlagged ? (
+        <p className="profile-view__model-moderation" role="status">
+          Flagged for moderation
+          {model.flaggedBy ? ` by ${model.flaggedBy.displayName}` : ''}. Administrators are reviewing this model.
+        </p>
+      ) : null}
+      {tagList.length > 0 ? (
+        <ul className="profile-view__tag-list">
+          {tagList.map((tag) => (
+            <li key={tag.id}>#{tag.label}</li>
+          ))}
+          {remainingTags > 0 ? <li className="profile-view__tag-more">+{remainingTags}</li> : null}
+        </ul>
+      ) : (
+        <p className="profile-view__tag-empty">No tags assigned yet.</p>
+      )}
+    </div>
+  );
 
   if (!onOpenModel) {
     return (
       <article key={model.id} className="profile-view__model-card">
-        <div className={`profile-view__model-media${previewUrl ? '' : ' profile-view__model-media--empty'}`}>
-          {previewUrl ? <img src={previewUrl} alt={model.title} loading="lazy" /> : <span>No preview</span>}
-        </div>
-        <div className="profile-view__model-body">
-          <div className="profile-view__model-header">
-            <h3>{model.title}</h3>
-            {!model.isPublic ? <span className="profile-view__badge profile-view__badge--private">Private</span> : null}
-          </div>
-          <p>Version {model.version}</p>
-          <p className="profile-view__model-updated">Updated {formatDate(model.updatedAt)}</p>
-          {tagList.length > 0 ? (
-            <ul className="profile-view__tag-list">
-              {tagList.map((tag) => (
-                <li key={tag.id}>#{tag.label}</li>
-              ))}
-              {remainingTags > 0 ? <li className="profile-view__tag-more">+{remainingTags}</li> : null}
-            </ul>
-          ) : (
-            <p className="profile-view__tag-empty">No tags assigned yet.</p>
-          )}
-        </div>
+        {media}
+        {body}
       </article>
     );
   }
@@ -100,27 +132,8 @@ const renderModelCard = (
       onClick={() => onOpenModel(model.id)}
       aria-label={`Open ${model.title} in the model explorer`}
     >
-      <div className={`profile-view__model-media${previewUrl ? '' : ' profile-view__model-media--empty'}`}>
-        {previewUrl ? <img src={previewUrl} alt={model.title} loading="lazy" /> : <span>No preview</span>}
-      </div>
-      <div className="profile-view__model-body">
-        <div className="profile-view__model-header">
-          <h3>{model.title}</h3>
-          {!model.isPublic ? <span className="profile-view__badge profile-view__badge--private">Private</span> : null}
-        </div>
-        <p>Version {model.version}</p>
-        <p className="profile-view__model-updated">Updated {formatDate(model.updatedAt)}</p>
-        {tagList.length > 0 ? (
-          <ul className="profile-view__tag-list">
-            {tagList.map((tag) => (
-              <li key={tag.id}>#{tag.label}</li>
-            ))}
-            {remainingTags > 0 ? <li className="profile-view__tag-more">+{remainingTags}</li> : null}
-          </ul>
-        ) : (
-          <p className="profile-view__tag-empty">No tags assigned yet.</p>
-        )}
-      </div>
+      {media}
+      {body}
     </button>
   );
 };
@@ -384,7 +397,9 @@ export const UserProfile = ({
             </div>
             {profile.models.length > 0 ? (
               <div className="profile-view__model-grid" role="list">
-                {profile.models.map((model) => renderModelCard(model, onOpenModel))}
+                {profile.models.map((model) =>
+                  renderModelCard(model, { onOpenModel, viewerCanAudit: canAudit }),
+                )}
               </div>
             ) : (
               <p className="profile-view__empty">No models uploaded yet.</p>

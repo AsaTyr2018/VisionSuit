@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import { ApiError, api } from '../lib/api';
@@ -10,6 +10,7 @@ import type {
   GeneratorBaseModelConfig,
   GeneratorSettings,
   ImageAsset,
+  ModerationQueue,
   ModelAsset,
   RankTier,
   RankingSettings,
@@ -105,7 +106,7 @@ interface AdminPanelProps {
   onGeneratorSettingsUpdated?: (settings: GeneratorSettings) => void;
 }
 
-type AdminTab = 'users' | 'models' | 'images' | 'generator' | 'galleries' | 'ranking';
+type AdminTab = 'users' | 'models' | 'images' | 'moderation' | 'generator' | 'galleries' | 'ranking';
 
 type FilterValue<T extends string> = T | 'all';
 
@@ -201,6 +202,21 @@ const formatFileSize = (bytes?: number | null) => {
   const value = bytes / Math.pow(1024, exponent);
   const formatted = value >= 10 ? value.toFixed(0) : value.toFixed(1);
   return `${formatted} ${units[exponent]}`;
+};
+
+const formatModerationTimestamp = (value?: string | null) => {
+  if (!value) {
+    return '—';
+  }
+
+  try {
+    return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('Failed to format moderation timestamp', error);
+    }
+    return value;
+  }
 };
 
 const buildModelDetail = (model: ModelAsset) => {
@@ -307,6 +323,12 @@ export const AdminPanel = ({
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set());
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [moderationQueue, setModerationQueue] = useState<ModerationQueue | null>(null);
+  const [isModerationLoading, setIsModerationLoading] = useState(false);
+  const [moderationError, setModerationError] = useState<string | null>(null);
+  const [moderationAction, setModerationAction] = useState<
+    { entity: 'model' | 'image'; action: 'approve' | 'remove'; id: string } | null
+  >(null);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [activeImageId, setActiveImageId] = useState<string | null>(null);
   const [previewAsset, setPreviewAsset] = useState<{ url: string; title: string } | null>(null);
@@ -341,6 +363,9 @@ export const AdminPanel = ({
   );
   const [isSavingGeneratorSettings, setIsSavingGeneratorSettings] = useState(false);
   const [generatorSettingsError, setGeneratorSettingsError] = useState<string | null>(null);
+  const flaggedModelCount = moderationQueue?.models.length ?? 0;
+  const flaggedImageCount = moderationQueue?.images.length ?? 0;
+  const totalModerationCount = flaggedModelCount + flaggedImageCount;
 
   useEffect(() => {
     setGeneratorAccessMode((current) =>
@@ -398,7 +423,178 @@ export const AdminPanel = ({
     setTierDrafts(drafts);
   }, [rankingTiers]);
 
+  const fetchModerationQueue = useCallback(async () => {
+    setIsModerationLoading(true);
+    setModerationError(null);
+    try {
+      const response = await api.getModerationQueue(token);
+      setModerationQueue(response);
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to load moderation queue.';
+      setModerationError(message);
+    } finally {
+      setIsModerationLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeTab === 'moderation') {
+      void fetchModerationQueue();
+    }
+  }, [activeTab, fetchModerationQueue]);
+
   const resetStatus = () => setStatus(null);
+
+  const moderationActionMatches = (
+    entity: 'model' | 'image',
+    action: 'approve' | 'remove',
+    id: string,
+  ) =>
+    moderationAction?.entity === entity &&
+    moderationAction?.action === action &&
+    moderationAction?.id === id;
+
+  const handleApproveModel = async (model: ModelAsset) => {
+    resetStatus();
+    setModerationAction({ entity: 'model', action: 'approve', id: model.id });
+    try {
+      const response = await api.approveModelModeration(token, model.id);
+      setModerationQueue((queue) =>
+        queue
+          ? {
+              ...queue,
+              models: queue.models.filter((entry) => entry.id !== model.id),
+            }
+          : queue,
+      );
+      setStatus({ type: 'success', message: `Approved "${response.model.title}".` });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to approve the flagged model.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setModerationAction(null);
+    }
+  };
+
+  const handleRemoveModel = async (model: ModelAsset) => {
+    resetStatus();
+    const confirmed = window.confirm(
+      `Remove "${model.title}"? This permanently deletes the model for everyone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const reason = window.prompt(
+      'Provide a short removal note for the audit log (required).',
+      '',
+    );
+    if (reason == null) {
+      setStatus({ type: 'error', message: 'Removal cancelled — a note is required.' });
+      return;
+    }
+
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length === 0) {
+      setStatus({ type: 'error', message: 'Removal requires a brief audit note.' });
+      return;
+    }
+
+    setModerationAction({ entity: 'model', action: 'remove', id: model.id });
+    try {
+      await api.removeModelModeration(token, model.id, { reason: trimmedReason });
+      setModerationQueue((queue) =>
+        queue
+          ? {
+              ...queue,
+              models: queue.models.filter((entry) => entry.id !== model.id),
+            }
+          : queue,
+      );
+      setStatus({ type: 'success', message: `Removed "${model.title}".` });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to remove the flagged model.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setModerationAction(null);
+    }
+  };
+
+  const handleApproveImage = async (image: ImageAsset) => {
+    resetStatus();
+    setModerationAction({ entity: 'image', action: 'approve', id: image.id });
+    try {
+      const response = await api.approveImageModeration(token, image.id);
+      setModerationQueue((queue) =>
+        queue
+          ? {
+              ...queue,
+              images: queue.images.filter((entry) => entry.id !== image.id),
+            }
+          : queue,
+      );
+      setStatus({ type: 'success', message: `Approved "${response.image.title}".` });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to approve the flagged image.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setModerationAction(null);
+    }
+  };
+
+  const handleRemoveImage = async (image: ImageAsset) => {
+    resetStatus();
+    const confirmed = window.confirm(
+      `Remove "${image.title}"? This permanently deletes the image for everyone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const reason = window.prompt(
+      'Provide a short removal note for the audit log (required).',
+      '',
+    );
+    if (reason == null) {
+      setStatus({ type: 'error', message: 'Removal cancelled — a note is required.' });
+      return;
+    }
+
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length === 0) {
+      setStatus({ type: 'error', message: 'Removal requires a brief audit note.' });
+      return;
+    }
+
+    setModerationAction({ entity: 'image', action: 'remove', id: image.id });
+    try {
+      await api.removeImageModeration(token, image.id, { reason: trimmedReason });
+      setModerationQueue((queue) =>
+        queue
+          ? {
+              ...queue,
+              images: queue.images.filter((entry) => entry.id !== image.id),
+            }
+          : queue,
+      );
+      setStatus({ type: 'success', message: `Removed "${image.title}".` });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to remove the flagged image.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setModerationAction(null);
+    }
+  };
+
+  const handleRefreshModerationQueue = () => {
+    resetStatus();
+    void fetchModerationQueue();
+  };
 
   const handleAddBaseModel = () => {
     setBaseModelDrafts((current) => [...current, { type: 'SD1.5', name: '', filename: '' }]);
@@ -1297,6 +1493,7 @@ export const AdminPanel = ({
               { id: 'users', label: 'User' },
               { id: 'models', label: 'Models' },
               { id: 'images', label: 'Images' },
+              { id: 'moderation', label: 'Moderation' },
               { id: 'generator', label: 'Generator' },
               { id: 'ranking', label: 'Ranking' },
               { id: 'galleries', label: 'Galleries' },
@@ -2491,6 +2688,204 @@ export const AdminPanel = ({
               )}
             </section>
           )}
+        </div>
+      ) : null}
+      {activeTab === 'moderation' ? (
+        <div className="admin__panel">
+          <section className="admin__section admin__section--moderation">
+            <div className="admin__section-heading">
+              <h3>Moderation queue</h3>
+              <span className="admin__section-count">{totalModerationCount}</span>
+            </div>
+            <p className="moderation-queue__intro">
+              Flagged models and images stay hidden from members until an administrator approves or removes them.
+            </p>
+            <div className="moderation-queue__toolbar">
+              <button
+                type="button"
+                className="button button--primary moderation-queue__refresh"
+                onClick={handleRefreshModerationQueue}
+                disabled={isModerationLoading}
+              >
+                {isModerationLoading ? 'Refreshing…' : 'Refresh queue'}
+              </button>
+              <div className="moderation-queue__counts" role="status">
+                <span>{flaggedModelCount} models</span>
+                <span aria-hidden="true">•</span>
+                <span>{flaggedImageCount} images</span>
+              </div>
+            </div>
+            {moderationError ? <p className="moderation-queue__error">{moderationError}</p> : null}
+            {isModerationLoading && totalModerationCount === 0 && !moderationError ? (
+              <p className="moderation-queue__status">Loading moderation queue…</p>
+            ) : null}
+            {isModerationLoading && totalModerationCount > 0 ? (
+              <p className="moderation-queue__status moderation-queue__status--inline">
+                Refreshing moderation queue…
+              </p>
+            ) : null}
+            {!isModerationLoading && totalModerationCount === 0 && !moderationError ? (
+              <p className="moderation-queue__empty">No flagged assets require review right now.</p>
+            ) : null}
+            {totalModerationCount > 0 ? (
+              <div className="moderation-queue">
+                {flaggedModelCount > 0 ? (
+                  <section className="moderation-queue__group" aria-labelledby="moderation-models-heading">
+                    <header className="moderation-queue__group-header">
+                      <h4 id="moderation-models-heading">Flagged models</h4>
+                    </header>
+                    <ul className="moderation-queue__list">
+                      {moderationQueue?.models.map((model) => {
+                        const previewUrl =
+                          resolveCachedStorageUrl(
+                            model.previewImage,
+                            model.previewImageBucket,
+                            model.previewImageObject,
+                            { updatedAt: model.updatedAt, cacheKey: model.id },
+                          ) ?? model.previewImage ?? null;
+                        const previewClasses = [
+                          'moderation-queue__media',
+                          previewUrl ? '' : 'moderation-queue__media--empty',
+                          'moderation-overlay',
+                          'moderation-overlay--visible',
+                        ]
+                          .filter(Boolean)
+                          .join(' ');
+                        const isApproving = moderationActionMatches('model', 'approve', model.id);
+                        const isRemoving = moderationActionMatches('model', 'remove', model.id);
+                        const tagSummary = model.tags.slice(0, 3).map((tag) => `#${tag.label}`).join(' ');
+
+                        return (
+                          <li key={model.id} className="moderation-queue__item">
+                            <div className={previewClasses}>
+                              {previewUrl ? (
+                                <img src={previewUrl} alt={model.title} loading="lazy" />
+                              ) : (
+                                <span>No preview</span>
+                              )}
+                              <span className="moderation-overlay__label">In audit</span>
+                            </div>
+                            <div className="moderation-queue__content">
+                              <div className="moderation-queue__header">
+                                <h5>{model.title}</h5>
+                                <p>
+                                  v{model.version} · Owner: {model.owner.displayName}
+                                </p>
+                              </div>
+                              <dl className="moderation-queue__meta">
+                                <div>
+                                  <dt>Flagged</dt>
+                                  <dd>{formatModerationTimestamp(model.flaggedAt)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Reporter</dt>
+                                  <dd>{model.flaggedBy?.displayName ?? 'Unknown reporter'}</dd>
+                                </div>
+                                <div>
+                                  <dt>Tags</dt>
+                                  <dd>{tagSummary || '—'}</dd>
+                                </div>
+                              </dl>
+                              <div className="moderation-queue__actions">
+                                <button
+                                  type="button"
+                                  className="button button--primary moderation-queue__action"
+                                  onClick={() => handleApproveModel(model)}
+                                  disabled={isApproving || isRemoving || isModerationLoading}
+                                >
+                                  {isApproving ? 'Approving…' : 'Approve'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button button--danger moderation-queue__action"
+                                  onClick={() => handleRemoveModel(model)}
+                                  disabled={isApproving || isRemoving || isModerationLoading}
+                                >
+                                  {isRemoving ? 'Removing…' : 'Remove'}
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ) : null}
+                {flaggedImageCount > 0 ? (
+                  <section className="moderation-queue__group" aria-labelledby="moderation-images-heading">
+                    <header className="moderation-queue__group-header">
+                      <h4 id="moderation-images-heading">Flagged images</h4>
+                    </header>
+                    <ul className="moderation-queue__list">
+                      {moderationQueue?.images.map((image) => {
+                        const previewUrl =
+                          resolveCachedStorageUrl(
+                            image.storagePath,
+                            image.storageBucket,
+                            image.storageObject,
+                            { updatedAt: image.updatedAt, cacheKey: image.id },
+                          ) ?? image.storagePath;
+                        const previewClasses = [
+                          'moderation-queue__media',
+                          'moderation-overlay',
+                          'moderation-overlay--visible',
+                        ].join(' ');
+                        const isApproving = moderationActionMatches('image', 'approve', image.id);
+                        const isRemoving = moderationActionMatches('image', 'remove', image.id);
+
+                        return (
+                          <li key={image.id} className="moderation-queue__item">
+                            <div className={previewClasses}>
+                              <img src={previewUrl} alt={image.title} loading="lazy" />
+                              <span className="moderation-overlay__label">In audit</span>
+                            </div>
+                            <div className="moderation-queue__content">
+                              <div className="moderation-queue__header">
+                                <h5>{image.title}</h5>
+                                <p>Owner: {image.owner.displayName}</p>
+                              </div>
+                              <dl className="moderation-queue__meta">
+                                <div>
+                                  <dt>Flagged</dt>
+                                  <dd>{formatModerationTimestamp(image.flaggedAt)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Reporter</dt>
+                                  <dd>{image.flaggedBy?.displayName ?? 'Unknown reporter'}</dd>
+                                </div>
+                                <div>
+                                  <dt>Model</dt>
+                                  <dd>{image.metadata?.model ?? '—'}</dd>
+                                </div>
+                              </dl>
+                              <div className="moderation-queue__actions">
+                                <button
+                                  type="button"
+                                  className="button button--primary moderation-queue__action"
+                                  onClick={() => handleApproveImage(image)}
+                                  disabled={isApproving || isRemoving || isModerationLoading}
+                                >
+                                  {isApproving ? 'Approving…' : 'Approve'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="button button--danger moderation-queue__action"
+                                  onClick={() => handleRemoveImage(image)}
+                                  disabled={isApproving || isRemoving || isModerationLoading}
+                                >
+                                  {isRemoving ? 'Removing…' : 'Remove'}
+                                </button>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ) : null}
+              </div>
+            ) : null}
+          </section>
         </div>
       ) : null}
       {activeTab === 'generator' ? (

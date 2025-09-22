@@ -629,13 +629,23 @@ export const App = () => {
     const regularTags = asset.tags.filter((tag) => tag.id !== modelType?.id);
     const visibleTags = regularTags.slice(0, 5);
     const remainingTagCount = regularTags.length - visibleTags.length;
+    const isFlagged = asset.moderationStatus === 'FLAGGED';
+    const shouldObscure = isFlagged && authUser?.role !== 'ADMIN';
+    const mediaButtonClasses = [
+      'home-card__media-button',
+      isFlagged ? 'moderation-overlay' : '',
+      isFlagged && !shouldObscure ? 'moderation-overlay--visible' : '',
+      shouldObscure ? 'moderation-overlay--blurred' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     return (
       <article key={asset.id} className="home-card home-card--model">
         <div className="home-card__media">
           <button
             type="button"
-            className="home-card__media-button"
+            className={mediaButtonClasses}
             onClick={() => handleModelCardClick(asset.id)}
             aria-label={`Open ${asset.title} in the model explorer`}
           >
@@ -644,6 +654,7 @@ export const App = () => {
             ) : (
               <span className="home-card__placeholder">No preview available</span>
             )}
+            {isFlagged ? <span className="moderation-overlay__label">In audit</span> : null}
           </button>
         </div>
         <div className="home-card__body">
@@ -666,6 +677,7 @@ export const App = () => {
               </dd>
             </div>
           </dl>
+          {isFlagged ? <p className="home-card__moderation-note">Flagged for moderation.</p> : null}
           {visibleTags.length > 0 ? (
             <ul className="home-card__tags">
               {visibleTags.map((tag) => (
@@ -700,13 +712,23 @@ export const App = () => {
     const matchedGallery = galleries.find((gallery) =>
       gallery.entries.some((entry) => entry.imageAsset?.id === image.id),
     );
+    const isFlagged = image.moderationStatus === 'FLAGGED';
+    const shouldObscure = isFlagged && authUser?.role !== 'ADMIN';
+    const mediaButtonClasses = [
+      'home-card__media-button',
+      isFlagged ? 'moderation-overlay' : '',
+      isFlagged && !shouldObscure ? 'moderation-overlay--visible' : '',
+      shouldObscure ? 'moderation-overlay--blurred' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     return (
       <article key={image.id} className="home-card home-card--image">
         <div className="home-card__media">
           <button
             type="button"
-            className="home-card__media-button"
+            className={mediaButtonClasses}
             onClick={() => handleImageCardClick(image.id)}
             aria-label={
               matchedGallery
@@ -719,6 +741,7 @@ export const App = () => {
             ) : (
               <span className="home-card__placeholder">No image available</span>
             )}
+            {isFlagged ? <span className="moderation-overlay__label">In audit</span> : null}
           </button>
         </div>
         <div className="home-card__body">
@@ -747,6 +770,7 @@ export const App = () => {
               </dd>
             </div>
           </dl>
+          {isFlagged ? <p className="home-card__moderation-note">Flagged for moderation.</p> : null}
           {visibleTags.length > 0 ? (
             <ul className="home-card__tags">
               {visibleTags.map((tag) => (

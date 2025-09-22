@@ -1,13 +1,23 @@
 import crypto from 'node:crypto';
 
-import { Prisma, ImageAsset, ImageComment, ModelComment, Tag, User } from '@prisma/client';
+import {
+  Prisma,
+  ImageAsset,
+  ImageComment,
+  ModelComment,
+  ModerationActionType,
+  ModerationEntityType,
+  ModerationStatus,
+  Tag,
+  User,
+} from '@prisma/client';
 import type { Express, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { requireAuth, requireCurator } from '../lib/middleware/auth';
+import { requireAdmin, requireAuth, requireCurator } from '../lib/middleware/auth';
 import { extractModelMetadataFromFile } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
 import { MAX_TOTAL_SIZE_BYTES } from '../lib/uploadLimits';
@@ -17,6 +27,7 @@ import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/st
 type HydratedImageAsset = ImageAsset & {
   tags: { tag: Tag }[];
   owner: Pick<User, 'id' | 'displayName' | 'email'>;
+  flaggedBy?: Pick<User, 'id' | 'displayName' | 'email'> | null;
   _count: { likes: number };
   likes?: { userId: string }[];
 };
@@ -38,6 +49,7 @@ type HydratedImageComment = ImageComment & {
 const buildImageInclude = (viewerId?: string | null) => ({
   tags: { include: { tag: true } },
   owner: { select: { id: true, displayName: true, email: true } },
+  flaggedBy: { select: { id: true, displayName: true, email: true } },
   _count: { select: { likes: true } },
   ...(viewerId
     ? {
@@ -97,6 +109,24 @@ const commentInputSchema = z.object({
     .max(1000, 'Kommentare sind auf 1.000 Zeichen begrenzt.'),
 });
 
+const flagRequestSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(1, 'Bitte gib eine kurze Begründung an.')
+    .max(500, 'Begründungen sind auf 500 Zeichen begrenzt.')
+    .optional(),
+});
+
+const moderationDecisionSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(1, 'Bitte gib eine kurze Begründung an.')
+    .max(500, 'Begründungen sind auf 500 Zeichen begrenzt.')
+    .optional(),
+});
+
 const fetchModelComment = async (
   modelId: string,
   commentId: string,
@@ -143,11 +173,20 @@ const mapImageAsset = (asset: HydratedImageAsset, options: { viewerId?: string |
       steps: asset.steps,
     },
     owner: asset.owner,
+    flaggedBy: asset.flaggedBy
+      ? {
+          id: asset.flaggedBy.id,
+          displayName: asset.flaggedBy.displayName,
+          email: asset.flaggedBy.email,
+        }
+      : null,
     tags: asset.tags.map(({ tag }) => tag),
     createdAt: asset.createdAt,
     updatedAt: asset.updatedAt,
     likeCount,
     viewerHasLiked,
+    moderationStatus: asset.moderationStatus,
+    flaggedAt: asset.flaggedAt,
   };
 };
 
@@ -188,6 +227,112 @@ const removeStorageObject = async (bucket: string | null, objectName: string | n
     // eslint-disable-next-line no-console
     console.warn('[assets] Failed to delete object from storage', bucket, objectName, error);
   }
+};
+
+type ModelDeletionTarget = {
+  id: string;
+  ownerId: string;
+  storagePath: string;
+  previewImage: string | null;
+  versions: { id: string; storagePath: string; previewImage: string | null }[];
+};
+
+type ImageDeletionTarget = {
+  id: string;
+  ownerId: string;
+  storagePath: string;
+};
+
+const deleteModelAssetAndCleanup = async (asset: ModelDeletionTarget) => {
+  const storage = resolveStorageLocation(asset.storagePath);
+  const preview = resolveStorageLocation(asset.previewImage);
+  const versionLocations = asset.versions.map((version) => ({
+    id: version.id,
+    storage: resolveStorageLocation(version.storagePath),
+    preview: resolveStorageLocation(version.previewImage),
+    previewImage: version.previewImage,
+  }));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.galleryEntry.deleteMany({ where: { assetId: asset.id } });
+    await tx.assetTag.deleteMany({ where: { assetId: asset.id } });
+    await tx.modelVersion.deleteMany({ where: { modelId: asset.id } });
+
+    if (storage.objectName) {
+      await tx.storageObject.deleteMany({ where: { id: storage.objectName } });
+    }
+
+    if (preview.objectName) {
+      await tx.storageObject.deleteMany({ where: { id: preview.objectName } });
+    }
+
+    for (const version of versionLocations) {
+      if (version.storage.objectName) {
+        await tx.storageObject.deleteMany({ where: { id: version.storage.objectName } });
+      }
+
+      if (version.preview.objectName) {
+        await tx.storageObject.deleteMany({ where: { id: version.preview.objectName } });
+      }
+
+      if (version.previewImage) {
+        await tx.gallery.updateMany({ where: { coverImage: version.previewImage }, data: { coverImage: null } });
+      }
+    }
+
+    if (asset.previewImage) {
+      await tx.gallery.updateMany({ where: { coverImage: asset.previewImage }, data: { coverImage: null } });
+    }
+
+    await tx.modelAsset.delete({ where: { id: asset.id } });
+  });
+
+  await Promise.all([
+    removeStorageObject(storage.bucket, storage.objectName),
+    removeStorageObject(preview.bucket, preview.objectName),
+    ...versionLocations.flatMap((version) => [
+      removeStorageObject(version.storage.bucket, version.storage.objectName),
+      removeStorageObject(version.preview.bucket, version.preview.objectName),
+    ]),
+  ]);
+};
+
+const deleteImageAssetAndCleanup = async (image: ImageDeletionTarget) => {
+  const storage = resolveStorageLocation(image.storagePath);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.galleryEntry.deleteMany({ where: { imageId: image.id } });
+    await tx.imageTag.deleteMany({ where: { imageId: image.id } });
+
+    if (storage.objectName) {
+      await tx.storageObject.deleteMany({ where: { id: storage.objectName } });
+    }
+
+    await tx.gallery.updateMany({ where: { coverImage: image.storagePath }, data: { coverImage: null } });
+    await tx.imageAsset.delete({ where: { id: image.id } });
+  });
+
+  await removeStorageObject(storage.bucket, storage.objectName);
+};
+
+const createModerationLogEntry = async (params: {
+  entityType: ModerationEntityType;
+  entityId: string;
+  action: ModerationActionType;
+  actorId?: string;
+  targetUserId?: string;
+  message?: string | null;
+}) => {
+  await prisma.moderationLog.create({
+    data: {
+      entityType: params.entityType,
+      entityId: params.entityId,
+      action: params.action,
+      ...(params.actorId ? { actorId: params.actorId } : {}),
+      ...(params.targetUserId ? { targetUserId: params.targetUserId } : {}),
+      message: params.message ?? null,
+    },
+  });
 };
 
 const updateModelSchema = z.object({
@@ -336,15 +481,23 @@ assetsRouter.get('/models', async (req, res, next) => {
     const isAdmin = viewer?.role === 'ADMIN';
     const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
       ? {}
-      : viewer
-        ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
-        : { isPublic: true };
+      : {
+          AND: [
+            { moderationStatus: { not: ModerationStatus.REMOVED } },
+            viewer
+              ? {
+                  OR: [{ ownerId: viewer.id }, { isPublic: true }],
+                }
+              : { isPublic: true },
+          ],
+        };
 
     const assets = await prisma.modelAsset.findMany({
       where: visibilityFilter,
       include: {
         tags: { include: { tag: true } },
         owner: { select: { id: true, displayName: true, email: true } },
+        flaggedBy: { select: { id: true, displayName: true, email: true } },
         versions: { orderBy: { createdAt: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
@@ -362,9 +515,16 @@ assetsRouter.get('/images', async (req, res, next) => {
     const isAdmin = viewer?.role === 'ADMIN';
     const visibilityFilter: Prisma.ImageAssetWhereInput = isAdmin
       ? {}
-      : viewer
-        ? { OR: [{ ownerId: viewer.id }, { isPublic: true }] }
-        : { isPublic: true };
+      : {
+          AND: [
+            { moderationStatus: { not: ModerationStatus.REMOVED } },
+            viewer
+              ? {
+                  OR: [{ ownerId: viewer.id }, { isPublic: true }],
+                }
+              : { isPublic: true },
+          ],
+        };
 
     const images = await prisma.imageAsset.findMany({
       where: visibilityFilter,
@@ -372,7 +532,387 @@ assetsRouter.get('/images', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
-      res.json(images.map((image) => mapImageAsset(image, { viewerId: viewer?.id ?? null })));
+    res.json(images.map((image) => mapImageAsset(image, { viewerId: viewer?.id ?? null })));
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:id/flag', requireAuth, async (req, res, next) => {
+  try {
+    const parsed = flagRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const { id: modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Model-ID fehlt.' });
+      return;
+    }
+
+    const model = await prisma.modelAsset.findUnique({
+      where: { id: modelId },
+      select: { id: true, ownerId: true, moderationStatus: true },
+    });
+
+    if (!model) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    if (model.moderationStatus === ModerationStatus.REMOVED) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    const includeConfig = {
+      tags: { include: { tag: true } },
+      owner: { select: { id: true, displayName: true, email: true } },
+      flaggedBy: { select: { id: true, displayName: true, email: true } },
+      versions: { orderBy: { createdAt: 'desc' } },
+    } as const;
+
+    const updated =
+      model.moderationStatus === ModerationStatus.FLAGGED
+        ? await prisma.modelAsset.findUnique({
+            where: { id: modelId },
+            include: includeConfig,
+          })
+        : await prisma.modelAsset.update({
+            where: { id: modelId },
+            data: {
+              moderationStatus: ModerationStatus.FLAGGED,
+              flaggedAt: new Date(),
+              flaggedBy: { connect: { id: req.user!.id } },
+            },
+            include: includeConfig,
+          });
+
+    if (!updated) {
+      res.status(500).json({ message: 'Das Modell konnte nicht aktualisiert werden.' });
+      return;
+    }
+
+    if (model.moderationStatus !== ModerationStatus.FLAGGED) {
+      await createModerationLogEntry({
+        entityType: ModerationEntityType.MODEL,
+        entityId: updated.id,
+        action: ModerationActionType.FLAGGED,
+        actorId: req.user!.id,
+        targetUserId: updated.owner.id,
+        message: parsed.data.reason ?? null,
+      });
+    }
+
+    res.json({ model: mapModelAsset(updated) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/images/:id/flag', requireAuth, async (req, res, next) => {
+  try {
+    const parsed = flagRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const { id: imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const image = await prisma.imageAsset.findUnique({
+      where: { id: imageId },
+      select: { id: true, ownerId: true, moderationStatus: true },
+    });
+
+    if (!image) {
+      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      return;
+    }
+
+    if (image.moderationStatus === ModerationStatus.REMOVED) {
+      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      return;
+    }
+
+    const updated =
+      image.moderationStatus === ModerationStatus.FLAGGED
+        ? await prisma.imageAsset.findUnique({
+            where: { id: imageId },
+            include: buildImageInclude(req.user?.id),
+          })
+        : await prisma.imageAsset.update({
+            where: { id: imageId },
+            data: {
+              moderationStatus: ModerationStatus.FLAGGED,
+              flaggedAt: new Date(),
+              flaggedBy: { connect: { id: req.user!.id } },
+            },
+            include: buildImageInclude(req.user?.id),
+          });
+
+    if (!updated) {
+      res.status(500).json({ message: 'Bild konnte nicht aktualisiert werden.' });
+      return;
+    }
+
+    if (image.moderationStatus !== ModerationStatus.FLAGGED) {
+      await createModerationLogEntry({
+        entityType: ModerationEntityType.IMAGE,
+        entityId: updated.id,
+        action: ModerationActionType.FLAGGED,
+        actorId: req.user!.id,
+        targetUserId: updated.owner.id,
+        message: parsed.data.reason ?? null,
+      });
+    }
+
+    res.json({ image: mapImageAsset(updated, { viewerId: req.user?.id ?? null }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.get('/moderation/queue', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const [models, images] = await Promise.all([
+      prisma.modelAsset.findMany({
+        where: { moderationStatus: ModerationStatus.FLAGGED },
+        include: {
+          tags: { include: { tag: true } },
+          owner: { select: { id: true, displayName: true, email: true } },
+          flaggedBy: { select: { id: true, displayName: true, email: true } },
+          versions: { orderBy: { createdAt: 'desc' } },
+        },
+        orderBy: [{ flaggedAt: 'desc' }, { createdAt: 'desc' }],
+      }),
+      prisma.imageAsset.findMany({
+        where: { moderationStatus: ModerationStatus.FLAGGED },
+        include: buildImageInclude(req.user?.id),
+        orderBy: [{ flaggedAt: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    res.json({
+      models: models.map(mapModelAsset),
+      images: images.map((image) => mapImageAsset(image, { viewerId: req.user?.id ?? null })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:id/moderation/approve', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { id: modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Model-ID fehlt.' });
+      return;
+    }
+
+    const model = await prisma.modelAsset.findUnique({
+      where: { id: modelId },
+      select: { id: true, ownerId: true, moderationStatus: true },
+    });
+
+    if (!model) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    if (model.moderationStatus === ModerationStatus.REMOVED) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    if (model.moderationStatus !== ModerationStatus.FLAGGED) {
+      res.status(400).json({ message: 'Das Modell befindet sich nicht im Prüfstatus.' });
+      return;
+    }
+
+    const refreshed = await prisma.modelAsset.update({
+      where: { id: modelId },
+      data: {
+        moderationStatus: ModerationStatus.ACTIVE,
+        flaggedAt: null,
+        flaggedBy: { disconnect: true },
+      },
+      include: {
+        tags: { include: { tag: true } },
+        owner: { select: { id: true, displayName: true, email: true } },
+        flaggedBy: { select: { id: true, displayName: true, email: true } },
+        versions: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+
+    await createModerationLogEntry({
+      entityType: ModerationEntityType.MODEL,
+      entityId: refreshed.id,
+      action: ModerationActionType.APPROVED,
+      actorId: req.user!.id,
+      targetUserId: refreshed.owner.id,
+      message: 'Freigabe nach Überprüfung.',
+    });
+
+    res.json({ model: mapModelAsset(refreshed) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/models/:id/moderation/remove', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const parsed = moderationDecisionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const { id: modelId } = req.params;
+    if (!modelId) {
+      res.status(400).json({ message: 'Model-ID fehlt.' });
+      return;
+    }
+
+    const model = await prisma.modelAsset.findUnique({
+      where: { id: modelId },
+      select: {
+        id: true,
+        ownerId: true,
+        moderationStatus: true,
+        storagePath: true,
+        previewImage: true,
+        versions: { select: { id: true, storagePath: true, previewImage: true } },
+      },
+    });
+
+    if (!model) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    if (model.moderationStatus === ModerationStatus.REMOVED) {
+      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      return;
+    }
+
+    await deleteModelAssetAndCleanup(model);
+
+    await createModerationLogEntry({
+      entityType: ModerationEntityType.MODEL,
+      entityId: model.id,
+      action: ModerationActionType.REMOVED,
+      actorId: req.user!.id,
+      targetUserId: model.ownerId,
+      message: parsed.data.reason ?? 'Inhalt durch Moderation entfernt.',
+    });
+
+    res.json({ removed: model.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/images/:id/moderation/approve', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { id: imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const image = await prisma.imageAsset.findUnique({
+      where: { id: imageId },
+      select: { id: true, ownerId: true, moderationStatus: true },
+    });
+
+    if (!image) {
+      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      return;
+    }
+
+    if (image.moderationStatus === ModerationStatus.REMOVED) {
+      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      return;
+    }
+
+    if (image.moderationStatus !== ModerationStatus.FLAGGED) {
+      res.status(400).json({ message: 'Das Bild befindet sich nicht im Prüfstatus.' });
+      return;
+    }
+
+    const refreshed = await prisma.imageAsset.update({
+      where: { id: imageId },
+      data: {
+        moderationStatus: ModerationStatus.ACTIVE,
+        flaggedAt: null,
+        flaggedBy: { disconnect: true },
+      },
+      include: buildImageInclude(req.user?.id),
+    });
+
+    await createModerationLogEntry({
+      entityType: ModerationEntityType.IMAGE,
+      entityId: refreshed.id,
+      action: ModerationActionType.APPROVED,
+      actorId: req.user!.id,
+      targetUserId: refreshed.owner.id,
+      message: 'Freigabe nach Überprüfung.',
+    });
+
+    res.json({ image: mapImageAsset(refreshed, { viewerId: req.user?.id ?? null }) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+assetsRouter.post('/images/:id/moderation/remove', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const parsed = moderationDecisionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const { id: imageId } = req.params;
+    if (!imageId) {
+      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      return;
+    }
+
+    const image = await prisma.imageAsset.findUnique({
+      where: { id: imageId },
+      select: { id: true, ownerId: true, moderationStatus: true, storagePath: true },
+    });
+
+    if (!image) {
+      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      return;
+    }
+
+    if (image.moderationStatus === ModerationStatus.REMOVED) {
+      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      return;
+    }
+
+    await deleteImageAssetAndCleanup(image);
+
+    await createModerationLogEntry({
+      entityType: ModerationEntityType.IMAGE,
+      entityId: image.id,
+      action: ModerationActionType.REMOVED,
+      actorId: req.user!.id,
+      targetUserId: image.ownerId,
+      message: parsed.data.reason ?? 'Inhalt durch Moderation entfernt.',
+    });
+
+    res.json({ removed: image.id });
   } catch (error) {
     next(error);
   }
@@ -381,10 +921,14 @@ assetsRouter.get('/images', async (req, res, next) => {
 const ensureModelCommentAccess = async (modelId: string, viewerId: string | null, role: string | null) => {
   const model = await prisma.modelAsset.findUnique({
     where: { id: modelId },
-    select: { id: true, ownerId: true, isPublic: true },
+    select: { id: true, ownerId: true, isPublic: true, moderationStatus: true },
   });
 
   if (!model) {
+    return { status: 404, message: 'Modell konnte nicht gefunden werden.' } as const;
+  }
+
+  if (model.moderationStatus === ModerationStatus.REMOVED && role !== 'ADMIN') {
     return { status: 404, message: 'Modell konnte nicht gefunden werden.' } as const;
   }
 
@@ -398,10 +942,14 @@ const ensureModelCommentAccess = async (modelId: string, viewerId: string | null
 const ensureImageVisibility = async (imageId: string, viewerId: string | null, role: string | null) => {
   const image = await prisma.imageAsset.findUnique({
     where: { id: imageId },
-    select: { id: true, ownerId: true, isPublic: true },
+    select: { id: true, ownerId: true, isPublic: true, moderationStatus: true },
   });
 
   if (!image) {
+    return { status: 404, message: 'Bild konnte nicht gefunden werden.' } as const;
+  }
+
+  if (image.moderationStatus === ModerationStatus.REMOVED && role !== 'ADMIN') {
     return { status: 404, message: 'Bild konnte nicht gefunden werden.' } as const;
   }
 
@@ -1643,53 +2191,7 @@ assetsRouter.delete('/models/:id', requireAuth, requireCurator, async (req, res,
       return;
     }
 
-    const storage = resolveStorageLocation(asset.storagePath);
-    const preview = resolveStorageLocation(asset.previewImage);
-    const versionLocations = asset.versions.map((version) => ({
-      id: version.id,
-      storage: resolveStorageLocation(version.storagePath),
-      preview: resolveStorageLocation(version.previewImage),
-      previewImage: version.previewImage,
-    }));
-
-    await prisma.$transaction(async (tx) => {
-      await tx.galleryEntry.deleteMany({ where: { assetId: asset.id } });
-      await tx.assetTag.deleteMany({ where: { assetId: asset.id } });
-      await tx.modelVersion.deleteMany({ where: { modelId: asset.id } });
-      if (storage.objectName) {
-        await tx.storageObject.deleteMany({ where: { id: storage.objectName } });
-      }
-      if (preview.objectName) {
-        await tx.storageObject.deleteMany({ where: { id: preview.objectName } });
-      }
-      for (const version of versionLocations) {
-        if (version.storage.objectName) {
-          await tx.storageObject.deleteMany({ where: { id: version.storage.objectName } });
-        }
-        if (version.preview.objectName) {
-          await tx.storageObject.deleteMany({ where: { id: version.preview.objectName } });
-        }
-        if (version.previewImage) {
-          await tx.gallery.updateMany({ where: { coverImage: version.previewImage }, data: { coverImage: null } });
-        }
-      }
-      if (asset.previewImage) {
-        await tx.gallery.updateMany({
-          where: { coverImage: asset.previewImage },
-          data: { coverImage: null },
-        });
-      }
-      await tx.modelAsset.delete({ where: { id: asset.id } });
-    });
-
-    await Promise.all([
-      removeStorageObject(storage.bucket, storage.objectName),
-      removeStorageObject(preview.bucket, preview.objectName),
-      ...versionLocations.flatMap((version) => [
-        removeStorageObject(version.storage.bucket, version.storage.objectName),
-        removeStorageObject(version.preview.bucket, version.preview.objectName),
-      ]),
-    ]);
+    await deleteModelAssetAndCleanup(asset);
 
     res.status(204).send();
   } catch (error) {
@@ -1834,22 +2336,7 @@ assetsRouter.delete('/images/:id', requireAuth, requireCurator, async (req, res,
       return;
     }
 
-    const storage = resolveStorageLocation(image.storagePath);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.galleryEntry.deleteMany({ where: { imageId: image.id } });
-      await tx.imageTag.deleteMany({ where: { imageId: image.id } });
-      if (storage.objectName) {
-        await tx.storageObject.deleteMany({ where: { id: storage.objectName } });
-      }
-      await tx.gallery.updateMany({
-        where: { coverImage: image.storagePath },
-        data: { coverImage: null },
-      });
-      await tx.imageAsset.delete({ where: { id: image.id } });
-    });
-
-    await removeStorageObject(storage.bucket, storage.objectName);
+    await deleteImageAssetAndCleanup(image);
 
     res.status(204).send();
   } catch (error) {
