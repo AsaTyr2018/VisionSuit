@@ -15,6 +15,10 @@ LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(name)s: %(message)s")
 
 
+class CancelRequest(BaseModel):
+    token: str
+
+
 def create_app() -> FastAPI:
     config_path = os.environ.get("VISION_SUITE_AGENT_CONFIG", "/etc/visionsuit-gpu-agent/config.yaml")
     config = load_config(config_path)
@@ -38,9 +42,6 @@ def create_app() -> FastAPI:
             "busy": busy,
             "activity": await agent.describe_activity(),
         }
-
-    class CancelRequest(BaseModel):
-        token: str
 
     @app.post("/jobs", status_code=202)
     async def submit_job(job: DispatchEnvelope, background_tasks: BackgroundTasks) -> Dict[str, Any]:

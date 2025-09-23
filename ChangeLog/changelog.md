@@ -908,3 +908,8 @@
 - **General**: Hardened GPU job execution with strict ComfyUI asset name validation, friendlier LoRA/model naming, resumable callbacks, and a cooperative cancellation path that reports partial uploads without aborting the job.
 - **Technical Changes**: Introduced pretty-name symlink management for checkpoints and LoRAs with metadata fallbacks, invalidated and refreshed ComfyUI asset caches before submission, enforced whitelist validation via `/object_info`, added retrying callbacks and cancellation tokens, derived dynamic timeouts, captured node errors in failure callbacks, exposed `POST /jobs/cancel`, updated upload metadata plus deterministic key naming, and refreshed the sample configuration and README to document the new knobs.
 - **Data Changes**: Generator outputs now land under `comfy-outputs/{job_id}/{index}_{seed}.{ext}` with expanded object metadata (model, LoRAs, prompt, seed, steps).
+
+## 170 – [Fix] GPU agent cancel request model scope
+- **General**: Restored the GPU agent startup by providing FastAPI access to the cancellation payload schema.
+- **Technical Changes**: Moved the `CancelRequest` Pydantic model to module scope so dependency resolution succeeds when registering `/jobs/cancel`.
+- **Data Changes**: None.
