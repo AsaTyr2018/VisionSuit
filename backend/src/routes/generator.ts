@@ -269,6 +269,9 @@ const buildPublicGeneratorErrorReason = (reason: string | null, viewerRole?: str
 
 const generatorFailureStatuses = ['error', 'failed'] as const;
 const generatorFailureStatusList = [...generatorFailureStatuses];
+const generatorFinalStatuses = ['cancelled'] as const;
+const isFinalGeneratorStatus = (status: string) =>
+  generatorFinalStatuses.includes(status as (typeof generatorFinalStatuses)[number]);
 
 const sanitizeGeneratorSettingsBaseModels = async () => {
   try {
@@ -1243,6 +1246,74 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
   }
 });
 
+const cancellableStatuses = ['running', 'uploading'];
+
+generatorRouter.post('/requests/:id/actions/cancel', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const requestId = req.params.id;
+    if (!requestId) {
+      res.status(400).json({ message: 'Generator request ID is required to cancel a job.' });
+      return;
+    }
+
+    const existing = await prisma.generatorRequest.findUnique({
+      where: { id: requestId },
+      include: generatorRequestInclude,
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: 'Generator request not found for cancellation.' });
+      return;
+    }
+
+    if (!cancellableStatuses.includes(existing.status)) {
+      res.status(409).json({
+        message: 'Generator request is not currently running.',
+        request: mapGeneratorRequest(existing as HydratedGeneratorRequest, { includeErrorDetails: true }),
+      });
+      return;
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.generatorRequest.findUnique({
+        where: { id: requestId },
+        select: { status: true },
+      });
+
+      if (!current || !cancellableStatuses.includes(current.status)) {
+        return null;
+      }
+
+      return tx.generatorRequest.update({
+        where: { id: requestId },
+        data: { status: 'cancelled', errorReason: 'Terminated by administrator.' },
+        include: generatorRequestInclude,
+      });
+    });
+
+    if (!updated) {
+      const refreshed = await prisma.generatorRequest.findUnique({
+        where: { id: requestId },
+        include: generatorRequestInclude,
+      });
+
+      res.status(409).json({
+        message: 'Generator request is not currently running.',
+        ...(refreshed
+          ? { request: mapGeneratorRequest(refreshed as HydratedGeneratorRequest, { includeErrorDetails: true }) }
+          : {}),
+      });
+      return;
+    }
+
+    res.json({
+      request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) => {
   try {
     const parsed = generatorStatusCallbackSchema.safeParse(req.body ?? {});
@@ -1256,18 +1327,6 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
       res.status(400).json({ message: 'Status callback job ID mismatch.' });
       return;
     }
-
-    const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
-    const updateData =
-      parsed.data.status === 'error'
-        ? { status: 'error', errorReason: normalizedReason }
-        : { status: parsed.data.status, errorReason: null };
-
-    const updated = await prisma.generatorRequest.update({
-      where: { id: jobId },
-      data: updateData,
-      include: generatorRequestInclude,
-    });
 
     const activityPayload = parsed.data.extra?.activity;
     if (activityPayload && typeof activityPayload === 'object') {
@@ -1288,15 +1347,39 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
       }
     }
 
-    res.json({
-      request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
+    const existing = await prisma.generatorRequest.findUnique({
+      where: { id: jobId },
+      include: generatorRequestInclude,
     });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+
+    if (!existing) {
       res.status(404).json({ message: 'Generator request not found for status update.' });
       return;
     }
 
+    if (isFinalGeneratorStatus(existing.status)) {
+      res.json({
+        request: mapGeneratorRequest(existing as HydratedGeneratorRequest, { includeErrorDetails: true }),
+      });
+      return;
+    }
+
+    const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
+    const updateData =
+      parsed.data.status === 'error'
+        ? { status: 'error', errorReason: normalizedReason }
+        : { status: parsed.data.status, errorReason: null };
+
+    const updated = await prisma.generatorRequest.update({
+      where: { id: jobId },
+      data: updateData,
+      include: generatorRequestInclude,
+    });
+
+    res.json({
+      request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
+    });
+  } catch (error) {
     next(error);
   }
 });
@@ -1315,20 +1398,36 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
       return;
     }
 
-    const requestRecord = await prisma.generatorRequest.findUnique({
+    const existing = await prisma.generatorRequest.findUnique({
       where: { id: jobId },
-      select: { id: true, outputBucket: true },
+      include: generatorRequestInclude,
     });
 
-    if (!requestRecord) {
+    if (!existing) {
       res.status(404).json({ message: 'Generator request not found for completion callback.' });
       return;
     }
 
-    const bucket = requestRecord.outputBucket ?? appConfig.generator.output.bucket;
+    if (isFinalGeneratorStatus(existing.status)) {
+      res.json({
+        request: mapGeneratorRequest(existing as HydratedGeneratorRequest, { includeErrorDetails: true }),
+      });
+      return;
+    }
+
+    const bucket = existing.outputBucket ?? appConfig.generator.output.bucket;
     const uniqueKeys = Array.from(new Set(parsed.data.artifacts));
 
     await prisma.$transaction(async (tx) => {
+      const current = await tx.generatorRequest.findUnique({
+        where: { id: jobId },
+        select: { status: true },
+      });
+
+      if (!current || isFinalGeneratorStatus(current.status)) {
+        return;
+      }
+
       await tx.generatorArtifact.deleteMany({ where: { requestId: jobId } });
 
       if (uniqueKeys.length > 0) {
@@ -1375,6 +1474,23 @@ generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) =
       return;
     }
 
+    const existing = await prisma.generatorRequest.findUnique({
+      where: { id: jobId },
+      include: generatorRequestInclude,
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: 'Generator request not found for failure callback.' });
+      return;
+    }
+
+    if (isFinalGeneratorStatus(existing.status)) {
+      res.json({
+        request: mapGeneratorRequest(existing as HydratedGeneratorRequest, { includeErrorDetails: true }),
+      });
+      return;
+    }
+
     const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
     const failureStatus = parsed.data.status === 'failed' ? 'error' : parsed.data.status;
 
@@ -1388,11 +1504,6 @@ generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) =
       request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-      res.status(404).json({ message: 'Generator request not found for failure callback.' });
-      return;
-    }
-
     next(error);
   }
 });
@@ -1435,7 +1546,37 @@ generatorRouter.get('/requests', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const where = scope === 'all' ? {} : { userId: req.user!.id };
+    const where: Prisma.GeneratorRequestWhereInput = scope === 'all' ? {} : { userId: req.user!.id };
+
+    const rawStatusFilter = req.query.status;
+    const normalizeStatuses = (input: unknown): string[] => {
+      if (!input) {
+        return [];
+      }
+
+      if (typeof input === 'string') {
+        return input
+          .split(',')
+          .map((value) => value.trim())
+          .filter((value): value is string => value.length > 0)
+          .slice(0, 50);
+      }
+
+      if (Array.isArray(input)) {
+        return input
+          .flatMap((entry) => (typeof entry === 'string' ? entry.split(',') : []))
+          .map((value) => value.trim())
+          .filter((value): value is string => value.length > 0)
+          .slice(0, 50);
+      }
+
+      return [];
+    };
+
+    const statusFilters = normalizeStatuses(rawStatusFilter);
+    if (statusFilters.length > 0) {
+      where.status = { in: statusFilters };
+    }
 
     const requests = await prisma.generatorRequest.findMany({
       where,
