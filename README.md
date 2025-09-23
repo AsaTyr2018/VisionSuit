@@ -149,7 +149,15 @@ VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Poin
 - `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
 - `GENERATOR_CALLBACK_BASE_URL` so the backend can publish reachable callback URLs for status, completion, and failure updates (defaults to `http://127.0.0.1:4000` when unset).
 
+After the `.env` values are in place run the MinIO bootstrapper once to create the required buckets:
+
+```bash
+(cd backend && npx ts-node --transpile-only scripts/setupGeneratorBuckets.ts)
+```
+
 Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base models, LoRA adapters, and prompt metadata. The GPU agent receives the full base-model roster alongside the primary checkpoint so it can stage or audit every curated option up front. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately. When the agent executes the job it now posts back to `/api/generator/requests/:id/callbacks/status` as phases progress, `/completion` once artifacts land in MinIO, and `/failure` if the run aborts—each callback adheres to the generator control-plane schema (state machine values, monotonic heartbeat counters, timing metadata, and rich artifact manifests) so VisionSuit can record transitions, store returned object keys, and surface finished renders directly in the On-Site Generator history without additional translation glue.
+
+The callback endpoints accept either the original VisionSuit payloads or the GPU agent's `job_id`/`state` schema, map all state machine updates onto VisionSuit's internal statuses (including cancellation), and persist the live ComfyUI activity snapshots the agent embeds in status and failure reports. Successful completions now ingest the agent's artifact manifests directly, so the stored object keys always match the uploaded files.
 
 GPU-side failures are now reported back to VisionSuit automatically. The agent emits an error status before the failure callback so jobs no longer remain stuck as `queued`, and administrators can review the full diagnostic trail inside the new **Administration → Generator → Generation failure log** panel. Members only see a generic failure notice in their history while sensitive stack traces stay scoped to the admin center.
 

@@ -267,7 +267,7 @@ const buildPublicGeneratorErrorReason = (reason: string | null, viewerRole?: str
   return 'Generation failed. Contact an administrator for the diagnostic log.';
 };
 
-const generatorFailureStatuses = ['error', 'failed'] as const;
+const generatorFailureStatuses = ['error', 'failed', 'cancelled'] as const;
 const generatorFailureStatusList = [...generatorFailureStatuses];
 const generatorFinalStatuses = ['cancelled'] as const;
 const isFinalGeneratorStatus = (status: string) =>
@@ -694,38 +694,285 @@ const generatorRequestSchema = z.object({
   height: z.coerce.number().int().min(256).max(2048),
 });
 
+const generatorAgentStateEnum = z.enum([
+  'QUEUED',
+  'PREPARING',
+  'MATERIALIZING',
+  'SUBMITTED',
+  'RUNNING',
+  'UPLOADING',
+  'SUCCESS',
+  'FAILED',
+  'CANCELED',
+]);
+
+type GeneratorAgentState = z.infer<typeof generatorAgentStateEnum>;
+type GeneratorCallbackStatus = 'queued' | 'running' | 'uploading' | 'completed' | 'error' | 'cancelled';
+
 const generatorStatusCallbackSchema = z
   .object({
-    jobId: z.string().min(1),
-    status: z.enum(['queued', 'running', 'uploading', 'error']),
-    extra: z.record(z.string(), z.unknown()).optional(),
+    jobId: z.string().trim().min(1).optional(),
+    job_id: z.string().trim().min(1).optional(),
+    status: z
+      .string()
+      .transform((value) => value.trim().toLowerCase())
+      .pipe(z.enum(['queued', 'running', 'uploading', 'error', 'completed', 'cancelled']))
+      .optional(),
+    state: z
+      .string()
+      .transform((value) => value.trim().toUpperCase())
+      .pipe(generatorAgentStateEnum)
+      .optional(),
     reason: z.string().optional(),
+    message: z.string().optional(),
+    heartbeat_seq: z.coerce.number().int().min(0).optional(),
+    timestamp: z.string().optional(),
+    progress: z.unknown().optional(),
+    activity: z.unknown().optional(),
+    activity_snapshot: z.unknown().optional(),
+    activitySnapshot: z.unknown().optional(),
+    extra: z.record(z.string(), z.unknown()).optional(),
   })
-  .superRefine((value, ctx) => {
-    if (value.status === 'error') {
-      return;
+  .refine((value) => value.jobId || value.job_id, {
+    message: 'jobId is required in callback payloads.',
+    path: ['jobId'],
+  })
+  .refine((value) => value.status || value.state, {
+    message: 'status or state must be supplied in callback payloads.',
+    path: ['status'],
+  })
+  .passthrough();
+
+const completionArtifactSchema = z.union([
+  z.string().min(1),
+  z
+    .object({
+      bucket: z.string().trim().min(1).optional(),
+      objectKey: z.string().trim().min(1).optional(),
+      object_key: z.string().trim().min(1).optional(),
+      key: z.string().trim().min(1).optional(),
+      storagePath: z.string().trim().min(1).optional(),
+      storage_path: z.string().trim().min(1).optional(),
+      s3: z
+        .object({
+          bucket: z.string().trim().min(1).optional(),
+          key: z.string().trim().min(1).optional(),
+          url: z.string().optional(),
+        })
+        .optional(),
+    })
+    .passthrough(),
+]);
+
+const generatorCompletionCallbackSchema = z
+  .object({
+    jobId: z.string().trim().min(1).optional(),
+    job_id: z.string().trim().min(1).optional(),
+    status: z
+      .string()
+      .transform((value) => value.trim().toLowerCase())
+      .pipe(z.literal('completed'))
+      .optional(),
+    state: z
+      .string()
+      .transform((value) => value.trim().toUpperCase())
+      .pipe(z.literal('SUCCESS'))
+      .optional(),
+    artifacts: z.array(completionArtifactSchema).default([]),
+  })
+  .refine((value) => value.jobId || value.job_id, {
+    message: 'jobId is required in callback payloads.',
+    path: ['jobId'],
+  })
+  .refine((value) => value.status || value.state, {
+    message: 'status or state must be supplied in callback payloads.',
+    path: ['status'],
+  })
+  .passthrough();
+
+const generatorFailureCallbackSchema = z
+  .object({
+    jobId: z.string().trim().min(1).optional(),
+    job_id: z.string().trim().min(1).optional(),
+    status: z
+      .string()
+      .transform((value) => value.trim().toLowerCase())
+      .pipe(z.enum(['failed', 'error', 'cancelled']))
+      .optional(),
+    state: z
+      .string()
+      .transform((value) => value.trim().toUpperCase())
+      .pipe(z.enum(['FAILED', 'CANCELED']))
+      .optional(),
+    reason: z.string().optional(),
+    reason_code: z.string().optional(),
+    message: z.string().optional(),
+    activity: z.unknown().optional(),
+    activity_snapshot: z.unknown().optional(),
+    activitySnapshot: z.unknown().optional(),
+    last_activity: z.unknown().optional(),
+  })
+  .refine((value) => value.jobId || value.job_id, {
+    message: 'jobId is required in callback payloads.',
+    path: ['jobId'],
+  })
+  .refine((value) => value.status || value.state, {
+    message: 'status or state must be supplied in callback payloads.',
+    path: ['status'],
+  })
+  .passthrough();
+
+const mapAgentStateToStatus = (state: GeneratorAgentState): GeneratorCallbackStatus => {
+  switch (state) {
+    case 'QUEUED':
+      return 'queued';
+    case 'PREPARING':
+    case 'MATERIALIZING':
+    case 'SUBMITTED':
+    case 'RUNNING':
+      return 'running';
+    case 'UPLOADING':
+      return 'uploading';
+    case 'SUCCESS':
+      return 'completed';
+    case 'FAILED':
+      return 'error';
+    case 'CANCELED':
+      return 'cancelled';
+    default:
+      return 'running';
+  }
+};
+
+const resolveCallbackStatus = (
+  payload: z.infer<typeof generatorStatusCallbackSchema>,
+): GeneratorCallbackStatus | null => {
+  if (payload.status) {
+    return payload.status;
+  }
+
+  if (payload.state) {
+    return mapAgentStateToStatus(payload.state);
+  }
+
+  return null;
+};
+
+type CompletionCallbackPayload = z.infer<typeof generatorCompletionCallbackSchema>;
+type CompletionArtifactPayload = CompletionCallbackPayload['artifacts'][number];
+
+const sanitizeObjectKey = (value: string) => value.replace(/^\/+/, '');
+
+const parseStoragePath = (value: string): { bucket: string | null; key: string | null } => {
+  const normalized = value.trim();
+  if (!normalized.toLowerCase().startsWith('s3://')) {
+    return { bucket: null, key: null };
+  }
+
+  const withoutScheme = normalized.slice(5);
+  const firstSlash = withoutScheme.indexOf('/');
+  if (firstSlash < 0) {
+    return { bucket: withoutScheme || null, key: null };
+  }
+
+  const bucket = withoutScheme.slice(0, firstSlash);
+  const key = withoutScheme.slice(firstSlash + 1);
+  return { bucket: bucket || null, key: key || null };
+};
+
+const resolveCompletionArtifact = (
+  artifact: CompletionArtifactPayload,
+  fallbackBucket: string,
+): { bucket: string; key: string } | null => {
+  if (typeof artifact === 'string') {
+    const key = sanitizeObjectKey(artifact);
+    return key ? { bucket: fallbackBucket, key } : null;
+  }
+
+  if (!artifact || typeof artifact !== 'object') {
+    return null;
+  }
+
+  const candidateBucket =
+    (typeof artifact.bucket === 'string' && artifact.bucket.trim().length > 0
+      ? artifact.bucket.trim()
+      : null) ?? undefined;
+
+  const s3Payload =
+    artifact.s3 && typeof artifact.s3 === 'object'
+      ? {
+          bucket:
+            typeof artifact.s3.bucket === 'string' && artifact.s3.bucket.trim().length > 0
+              ? artifact.s3.bucket.trim()
+              : null,
+          key:
+            typeof artifact.s3.key === 'string' && artifact.s3.key.trim().length > 0
+              ? sanitizeObjectKey(artifact.s3.key)
+              : null,
+        }
+      : { bucket: null, key: null };
+
+  if (s3Payload.key) {
+    const bucket = s3Payload.bucket ?? candidateBucket ?? fallbackBucket;
+    return { bucket, key: s3Payload.key };
+  }
+
+  const directKeyCandidates = [
+    typeof artifact.objectKey === 'string' ? artifact.objectKey.trim() : null,
+    typeof (artifact as { object_key?: string }).object_key === 'string'
+      ? (artifact as { object_key?: string }).object_key!.trim()
+      : null,
+    typeof artifact.key === 'string' ? artifact.key.trim() : null,
+  ].filter((value): value is string => Boolean(value && value.length > 0));
+
+  if (directKeyCandidates.length > 0) {
+    const [firstCandidate] = directKeyCandidates;
+    if (firstCandidate) {
+      const key = sanitizeObjectKey(firstCandidate);
+      if (key) {
+        const bucket = candidateBucket ?? fallbackBucket;
+        return { bucket, key };
+      }
+    }
+  }
+
+  const storagePathValue =
+    typeof artifact.storagePath === 'string'
+      ? artifact.storagePath
+      : typeof (artifact as { storage_path?: string }).storage_path === 'string'
+        ? (artifact as { storage_path?: string }).storage_path!
+        : null;
+
+  if (storagePathValue) {
+    const parsed = parseStoragePath(storagePathValue);
+    if (parsed.key) {
+      const bucket = parsed.bucket ?? candidateBucket ?? fallbackBucket;
+      return { bucket, key: sanitizeObjectKey(parsed.key) };
+    }
+  }
+
+  return null;
+};
+
+const resolveFailureStatus = (
+  payload: z.infer<typeof generatorFailureCallbackSchema>,
+): GeneratorCallbackStatus | null => {
+  if (payload.status) {
+    if (payload.status === 'cancelled') {
+      return 'cancelled';
     }
 
-    if (value.reason && value.reason.trim().length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Reason can only accompany error status updates.',
-        path: ['reason'],
-      });
+    if (payload.status === 'failed' || payload.status === 'error') {
+      return 'error';
     }
-  });
+  }
 
-const generatorCompletionCallbackSchema = z.object({
-  jobId: z.string().min(1),
-  status: z.literal('completed'),
-  artifacts: z.array(z.string().min(1)).default([]),
-});
+  if (payload.state) {
+    return mapAgentStateToStatus(payload.state);
+  }
 
-const generatorFailureCallbackSchema = z.object({
-  jobId: z.string().min(1),
-  status: z.enum(['failed', 'error']).default('error'),
-  reason: z.string().optional(),
-});
+  return null;
+};
 
 const generatorQueueBlockSchema = z.object({
   userId: z.string().min(1),
@@ -1323,12 +1570,19 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
     }
 
     const jobId = req.params.id;
-    if (!jobId || parsed.data.jobId !== jobId) {
+    const callbackJobId = parsed.data.jobId ?? parsed.data.job_id ?? null;
+    if (!jobId || callbackJobId !== jobId) {
       res.status(400).json({ message: 'Status callback job ID mismatch.' });
       return;
     }
 
-    const activityPayload = parsed.data.extra?.activity;
+    const activityPayload =
+      parsed.data.activity_snapshot ??
+      (Object.prototype.hasOwnProperty.call(parsed.data, 'activitySnapshot')
+        ? (parsed.data as Record<string, unknown>).activitySnapshot
+        : undefined) ??
+      parsed.data.activity ??
+      parsed.data.extra?.activity;
     if (activityPayload && typeof activityPayload === 'object') {
       try {
         const state = await ensureQueueState();
@@ -1345,6 +1599,12 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
           console.warn('Failed to persist generator queue activity snapshot:', activityError);
         }
       }
+    }
+
+    const resolvedStatus = resolveCallbackStatus(parsed.data);
+    if (!resolvedStatus) {
+      res.status(400).json({ message: 'Unsupported generator status received.' });
+      return;
     }
 
     const existing = await prisma.generatorRequest.findUnique({
@@ -1364,11 +1624,22 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
       return;
     }
 
-    const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
-    const updateData =
-      parsed.data.status === 'error'
-        ? { status: 'error', errorReason: normalizedReason }
-        : { status: parsed.data.status, errorReason: null };
+    const normalizedReason = normalizeGeneratorErrorReason(
+      parsed.data.reason ?? (resolvedStatus === 'error' || resolvedStatus === 'cancelled' ? parsed.data.message : undefined),
+    );
+    let updateData: Prisma.GeneratorRequestUpdateInput;
+    if (resolvedStatus === 'error') {
+      updateData = { status: 'error', errorReason: normalizedReason };
+    } else if (resolvedStatus === 'cancelled') {
+      updateData = {
+        status: 'cancelled',
+        errorReason: normalizedReason ?? 'Job cancelled by GPU worker.',
+      };
+    } else if (resolvedStatus === 'completed') {
+      updateData = { status: 'completed', errorReason: null };
+    } else {
+      updateData = { status: resolvedStatus, errorReason: null };
+    }
 
     const updated = await prisma.generatorRequest.update({
       where: { id: jobId },
@@ -1393,8 +1664,14 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
     }
 
     const jobId = req.params.id;
-    if (!jobId || parsed.data.jobId !== jobId) {
+    const callbackJobId = parsed.data.jobId ?? parsed.data.job_id ?? null;
+    if (!jobId || callbackJobId !== jobId) {
       res.status(400).json({ message: 'Completion callback job ID mismatch.' });
+      return;
+    }
+
+    if (!parsed.data.status && !parsed.data.state) {
+      res.status(400).json({ message: 'Completion callback missing status.' });
       return;
     }
 
@@ -1416,7 +1693,13 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
     }
 
     const bucket = existing.outputBucket ?? appConfig.generator.output.bucket;
-    const uniqueKeys = Array.from(new Set(parsed.data.artifacts));
+    const normalizedArtifacts = parsed.data.artifacts
+      .map((artifact) => resolveCompletionArtifact(artifact, bucket))
+      .filter((entry): entry is { bucket: string; key: string } => Boolean(entry));
+
+    const uniqueArtifacts = Array.from(
+      new Map(normalizedArtifacts.map((entry) => [`${entry.bucket}/${entry.key}`, entry])).values(),
+    );
 
     await prisma.$transaction(async (tx) => {
       const current = await tx.generatorRequest.findUnique({
@@ -1430,13 +1713,13 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
 
       await tx.generatorArtifact.deleteMany({ where: { requestId: jobId } });
 
-      if (uniqueKeys.length > 0) {
+      if (uniqueArtifacts.length > 0) {
         await tx.generatorArtifact.createMany({
-          data: uniqueKeys.map((objectKey) => ({
+          data: uniqueArtifacts.map((entry) => ({
             requestId: jobId,
-            bucket,
-            objectKey,
-            storagePath: `s3://${bucket}/${objectKey.replace(/^\/+/, '')}`,
+            bucket: entry.bucket,
+            objectKey: entry.key,
+            storagePath: `s3://${entry.bucket}/${entry.key.replace(/^\/+/, '')}`,
           })),
         });
       }
@@ -1469,8 +1752,41 @@ generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) =
     }
 
     const jobId = req.params.id;
-    if (!jobId || parsed.data.jobId !== jobId) {
+    const callbackJobId = parsed.data.jobId ?? parsed.data.job_id ?? null;
+    if (!jobId || callbackJobId !== jobId) {
       res.status(400).json({ message: 'Failure callback job ID mismatch.' });
+      return;
+    }
+
+    const activityPayload =
+      parsed.data.last_activity ??
+      parsed.data.activity_snapshot ??
+      (Object.prototype.hasOwnProperty.call(parsed.data, 'activitySnapshot')
+        ? (parsed.data as Record<string, unknown>).activitySnapshot
+        : undefined) ??
+      parsed.data.activity ??
+      (parsed.data as { extra?: { activity?: unknown } }).extra?.activity;
+    if (activityPayload && typeof activityPayload === 'object') {
+      try {
+        const state = await ensureQueueState();
+        await prisma.generatorQueueState.update({
+          where: { id: state.id },
+          data: {
+            activity: activityPayload as Prisma.InputJsonValue,
+            activityUpdatedAt: new Date(),
+          },
+        });
+      } catch (activityError) {
+        if (process.env.NODE_ENV === 'development') {
+          // eslint-disable-next-line no-console
+          console.warn('Failed to persist generator queue activity snapshot:', activityError);
+        }
+      }
+    }
+
+    const resolvedStatus = resolveFailureStatus(parsed.data);
+    if (!resolvedStatus) {
+      res.status(400).json({ message: 'Unsupported generator failure status received.' });
       return;
     }
 
@@ -1491,8 +1807,18 @@ generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) =
       return;
     }
 
-    const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
-    const failureStatus = parsed.data.status === 'failed' ? 'error' : parsed.data.status;
+    const reasonWithCode = (() => {
+      const reason = parsed.data.reason ?? parsed.data.message ?? null;
+      if (parsed.data.reason_code) {
+        if (reason) {
+          return `${reason} (${parsed.data.reason_code})`;
+        }
+        return parsed.data.reason_code;
+      }
+      return reason;
+    })();
+    const normalizedReason = normalizeGeneratorErrorReason(reasonWithCode);
+    const failureStatus = resolvedStatus === 'cancelled' ? 'cancelled' : 'error';
 
     const updated = await prisma.generatorRequest.update({
       where: { id: jobId },

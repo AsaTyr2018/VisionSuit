@@ -923,3 +923,8 @@
 - **General**: Prevented GPU renders from stalling after ComfyUI reported successful completions using `status_str` payloads.
 - **Technical Changes**: Normalized ComfyUI history polling to read `status_str`, raw string values, and `completed` flags so `success`/`completed` runs exit promptly while `error` states still raise failures.
 - **Data Changes**: None; status polling only interprets existing history metadata.
+
+## 173 – [Addition] GPU agent callback route-back
+- **General**: Enabled VisionSuit to accept the GPU agent's state-machine callbacks and bundled a helper to provision the MinIO buckets required for round-trip generations.
+- **Technical Changes**: Extended the generator callback schemas to consume `job_id`/`state` payloads, mapped agent states onto VisionSuit statuses with queue activity persistence, normalised completion artifact manifests, reconciled failure reasons, and shipped `backend/scripts/setupGeneratorBuckets.ts` to auto-create model, workflow, and output buckets.
+- **Data Changes**: None; existing generator request and artifact records now reuse the uploaded bucket/key pairs reported by the agent.
