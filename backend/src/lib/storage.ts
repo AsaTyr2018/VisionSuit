@@ -6,6 +6,7 @@ import { appConfig } from '../config';
 export const storageBuckets = {
   models: appConfig.storage.bucketModels,
   images: appConfig.storage.bucketImages,
+  generatorWorkflows: appConfig.generator.workflow.bucket,
 };
 
 const clientOptions: ClientOptions = {
@@ -22,7 +23,7 @@ if (appConfig.storage.region) {
 
 export const storageClient = new Client(clientOptions);
 
-const ensureBucket = async (bucket: string) => {
+export const ensureBucketExists = async (bucket: string) => {
   const exists = await storageClient.bucketExists(bucket);
   if (exists) {
     return;
@@ -40,7 +41,7 @@ export const initializeStorage = async () => {
 
   for (const bucket of buckets) {
     try {
-      await ensureBucket(bucket);
+      await ensureBucketExists(bucket);
     } catch (error) {
       throw new Error(`Failed to ensure MinIO bucket "${bucket}": ${(error as Error).message}`);
     }

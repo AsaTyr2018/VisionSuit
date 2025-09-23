@@ -842,3 +842,8 @@
 - **General**: Guaranteed GPU agent upgrades start from a pristine environment by tearing down any prior service before reinstalling.
 - **Technical Changes**: Extended the installer to stop and disable existing systemd units, purge `/opt/visionsuit-gpu-agent`, recreate fresh directories, drop stale unit files ahead of deployment, and documented the reset flow in the README.
 - **Data Changes**: None; adjustments operate on runtime directories only.
+
+## 158 – [Fix] Workflow auto-seeding guard
+- **General**: Prevented generator dispatches from reaching the GPU agent without a ready Comfy workflow template.
+- **Technical Changes**: Added backend checks that ensure the workflow bucket exists, upload the configured template from a local path or inline JSON when absent, and guard dispatches with descriptive errors alongside refreshed README guidance.
+- **Data Changes**: None; MinIO contents are synchronized automatically when needed.

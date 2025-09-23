@@ -7,7 +7,89 @@ import {
   GeneratorAgentClient,
 } from './agentClient';
 import { prisma } from '../prisma';
-import { resolveStorageLocation } from '../storage';
+import { ensureBucketExists, resolveStorageLocation, storageClient } from '../storage';
+
+const isNotFoundError = (error: unknown) => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const record = error as { code?: string | number; statusCode?: number };
+  const code = typeof record.code === 'string' ? record.code : undefined;
+  if (code && ['NoSuchKey', 'NotFound', 'NoSuchBucket'].includes(code)) {
+    return true;
+  }
+
+  if (typeof record.statusCode === 'number' && record.statusCode === 404) {
+    return true;
+  }
+
+  if (error instanceof Error && /not.?found/i.test(error.message)) {
+    return true;
+  }
+
+  return false;
+};
+
+const ensureWorkflowMaterialized = async () => {
+  const { workflow } = appConfig.generator;
+  const bucket = workflow.bucket?.trim();
+  const key = workflow.minioKey?.trim();
+
+  if (!bucket || !key) {
+    return;
+  }
+
+  try {
+    await ensureBucketExists(bucket);
+  } catch (error) {
+    throw new Error(`Failed to ensure workflow bucket "${bucket}": ${(error as Error).message}`);
+  }
+
+  try {
+    await storageClient.statObject(bucket, key);
+    return;
+  } catch (error) {
+    if (!isNotFoundError(error)) {
+      throw new Error(`Failed to inspect workflow object "${bucket}/${key}": ${(error as Error).message}`);
+    }
+  }
+
+  if (workflow.localPath) {
+    try {
+      await storageClient.fPutObject(bucket, key, workflow.localPath, {
+        'Content-Type': 'application/json',
+      });
+      return;
+    } catch (error) {
+      throw new Error(
+        `Failed to upload workflow template from "${workflow.localPath}" to "${bucket}/${key}": ${(error as Error).message}`,
+      );
+    }
+  }
+
+  if (typeof workflow.inline !== 'undefined') {
+    try {
+      const payload =
+        typeof workflow.inline === 'string'
+          ? workflow.inline
+          : JSON.stringify(workflow.inline, null, 2);
+      const body = Buffer.from(payload, 'utf-8');
+      await storageClient.putObject(bucket, key, body, body.length, {
+        'Content-Type': 'application/json',
+      });
+      return;
+    } catch (error) {
+      throw new Error(
+        `Failed to upload inline workflow template to "${bucket}/${key}": ${(error as Error).message}`,
+      );
+    }
+  }
+
+  throw new Error(
+    `Generator workflow object "${bucket}/${key}" is missing in storage and no local template is configured for upload.`,
+  );
+};
 
 interface DispatchableGeneratorRequest {
   id: string;
@@ -202,6 +284,12 @@ export const dispatchGeneratorRequest = async (
   const generatorNodeUrl = appConfig.network.generatorNodeUrl.trim();
   if (!generatorNodeUrl) {
     return { status: 'skipped', message: 'Generator node URL not configured.' };
+  }
+
+  try {
+    await ensureWorkflowMaterialized();
+  } catch (error) {
+    return { status: 'error', message: (error as Error).message };
   }
 
   const storedBaseModels = parseBaseModelSelections(request.baseModelSelections);
