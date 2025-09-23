@@ -40,10 +40,33 @@ class WorkflowLoader:
         return base
 
 
+def _build_node_lookup(workflow: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
+    nodes: Dict[int, Dict[str, Any]] = {}
+    node_list = workflow.get("nodes") if isinstance(workflow, dict) else None
+    if isinstance(node_list, list):
+        for node in node_list:
+            if not isinstance(node, dict):
+                continue
+            identifier = node.get("id")
+            if isinstance(identifier, int):
+                nodes[identifier] = node
+            elif isinstance(identifier, str) and identifier.isdigit():
+                nodes[int(identifier)] = node
+    if nodes:
+        return nodes
+    if isinstance(workflow, dict):
+        for key, value in workflow.items():
+            if isinstance(key, str) and key.isdigit() and isinstance(value, dict):
+                nodes[int(key)] = value
+    return nodes
+
+
 def apply_mutations(workflow: Dict[str, Any], mutations: Iterable[WorkflowMutation]) -> Dict[str, Any]:
     if not mutations:
         return workflow
-    nodes = {node.get("id"): node for node in workflow.get("nodes", [])}
+    nodes = _build_node_lookup(workflow)
+    if not nodes:
+        raise KeyError("Workflow does not expose any nodes for mutation")
     for mutation in mutations:
         node = nodes.get(mutation.node)
         if node is None:
@@ -56,7 +79,9 @@ def _assign_path(node: Dict[str, Any], dotted_path: str, value: Any) -> None:
     parts = dotted_path.split(".")
     target = node
     for part in parts[:-1]:
-        if isinstance(target, dict) and part in target:
+        if isinstance(target, dict):
+            if part not in target or target[part] is None:
+                target[part] = {}
             target = target[part]
         else:
             raise KeyError(f"Cannot resolve path '{dotted_path}' on node {node.get('id')}")

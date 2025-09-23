@@ -847,3 +847,8 @@
 - **General**: Prevented generator dispatches from reaching the GPU agent without a ready Comfy workflow template.
 - **Technical Changes**: Added backend checks that ensure the workflow bucket exists, upload the configured template from a local path or inline JSON when absent, and guard dispatches with descriptive errors alongside refreshed README guidance.
 - **Data Changes**: None; MinIO contents are synchronized automatically when needed.
+
+## 159 – [Fix] Bundled generator workflow bootstrap
+- **General**: Eliminated missing-workflow dispatch failures by shipping a default ComfyUI graph and automatic MinIO seeding.
+- **Technical Changes**: Added `backend/generator-workflows/default.json`, taught the backend to fall back to the bundled template and default parameter bindings, updated the GPU agent to mutate legacy node layouts, refreshed environment samples, and documented the workflow behavior in the README.
+- **Data Changes**: Seeds `generator-workflows/default.json` into MinIO on demand; no database schema updates.
