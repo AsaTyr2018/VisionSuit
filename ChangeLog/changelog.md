@@ -913,3 +913,8 @@
 - **General**: Restored the GPU agent startup by providing FastAPI access to the cancellation payload schema.
 - **Technical Changes**: Moved the `CancelRequest` Pydantic model to module scope so dependency resolution succeeds when registering `/jobs/cancel`.
 - **Data Changes**: None.
+
+## 171 – [Fix] GPU agent callback schema alignment
+- **General**: Brought the GPU agent heartbeat, success, and failure callbacks in line with the generator control-plane schema so VisionSuit receives live progress, timing, and artifact metadata straight from ComfyUI runs.
+- **Technical Changes**: Added runtime tracking for prompt IDs and heartbeat counters, mapped status events onto the new state machine, enriched success payloads with artifact manifests and generation parameters, normalized failure/cancel responses with reason codes and activity snapshots, and attached idempotency keys plus S3 URLs when uploading outputs.
+- **Data Changes**: None; S3 object locations are unchanged while callbacks now carry additional descriptive fields.

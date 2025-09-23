@@ -146,7 +146,15 @@ The agent exposes lightweight HTTP endpoints:
 
 - `workflowOverrides` can be supplied to patch nodes directly if a value is not tied to a named parameter.
 - Provide `workflow.bucket` when the workflow JSON lives in a different MinIO bucket than the base model entry.
-- After completion the agent uploads the generated files to `s3://generator-outputs/comfy-outputs/<job>/<index>_<seed>.<ext>` and, if configured, sends the callback payload `{ "jobId": "...", "status": "completed", "artifacts": ["comfy-outputs/..."] }`. Missing files are logged and reported as warnings in the completion callback without aborting the job.
+- After completion the agent uploads the generated files to `s3://generator-outputs/comfy-outputs/<job>/<index>_<seed>.<ext>` and, if configured, emits a `SUCCESS` callback that includes the resolved `prompt_id`, generation parameters, timing metadata, and a rich artifact list (absolute/relative paths, mime type, SHA-256, S3 location, and public URL). Missing files are logged and reported as warnings without aborting the job.
+
+### Callback payloads
+
+When VisionSuit provides callback URLs the agent now mirrors the control-plane schema directly:
+
+- **Status heartbeats** – Sent to the `callbacks.status` URL with `state` drawn from `QUEUED | PREPARING | MATERIALIZING | SUBMITTED | RUNNING | UPLOADING | SUCCESS | FAILED | CANCELED`. Each heartbeat carries a monotonic `heartbeat_seq`, ISO-8601 `timestamp`, optional `prompt_id`, best-effort progress hints, and a live `activity_snapshot` harvested from the ComfyUI queue. Headers include `Idempotency-Key: <job_id>-<state>-<heartbeat_seq>` so duplicates are safe to replay.
+- **Success notifications** – Delivered to `callbacks.completion` with `state: "SUCCESS"`, the artifact manifest, selected sampler parameters, and timing measurements. Idempotency keys follow `<job_id>-SUCCESS` so the backend can ignore retransmits.
+- **Failure / cancellation notifications** – Posted to `callbacks.failure` with `state: "FAILED"` or `"CANCELED"`, a structured `reason_code`, normalized `reason`, optional `node_errors`, the last observed activity snapshot, and the same timing block used for success callbacks. Retries reuse `<job_id>-FAILED` or `<job_id>-CANCELED` idempotency keys.
 
 ## Running manually
 
