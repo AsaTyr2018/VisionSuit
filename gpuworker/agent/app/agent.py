@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import mimetypes
+import time
 from asyncio import Event
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
@@ -18,10 +21,11 @@ from .comfyui import (
     ComfyUIClient,
     ComfyUIError,
     ComfyUIJobFailed,
+    OutputImage,
     extract_output_files,
 )
 from .config import AgentConfig
-from .minio_client import MinioManager
+from .minio_client import MinioManager, compute_sha256
 from .models import AssetRef, DispatchEnvelope
 from .workflow import WorkflowLoader, build_workflow_payload, find_save_image_nodes
 
@@ -39,9 +43,47 @@ class ResolvedAsset:
 
 
 @dataclass
+class ArtifactRecord:
+    node_id: str
+    filename: str
+    subfolder: str
+    rel_path: str
+    abs_path: str
+    mime: str
+    sha256: Optional[str]
+    size_bytes: Optional[int]
+    s3_bucket: str
+    s3_key: str
+    s3_url: Optional[str]
+    kind: str = "image"
+
+    def to_callback_payload(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "kind": self.kind,
+            "node_id": self.node_id,
+            "filename": self.filename,
+            "subfolder": self.subfolder,
+            "rel_path": self.rel_path,
+            "abs_path": self.abs_path,
+            "mime": self.mime,
+            "s3": {
+                "bucket": self.s3_bucket,
+                "key": self.s3_key,
+                "url": self.s3_url,
+            },
+        }
+        if self.sha256:
+            payload["sha256"] = self.sha256
+        if self.size_bytes is not None:
+            payload["bytes"] = self.size_bytes
+        return payload
+
+
+@dataclass
 class UploadResult:
     uploaded: List[str]
     missing: List[Path]
+    artifacts: List[ArtifactRecord]
 
 
 @dataclass
@@ -59,8 +101,28 @@ class FailureCategory(str, Enum):
     SYSTEM = "system"
 
 
+class GeneratorState(str, Enum):
+    QUEUED = "QUEUED"
+    PREPARING = "PREPARING"
+    MATERIALIZING = "MATERIALIZING"
+    SUBMITTED = "SUBMITTED"
+    RUNNING = "RUNNING"
+    UPLOADING = "UPLOADING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    CANCELED = "CANCELED"
+
+
 class ValidationFailure(Exception):
     """Raised when the dispatch payload fails validation."""
+
+
+@dataclass
+class JobRuntimeState:
+    heartbeat_seq: int
+    started_at: datetime
+    started_monotonic: float
+    prompt_id: Optional[str] = None
 
 
 class GPUAgent:
@@ -71,6 +133,7 @@ class GPUAgent:
         self.workflow_loader = WorkflowLoader(config, self.minio)
         self._lock = asyncio.Lock()
         self._cancel_handle: Optional[CancellationHandle] = None
+        self._runtime: Dict[str, JobRuntimeState] = {}
 
     def is_busy(self) -> bool:
         return self._lock.locked()
@@ -104,7 +167,12 @@ class GPUAgent:
             LOGGER.info("Received cancellation request for job %s", handle.job.jobId)
             handle.event.set()
             try:
-                await self._emit_status(handle.job, "cancelling")
+                await self._emit_status(
+                    handle.job,
+                    GeneratorState.RUNNING,
+                    message="Cancellation requested",
+                    progress={"phase": "cancelling"},
+                )
             except Exception:  # noqa: BLE001
                 LOGGER.debug("Failed to emit cancellation status for %s", handle.job.jobId, exc_info=True)
         return True
@@ -114,6 +182,7 @@ class GPUAgent:
 
     async def _execute(self, job: DispatchEnvelope) -> Dict[str, List[str]]:
         LOGGER.info("Starting job %s for user %s", job.jobId, job.user.username)
+        self._start_runtime(job)
         resolved_base: Optional[ResolvedAsset] = None
         resolved_loras: List[ResolvedAsset] = []
         history: Optional[Dict[str, Any]] = None
@@ -131,10 +200,21 @@ class GPUAgent:
             save_nodes = find_save_image_nodes(workflow_payload)
             await self._validate_workflow_assets(workflow_payload)
 
-            await self._emit_status(job, "queued")
+            await self._emit_status(
+                job,
+                GeneratorState.QUEUED,
+                message="Job queued",
+                progress={"phase": "queued", "percent": 0},
+            )
             cancel_handle = self._register_cancellation(job)
             prompt_id = await self.comfyui.submit_workflow(workflow_payload)
-            await self._emit_status(job, "running", {"prompt_id": prompt_id})
+            await self._emit_status(
+                job,
+                GeneratorState.RUNNING,
+                message="Workflow submitted to ComfyUI",
+                prompt_id=prompt_id,
+                progress={"phase": "running"},
+            )
 
             timeout = self._compute_timeout(job, workflow_payload)
             history = await self.comfyui.wait_for_completion(
@@ -142,7 +222,12 @@ class GPUAgent:
                 timeout=timeout,
                 cancel_event=cancel_handle.event if cancel_handle else None,
             )
-            await self._emit_status(job, "uploading", {"prompt_id": prompt_id})
+            await self._emit_status(
+                job,
+                GeneratorState.UPLOADING,
+                message="Uploading generated artifacts",
+                progress={"phase": "uploading"},
+            )
 
             outputs = extract_output_files(history, save_nodes if save_nodes else None)
             if save_nodes and not outputs:
@@ -152,7 +237,15 @@ class GPUAgent:
             if upload_result.missing:
                 missing_names = ", ".join(path.name for path in upload_result.missing)
                 warnings.append(f"Missing outputs on disk: {missing_names}")
-            await self._emit_completion(job, upload_result.uploaded, warnings or None)
+            await self._emit_completion(
+                job,
+                upload_result,
+                warnings or None,
+                resolved_base,
+                resolved_loras,
+                resolved_params,
+                history,
+            )
             LOGGER.info("Job %s completed", job.jobId)
             return {"uploaded": upload_result.uploaded}
         except ValidationFailure as exc:
@@ -183,6 +276,7 @@ class GPUAgent:
         finally:
             self._cleanup(resolved_base, resolved_loras)
             self._clear_cancellation(cancel_handle)
+            self._clear_runtime(job.jobId)
 
     def _register_cancellation(self, job: DispatchEnvelope) -> Optional[CancellationHandle]:
         token = (job.cancelToken or "").strip()
@@ -196,6 +290,108 @@ class GPUAgent:
     def _clear_cancellation(self, handle: Optional[CancellationHandle]) -> None:
         if handle and self._cancel_handle is handle:
             self._cancel_handle = None
+
+    def _start_runtime(self, job: DispatchEnvelope) -> JobRuntimeState:
+        state = JobRuntimeState(
+            heartbeat_seq=0,
+            started_at=datetime.now(timezone.utc),
+            started_monotonic=time.perf_counter(),
+        )
+        self._runtime[job.jobId] = state
+        return state
+
+    def _get_runtime(self, job_id: str) -> Optional[JobRuntimeState]:
+        return self._runtime.get(job_id)
+
+    def _clear_runtime(self, job_id: str) -> None:
+        self._runtime.pop(job_id, None)
+
+    def _now_iso(self) -> str:
+        now = datetime.now(timezone.utc)
+        return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    def _build_activity_snapshot(self, activity: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not activity:
+            return None
+        snapshot: Dict[str, Any] = {}
+        pending = activity.get("pending")
+        running = activity.get("running")
+        if pending is not None:
+            snapshot["queue_size"] = pending
+        if running is not None:
+            snapshot["executing"] = bool(running)
+        raw = activity.get("raw")
+        if raw is not None:
+            snapshot["raw"] = raw
+        return snapshot or None
+
+    def _build_s3_url(self, bucket: str, key: str) -> Optional[str]:
+        endpoint = (self.config.minio.endpoint or "").strip()
+        if not endpoint:
+            return None
+        base = endpoint.rstrip("/")
+        return f"{base}/{bucket}/{key}"
+
+    def _coerce_simple_value(self, value: Any) -> Optional[Any]:
+        if isinstance(value, (str, int, float, bool)):
+            return value
+        return None
+
+    def _build_completion_params(
+        self,
+        job: DispatchEnvelope,
+        base_model: ResolvedAsset,
+        loras: List[ResolvedAsset],
+        resolved_params: Dict[str, object],
+    ) -> Dict[str, Any]:
+        cfg_value = self._coerce_simple_value(
+            resolved_params.get("cfg") or resolved_params.get("cfg_scale")
+        )
+        width_value = (
+            job.parameters.resolution.width
+            if job.parameters.resolution
+            else self._coerce_simple_value(resolved_params.get("width"))
+        )
+        height_value = (
+            job.parameters.resolution.height
+            if job.parameters.resolution
+            else self._coerce_simple_value(resolved_params.get("height"))
+        )
+        params: Dict[str, Any] = {
+            "model": base_model.comfy_name,
+            "vae": self._coerce_simple_value(
+                resolved_params.get("vae_name") or resolved_params.get("vae")
+            ),
+            "clip": self._coerce_simple_value(
+                resolved_params.get("clip_name") or resolved_params.get("clip")
+            ),
+            "seed": job.parameters.seed,
+            "steps": job.parameters.steps
+            or self._coerce_simple_value(resolved_params.get("steps")),
+            "cfg": job.parameters.cfgScale or cfg_value,
+            "sampler": self._coerce_simple_value(resolved_params.get("sampler")),
+            "scheduler": self._coerce_simple_value(resolved_params.get("scheduler")),
+            "denoise": self._coerce_simple_value(resolved_params.get("denoise")),
+            "width": width_value,
+            "height": height_value,
+        }
+        lora_entries = [
+            {"name": entry.comfy_name}
+            for entry in loras
+        ]
+        if lora_entries:
+            params["loras"] = lora_entries
+        return {key: value for key, value in params.items() if value is not None}
+
+    def _map_failure_reason_code(self, category: FailureCategory) -> str:
+        mapping = {
+            FailureCategory.VALIDATION: "VALIDATION_ERROR",
+            FailureCategory.TRANSIENT: "TRANSIENT_ERROR",
+            FailureCategory.TIMEOUT: "TIMEOUT",
+            FailureCategory.CANCELLED: "CANCELED",
+            FailureCategory.SYSTEM: "SYSTEM_ERROR",
+        }
+        return mapping.get(category, "SYSTEM_ERROR")
 
     def _needs_model_refresh(self, base: Optional[ResolvedAsset], loras: List[ResolvedAsset]) -> bool:
         candidates: Iterable[ResolvedAsset] = [asset for asset in loras]
@@ -364,25 +560,27 @@ class GPUAgent:
     def _upload_outputs(
         self,
         job: DispatchEnvelope,
-        outputs: List[Tuple[str, str, str]],
+        outputs: List[OutputImage],
         base_model: ResolvedAsset,
         loras: List[ResolvedAsset],
     ) -> UploadResult:
         uploaded_keys: List[str] = []
         missing_files: List[Path] = []
+        artifact_records: List[ArtifactRecord] = []
         output_root = Path(self.config.paths.outputs)
         seed_value = str(job.parameters.seed or 0)
         lora_names = ",".join(entry.comfy_name for entry in loras) if loras else ""
 
-        for index, (filename, subfolder, image_type) in enumerate(outputs, start=1):
-            output_dir = output_root / subfolder if subfolder else output_root
-            source = output_dir / filename
+        for index, image in enumerate(outputs, start=1):
+            output_dir = output_root / image.subfolder if image.subfolder else output_root
+            source = output_dir / image.filename
             if not source.exists():
                 LOGGER.warning("Expected output missing: %s", source)
                 missing_files.append(source)
                 continue
-            ext = Path(filename).suffix or ".png"
+            ext = Path(image.filename).suffix or ".png"
             destination_key = f"comfy-outputs/{job.jobId}/{index:02d}_{seed_value}{ext}"
+            sha_value = compute_sha256(source)
             metadata = {
                 "prompt": job.parameters.prompt or "",
                 "negative_prompt": job.parameters.negativePrompt or "",
@@ -392,11 +590,31 @@ class GPUAgent:
                 "job_id": job.jobId,
                 "model": base_model.comfy_name,
                 "loras": lora_names,
-                "image_type": image_type or "output",
+                "image_type": image.image_type or "output",
+                "sha256": sha_value,
             }
             self.minio.upload_file(job.output.bucket, destination_key, source, metadata)
             uploaded_keys.append(destination_key)
-        return UploadResult(uploaded=uploaded_keys, missing=missing_files)
+
+            rel_path = image.filename if not image.subfolder else f"{image.subfolder.rstrip('/')}/{image.filename}"
+            abs_path = str(source.resolve())
+            mime, _ = mimetypes.guess_type(image.filename)
+            artifact_records.append(
+                ArtifactRecord(
+                    node_id=image.node_id,
+                    filename=image.filename,
+                    subfolder=image.subfolder,
+                    rel_path=rel_path,
+                    abs_path=abs_path,
+                    mime=mime or "image/png",
+                    sha256=sha_value,
+                    size_bytes=source.stat().st_size,
+                    s3_bucket=job.output.bucket,
+                    s3_key=destination_key,
+                    s3_url=self._build_s3_url(job.output.bucket, destination_key),
+                )
+            )
+        return UploadResult(uploaded=uploaded_keys, missing=missing_files, artifacts=artifact_records)
 
     def _cleanup(self, base_model: Optional[ResolvedAsset], loras: List[ResolvedAsset]) -> None:
         if base_model and self.config.cleanup.delete_downloaded_models:
@@ -445,47 +663,141 @@ class GPUAgent:
     async def _emit_status(
         self,
         job: DispatchEnvelope,
-        status: str,
-        extra: Optional[Dict[str, object]] = None,
+        state: GeneratorState,
+        *,
+        message: Optional[str] = None,
+        progress: Optional[Dict[str, Any]] = None,
+        prompt_id: Optional[str] = None,
         reason: Optional[str] = None,
     ) -> None:
         if not job.callbacks or not job.callbacks.status:
             return
-        payload_extra: Dict[str, object] = {}
-        if extra:
-            payload_extra.update(extra)
+        runtime = self._get_runtime(job.jobId)
+        prompt = prompt_id or (runtime.prompt_id if runtime else None)
+        if runtime:
+            if prompt_id:
+                runtime.prompt_id = prompt_id
+            runtime.heartbeat_seq += 1
+            heartbeat_seq = runtime.heartbeat_seq
+        else:
+            heartbeat_seq = 0
         try:
             activity = await self.describe_activity()
         except Exception as exc:  # noqa: BLE001
             LOGGER.debug("Failed to capture ComfyUI activity snapshot: %s", exc)
             activity = None
-        if activity:
-            payload_extra["activity"] = activity
-        payload: Dict[str, object] = {"jobId": job.jobId, "status": status}
+        snapshot = self._build_activity_snapshot(activity)
+        payload: Dict[str, Any] = {
+            "job_id": job.jobId,
+            "client_id": self.config.comfyui.client_id,
+            "state": state.value,
+            "timestamp": self._now_iso(),
+            "heartbeat_seq": heartbeat_seq,
+        }
+        if prompt:
+            payload["prompt_id"] = prompt
+        if message:
+            payload["message"] = message
+        if progress:
+            payload["progress"] = progress
         if reason:
             payload["reason"] = reason
-        if payload_extra:
-            payload["extra"] = payload_extra
-        await self._post_callback(job.callbacks.status, payload)
+        if snapshot:
+            payload["activity_snapshot"] = snapshot
+        idempotency_key = f"{job.jobId}-{state.value}-{heartbeat_seq}"
+        await self._post_callback(job.callbacks.status, payload, idempotency_key=idempotency_key)
 
     async def _emit_completion(
         self,
         job: DispatchEnvelope,
-        uploaded: List[str],
+        upload_result: UploadResult,
         warnings: Optional[List[str]],
+        base_model: ResolvedAsset,
+        loras: List[ResolvedAsset],
+        resolved_params: Dict[str, object],
+        history: Optional[Dict[str, Any]],
     ) -> None:
+        await self._emit_status(
+            job,
+            GeneratorState.SUCCESS,
+            message="Job completed",
+            progress={"phase": "complete", "percent": 100},
+        )
         if not job.callbacks or not job.callbacks.completion:
             return
-        payload: Dict[str, Any] = {"jobId": job.jobId, "status": "completed", "artifacts": uploaded}
+        runtime = self._get_runtime(job.jobId)
+        started_at_iso = (
+            runtime.started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            if runtime
+            else None
+        )
+        finished_at_iso = self._now_iso()
+        status_payload = history.get("status") if isinstance(history, dict) else None
+        status_str = None
+        if isinstance(status_payload, dict):
+            status_str = status_payload.get("status") or status_payload.get("status_str")
+        artifacts_payload = [artifact.to_callback_payload() for artifact in upload_result.artifacts]
+        params_payload = self._build_completion_params(job, base_model, loras, resolved_params)
+        payload: Dict[str, Any] = {
+            "job_id": job.jobId,
+            "client_id": self.config.comfyui.client_id,
+            "state": GeneratorState.SUCCESS.value,
+            "timestamp": finished_at_iso,
+            "artifacts": artifacts_payload,
+            "params": params_payload,
+            "meta": {
+                "status_str": status_str or "success",
+                "completed": True,
+            },
+        }
+        if runtime and runtime.prompt_id:
+            payload["prompt_id"] = runtime.prompt_id
+        if runtime:
+            duration_ms = int(max(0.0, (time.perf_counter() - runtime.started_monotonic) * 1000))
+            payload["timing"] = {
+                "started_at": started_at_iso,
+                "finished_at": finished_at_iso,
+                "duration_ms": duration_ms,
+            }
         if warnings:
             payload["warnings"] = warnings
-        await self._post_callback(job.callbacks.completion, payload)
+        idempotency_key = f"{job.jobId}-SUCCESS"
+        await self._post_callback(job.callbacks.completion, payload, idempotency_key=idempotency_key)
 
     async def _emit_cancellation(self, job: DispatchEnvelope) -> None:
-        await self._emit_status(job, "cancelled")
+        await self._emit_status(
+            job,
+            GeneratorState.CANCELED,
+            message="Job cancelled",
+            progress={"phase": "cancelled", "percent": 100},
+        )
         if job.callbacks and job.callbacks.failure:
-            payload = {"jobId": job.jobId, "status": "cancelled", "reason": "Job cancelled"}
-            await self._post_callback(job.callbacks.failure, payload)
+            runtime = self._get_runtime(job.jobId)
+            finished_at_iso = self._now_iso()
+            started_at_iso = (
+                runtime.started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+                if runtime
+                else None
+            )
+            payload: Dict[str, Any] = {
+                "job_id": job.jobId,
+                "client_id": self.config.comfyui.client_id,
+                "state": GeneratorState.CANCELED.value,
+                "timestamp": finished_at_iso,
+                "reason_code": "CANCELED",
+                "reason": "Job cancelled",
+            }
+            if runtime and runtime.prompt_id:
+                payload["prompt_id"] = runtime.prompt_id
+            if runtime:
+                duration_ms = int(max(0.0, (time.perf_counter() - runtime.started_monotonic) * 1000))
+                payload["timing"] = {
+                    "started_at": started_at_iso,
+                    "finished_at": finished_at_iso,
+                    "duration_ms": duration_ms,
+                }
+            idempotency_key = f"{job.jobId}-CANCELED"
+            await self._post_callback(job.callbacks.failure, payload, idempotency_key=idempotency_key)
 
     async def _emit_failure(
         self,
@@ -499,18 +811,52 @@ class GPUAgent:
         normalized_reason = self._normalize_failure_reason(reason)
         node_errors = self._extract_node_errors(history)
         try:
-            await self._emit_status(job, "error", reason=normalized_reason)
+            await self._emit_status(
+                job,
+                GeneratorState.FAILED,
+                message="Job failed",
+                reason=normalized_reason,
+                progress={"phase": "failed"},
+            )
         except Exception:  # noqa: BLE001
             LOGGER.debug("Failed to emit error status callback for %s", job.jobId, exc_info=True)
+        runtime = self._get_runtime(job.jobId)
+        finished_at_iso = self._now_iso()
+        started_at_iso = (
+            runtime.started_at.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+            if runtime
+            else None
+        )
         payload: Dict[str, Any] = {
-            "jobId": job.jobId,
-            "status": "error",
+            "job_id": job.jobId,
+            "client_id": self.config.comfyui.client_id,
+            "state": GeneratorState.FAILED.value,
+            "timestamp": finished_at_iso,
+            "reason_code": self._map_failure_reason_code(category),
             "reason": normalized_reason,
-            "errorType": category.value,
+            "error_type": category.value,
         }
+        if runtime and runtime.prompt_id:
+            payload["prompt_id"] = runtime.prompt_id
         if node_errors:
-            payload["nodeErrors"] = node_errors
-        await self._post_callback(job.callbacks.failure, payload)
+            payload["node_errors"] = node_errors
+        if runtime:
+            duration_ms = int(max(0.0, (time.perf_counter() - runtime.started_monotonic) * 1000))
+            payload["timing"] = {
+                "started_at": started_at_iso,
+                "finished_at": finished_at_iso,
+                "duration_ms": duration_ms,
+            }
+        try:
+            activity = await self.describe_activity()
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.debug("Failed to capture final ComfyUI activity snapshot: %s", exc)
+            activity = None
+        snapshot = self._build_activity_snapshot(activity)
+        if snapshot:
+            payload["last_activity"] = snapshot
+        idempotency_key = f"{job.jobId}-FAILED"
+        await self._post_callback(job.callbacks.failure, payload, idempotency_key=idempotency_key)
 
     def _resolve_callback_url(self, url: str) -> str:
         candidate = str(url or "").strip()
@@ -543,7 +889,13 @@ class GPUAgent:
         normalized_candidate = candidate.lstrip("/")
         return urljoin(normalized_base, normalized_candidate)
 
-    async def _post_callback(self, url: str, payload: Dict[str, object]) -> None:
+    async def _post_callback(
+        self,
+        url: str,
+        payload: Dict[str, object],
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> None:
         try:
             target = self._resolve_callback_url(url)
         except ValueError as exc:
@@ -554,12 +906,15 @@ class GPUAgent:
         timeout = httpx.Timeout(self.config.callbacks.timeout_seconds)
         max_attempts = max(1, int(self.config.callbacks.max_retries))
         backoff = max(0.0, float(self.config.callbacks.retry_backoff_seconds))
+        headers = {"Content-Type": "application/json"}
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         async with httpx.AsyncClient(verify=verify, timeout=timeout) as client:
             attempt = 0
             while True:
                 attempt += 1
                 try:
-                    response = await client.post(target, json=payload)
+                    response = await client.post(target, json=payload, headers=headers)
                     response.raise_for_status()
                     return
                 except Exception as exc:  # noqa: BLE001
@@ -618,19 +973,18 @@ class GPUAgent:
         if violations:
             raise ValidationFailure("; ".join(violations))
 
-    def _extract_node_errors(self, history: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _extract_node_errors(self, history: Optional[Dict[str, Any]]) -> Optional[Any]:
         if not history:
             return None
         status = history.get("status") if isinstance(history, dict) else None
-        node_errors = None
+        node_errors: Any = None
         if isinstance(status, dict):
             node_errors = status.get("node_errors") or status.get("nodeErrors")
-        if not node_errors:
+        if node_errors is None:
             return None
-        try:
-            serialized = json.dumps(node_errors)
-        except Exception:  # noqa: BLE001
-            serialized = str(node_errors)
-        if len(serialized) > 4096:
-            serialized = f"{serialized[:4093]}…"
-        return serialized
+        if isinstance(node_errors, (dict, list)):
+            return node_errors
+        text = str(node_errors)
+        if len(text) > 4096:
+            text = f"{text[:4093]}…"
+        return {"message": text}

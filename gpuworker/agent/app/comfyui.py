@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from asyncio import Event
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -27,6 +28,16 @@ class ComfyUIJobFailed(ComfyUIError):
 
 class ComfyUICancelledError(ComfyUIError):
     pass
+
+
+@dataclass
+class OutputImage:
+    """Representation of an image emitted by a ComfyUI workflow."""
+
+    node_id: str
+    filename: str
+    subfolder: str
+    image_type: str
 
 
 class ComfyUIClient:
@@ -235,9 +246,9 @@ def _collect_choices(value: Any) -> Set[str]:
 def extract_output_files(
     history: Dict[str, Any],
     expected_node_ids: Optional[Iterable[int]] = None,
-) -> List[Tuple[str, str, str]]:
+) -> List[OutputImage]:
     outputs = history.get("outputs", {})
-    discovered: List[Tuple[str, str, str]] = []
+    discovered: List[OutputImage] = []
     allowed_ids: Optional[Set[str]] = None
     if expected_node_ids:
         allowed_ids = {str(node_id) for node_id in expected_node_ids}
@@ -260,6 +271,13 @@ def extract_output_files(
             subfolder = image.get("subfolder", "")
             image_type = image.get("type", "output")
             if filename:
-                discovered.append((filename, subfolder or "", image_type))
+                discovered.append(
+                    OutputImage(
+                        node_id=str(node_id),
+                        filename=filename,
+                        subfolder=str(subfolder or ""),
+                        image_type=str(image_type or "output"),
+                    )
+                )
     return discovered
 
