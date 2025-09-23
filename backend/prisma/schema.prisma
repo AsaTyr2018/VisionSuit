@@ -59,6 +59,7 @@ model User {
   uploadDrafts UploadDraft[]
   rankingState UserRankingState?
   generatorRequests GeneratorRequest[]
+  generatorQueueBlocks GeneratorQueueBlock[]
   flaggedModels ModelAsset[] @relation("ModelAssetFlagger")
   flaggedImages ImageAsset[] @relation("ImageAssetFlagger")
   moderationActions ModerationLog[] @relation("ModerationLogActor")
@@ -313,6 +314,27 @@ model GeneratorSettings {
   baseModels Json                 @default("[]")
   createdAt  DateTime             @default(now())
   updatedAt  DateTime             @updatedAt
+}
+
+model GeneratorQueueState {
+  id                  Int       @id @default(autoincrement())
+  isPaused            Boolean   @default(false)
+  declineNewRequests  Boolean   @default(false)
+  pausedAt            DateTime?
+  activity            Json?
+  activityUpdatedAt   DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model GeneratorQueueBlock {
+  id        Int      @id @default(autoincrement())
+  userId    String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model GeneratorRequest {

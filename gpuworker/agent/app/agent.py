@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -47,6 +47,9 @@ class GPUAgent:
     async def handle_job(self, job: DispatchEnvelope) -> Dict[str, List[str]]:
         async with self._lock:
             return await self._execute(job)
+
+    async def describe_activity(self) -> Dict[str, Any]:
+        return await self.comfyui.describe_activity()
 
     async def _execute(self, job: DispatchEnvelope) -> Dict[str, List[str]]:
         LOGGER.info("Starting job %s for user %s", job.jobId, job.user.username)
@@ -163,7 +166,19 @@ class GPUAgent:
     async def _emit_status(self, job: DispatchEnvelope, status: str, extra: Optional[Dict[str, object]] = None) -> None:
         if not job.callbacks or not job.callbacks.status:
             return
-        payload = {"jobId": job.jobId, "status": status, "extra": extra or {}}
+        payload_extra: Dict[str, object] = {}
+        if extra:
+            payload_extra.update(extra)
+        try:
+            activity = await self.describe_activity()
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.debug("Failed to capture ComfyUI activity snapshot: %s", exc)
+            activity = None
+        if activity:
+            payload_extra["activity"] = activity
+        payload: Dict[str, object] = {"jobId": job.jobId, "status": status}
+        if payload_extra:
+            payload["extra"] = payload_extra
         await self._post_callback(job.callbacks.status, payload)
 
     async def _emit_completion(self, job: DispatchEnvelope, uploaded: List[str]) -> None:

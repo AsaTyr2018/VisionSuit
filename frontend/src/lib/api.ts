@@ -7,6 +7,7 @@ import type {
   GeneratorBaseModelOption,
   GeneratorBaseModelType,
   GeneratorRequestSummary,
+  GeneratorQueueResponse,
   GeneratorSettings,
   ImageAsset,
   MetaStats,
@@ -339,6 +340,54 @@ const getGeneratorRequests = (token: string, scope: 'mine' | 'all' = 'mine') => 
   return request<{ requests: GeneratorRequestSummary[] }>(path, {}, token).then((response) => response.requests);
 };
 
+const getGeneratorQueue = (token: string) => request<GeneratorQueueResponse>('/api/generator/queue', {}, token);
+
+const pauseGeneratorQueue = (token: string) =>
+  request<GeneratorQueueResponse>(
+    '/api/generator/queue/actions/pause',
+    {
+      method: 'POST',
+    },
+    token,
+  );
+
+const resumeGeneratorQueue = (token: string) =>
+  request<GeneratorQueueResponse>(
+    '/api/generator/queue/actions/resume',
+    {
+      method: 'POST',
+    },
+    token,
+  );
+
+const retryGeneratorQueue = (token: string) =>
+  request<GeneratorQueueResponse>(
+    '/api/generator/queue/actions/retry',
+    {
+      method: 'POST',
+    },
+    token,
+  );
+
+const blockGeneratorUser = (token: string, payload: { userId: string; reason?: string }) =>
+  request<GeneratorQueueResponse>(
+    '/api/generator/queue/blocks',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    token,
+  );
+
+const unblockGeneratorUser = (token: string, userId: string) =>
+  request<GeneratorQueueResponse>(
+    `/api/generator/queue/blocks/${userId}`,
+    {
+      method: 'DELETE',
+    },
+    token,
+  );
+
 const likeImageAsset = (token: string, imageId: string) =>
   request<{ image: ImageAsset }>(
     `/api/assets/images/${imageId}/likes`,
@@ -373,6 +422,12 @@ export const api = {
   updateGeneratorSettings,
   getGeneratorBaseModelCatalog,
   getGeneratorBaseModels,
+  getGeneratorQueue,
+  pauseGeneratorQueue,
+  resumeGeneratorQueue,
+  retryGeneratorQueue,
+  blockGeneratorUser,
+  unblockGeneratorUser,
   createGeneratorRequest,
   getGeneratorRequests,
   getAdminSettings,

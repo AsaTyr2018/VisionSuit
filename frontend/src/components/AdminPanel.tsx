@@ -8,6 +8,7 @@ import type {
   Gallery,
   GeneratorAccessMode,
   GeneratorBaseModelConfig,
+  GeneratorQueueResponse,
   GeneratorSettings,
   ImageAsset,
   ModerationQueue,
@@ -450,6 +451,13 @@ export const AdminPanel = ({
   );
   const [isSavingGeneratorSettings, setIsSavingGeneratorSettings] = useState(false);
   const [generatorSettingsError, setGeneratorSettingsError] = useState<string | null>(null);
+  const [generatorQueue, setGeneratorQueue] = useState<GeneratorQueueResponse | null>(null);
+  const [isQueueLoading, setIsQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [isQueueActionRunning, setIsQueueActionRunning] = useState(false);
+  const [queueRedispatch, setQueueRedispatch] = useState<GeneratorQueueResponse['redispatch'] | null>(null);
+  const [blockUserId, setBlockUserId] = useState('');
+  const [blockReason, setBlockReason] = useState('');
   const flaggedModelCount = moderationQueue?.models.length ?? 0;
   const flaggedImageCount = moderationQueue?.images.length ?? 0;
   const totalModerationCount = flaggedModelCount + flaggedImageCount;
@@ -650,6 +658,142 @@ export const AdminPanel = ({
   }, [activeTab, fetchModerationQueue]);
 
   const resetStatus = () => setStatus(null);
+
+  const fetchGeneratorQueue = useCallback(async () => {
+    setIsQueueLoading(true);
+    setQueueError(null);
+    try {
+      const response = await api.getGeneratorQueue(token);
+      setGeneratorQueue(response);
+      setQueueRedispatch(response.redispatch ?? null);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to load generator queue.';
+      setQueueError(message);
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsQueueLoading(false);
+    }
+  }, [token, setStatus]);
+
+  const runQueueAction = useCallback(
+    async (action: () => Promise<GeneratorQueueResponse>, successMessage: string) => {
+      setIsQueueActionRunning(true);
+      try {
+        const response = await action();
+        setGeneratorQueue(response);
+        setQueueRedispatch(response.redispatch ?? null);
+        setQueueError(null);
+        setStatus({ type: 'success', message: successMessage });
+        return response;
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'Queue operation failed.';
+        setQueueError(message);
+        setStatus({ type: 'error', message });
+        throw error;
+      } finally {
+        setIsQueueActionRunning(false);
+      }
+    },
+    [setStatus],
+  );
+
+  const handlePauseQueue = useCallback(() => {
+    void runQueueAction(() => api.pauseGeneratorQueue(token), 'Generator queue paused.');
+  }, [runQueueAction, token]);
+
+  const handleResumeQueue = useCallback(() => {
+    void runQueueAction(() => api.resumeGeneratorQueue(token), 'Generator queue resumed.');
+  }, [runQueueAction, token]);
+
+  const handleRetryQueue = useCallback(() => {
+    void runQueueAction(() => api.retryGeneratorQueue(token), 'Retry dispatched for pending jobs.');
+  }, [runQueueAction, token]);
+
+  const handleRefreshQueue = useCallback(() => {
+    void fetchGeneratorQueue();
+  }, [fetchGeneratorQueue]);
+
+  const handleBlockUserSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const trimmedId = blockUserId.trim();
+      if (!trimmedId) {
+        setStatus({ type: 'error', message: 'Select a user before blocking generator access.' });
+        return;
+      }
+
+      const reason = blockReason.trim();
+      try {
+        await runQueueAction(
+          () => api.blockGeneratorUser(token, { userId: trimmedId, reason: reason || undefined }),
+          'User blocked from generator access.',
+        );
+        setBlockUserId('');
+        setBlockReason('');
+      } catch {
+        // Feedback already handled by runQueueAction.
+      }
+    },
+    [blockUserId, blockReason, runQueueAction, setStatus, token],
+  );
+
+  const handleUnblockUser = useCallback(
+    async (userId: string) => {
+      try {
+        await runQueueAction(() => api.unblockGeneratorUser(token, userId), 'Generator access restored.');
+      } catch {
+        // Notification already handled.
+      }
+    },
+    [runQueueAction, token],
+  );
+
+  const queueBusy = isQueueLoading || isQueueActionRunning;
+  const isQueuePaused = generatorQueue?.state?.isPaused ?? false;
+  const queueDeclines = generatorQueue?.state?.declineNewRequests ?? false;
+  const blockedUserIds = useMemo(
+    () => new Set(generatorQueue?.blocks?.map((entry) => entry.user.id) ?? []),
+    [generatorQueue?.blocks],
+  );
+  const blockableUsers = useMemo(
+    () => users.filter((user) => !blockedUserIds.has(user.id)),
+    [users, blockedUserIds],
+  );
+  const queueActivityDetails = useMemo(() => {
+    if (!generatorQueue?.activity?.data || typeof generatorQueue.activity.data !== 'object') {
+      return null;
+    }
+
+    const raw = generatorQueue.activity.data as Record<string, unknown>;
+    const container =
+      raw.queue && typeof raw.queue === 'object' ? (raw.queue as Record<string, unknown>) : raw;
+
+    const extractCount = (value: unknown) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.length;
+      }
+      return null;
+    };
+
+    const pending = extractCount(container.pending ?? container.queue_pending);
+    const running = extractCount(container.running ?? container.queue_running);
+
+    return {
+      pending,
+      running,
+      updatedAt: generatorQueue.activity?.updatedAt ?? null,
+    };
+  }, [generatorQueue]);
+  const queueStatusLabel = isQueuePaused ? 'Paused' : queueDeclines ? 'Restricted' : 'Active';
+
+  useEffect(() => {
+    if (activeTab === 'generator') {
+      void fetchGeneratorQueue();
+    }
+  }, [activeTab, fetchGeneratorQueue]);
 
   const updateGeneralSetting = <K extends keyof AdminSettings['general']>(
     key: K,
@@ -3499,6 +3643,165 @@ export const AdminPanel = ({
       ) : null}
       {activeTab === 'generator' ? (
         <div className="admin__panel">
+          <section className="admin__section admin__section--generator-queue">
+            <div className="admin__section-intro">
+              <h3>Queue maintenance</h3>
+              <p>Pause GPU dispatch, retry held jobs, and manage member access to the generator.</p>
+            </div>
+            <div className="generator-queue__summary" role="status">
+              <div className="generator-queue__status">
+                <span
+                  className={`generator-queue__status-indicator generator-queue__status-indicator--${
+                    isQueuePaused ? 'paused' : 'active'
+                  }`}
+                  aria-hidden="true"
+                />
+                <strong>{queueStatusLabel}</strong>
+                {isQueueLoading ? <small>Refreshing…</small> : null}
+                {generatorQueue?.state.pausedAt && isQueuePaused ? (
+                  <small>since {new Date(generatorQueue.state.pausedAt).toLocaleString()}</small>
+                ) : null}
+              </div>
+              <div className="generator-queue__metrics">
+                <span>
+                  Pending <strong>{generatorQueue?.stats?.pending ?? 0}</strong>
+                </span>
+                <span>
+                  Running <strong>{generatorQueue?.stats?.running ?? 0}</strong>
+                </span>
+                <span>
+                  Queued <strong>{generatorQueue?.stats?.queued ?? 0}</strong>
+                </span>
+                <span>
+                  Failed <strong>{generatorQueue?.stats?.failed ?? 0}</strong>
+                </span>
+              </div>
+              {queueActivityDetails ? (
+                <div className="generator-queue__activity">
+                  <span>
+                    GPU activity:{' '}
+                    <strong>{queueActivityDetails.running ?? '—'}</strong> running ·{' '}
+                    <strong>{queueActivityDetails.pending ?? '—'}</strong> waiting
+                  </span>
+                  {queueActivityDetails.updatedAt ? (
+                    <small>
+                      Updated {new Date(queueActivityDetails.updatedAt).toLocaleTimeString()}
+                    </small>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {queueRedispatch ? (
+              <p className="generator-queue__note">
+                Last retry attempted {queueRedispatch.attempted} job(s) — queued {queueRedispatch.queued}, busy{' '}
+                {queueRedispatch.busy}
+                {queueRedispatch.errors?.length
+                  ? `, errors ${queueRedispatch.errors.length}`
+                  : ''}
+                .
+              </p>
+            ) : null}
+            {queueError ? <p className="generator-queue__error">{queueError}</p> : null}
+            <div className="generator-queue__actions">
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={isQueuePaused ? handleResumeQueue : handlePauseQueue}
+                disabled={queueBusy}
+              >
+                {isQueuePaused ? 'Resume queue' : 'Pause queue'}
+              </button>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleRetryQueue}
+                disabled={queueBusy || isQueuePaused}
+              >
+                Retry pending jobs
+              </button>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleRefreshQueue}
+                disabled={isQueueLoading}
+              >
+                Refresh status
+              </button>
+            </div>
+            <form className="generator-queue__block-form" onSubmit={handleBlockUserSubmit}>
+              <div className="generator-queue__block-fields">
+                <label>
+                  <span>User</span>
+                  <select
+                    value={blockUserId}
+                    onChange={(event) => setBlockUserId(event.target.value)}
+                    disabled={queueBusy || blockableUsers.length === 0}
+                  >
+                    <option value="">Select account</option>
+                    {blockableUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.displayName} ({user.role.toLowerCase()})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Reason (optional)</span>
+                  <input
+                    type="text"
+                    value={blockReason}
+                    onChange={(event) => setBlockReason(event.target.value)}
+                    placeholder="Document why access is blocked"
+                    disabled={queueBusy}
+                  />
+                </label>
+              </div>
+              <div className="generator-queue__block-actions">
+                <button
+                  type="submit"
+                  className="button button--ghost"
+                  disabled={queueBusy || blockableUsers.length === 0}
+                >
+                  Block user
+                </button>
+              </div>
+            </form>
+            <div className="generator-queue__blocked-list">
+              <h4>Blocked users</h4>
+              {generatorQueue?.blocks && generatorQueue.blocks.length > 0 ? (
+                <ul className="generator-queue__blocked-items">
+                  {generatorQueue.blocks.map((block) => (
+                    <li key={block.user.id} className="generator-queue__blocked-entry">
+                      <div>
+                        <strong>{block.user.displayName}</strong>{' '}
+                        <span className="generator-queue__blocked-role">
+                          ({block.user.role.toLowerCase()})
+                        </span>
+                        {block.reason ? (
+                          <p className="generator-queue__blocked-reason">{block.reason}</p>
+                        ) : (
+                          <p className="generator-queue__blocked-reason generator-queue__blocked-reason--muted">
+                            No reason provided.
+                          </p>
+                        )}
+                        <small>Blocked {new Date(block.createdAt).toLocaleString()}</small>
+                      </div>
+                      <button
+                        type="button"
+                        className="button button--ghost"
+                        onClick={() => handleUnblockUser(block.user.id)}
+                        disabled={queueBusy}
+                      >
+                        Unblock
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="generator-queue__empty">No users are currently blocked from generating.</p>
+              )}
+            </div>
+          </section>
           <section className="admin__section admin__section--generator">
             <div className="admin__section-intro">
               <h3>On-Site Generator visibility</h3>

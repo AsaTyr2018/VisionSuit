@@ -178,6 +178,60 @@ export interface GeneratorRequestSummary {
   updatedAt: string;
 }
 
+export interface GeneratorQueueStats {
+  total: number;
+  queued: number;
+  pending: number;
+  held: number;
+  running: number;
+  completed: number;
+  failed: number;
+  statuses: Record<string, number>;
+}
+
+export interface GeneratorQueueActivitySnapshot {
+  data: unknown;
+  updatedAt?: string | null;
+}
+
+export interface GeneratorQueueBlockEntry {
+  user: {
+    id: string;
+    displayName: string;
+    email?: string | null;
+    role: UserRole;
+  };
+  reason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeneratorQueueStateSummary {
+  id: number;
+  isPaused: boolean;
+  declineNewRequests: boolean;
+  pausedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeneratorQueueResponse {
+  state: GeneratorQueueStateSummary;
+  stats: GeneratorQueueStats;
+  activity?: GeneratorQueueActivitySnapshot | null;
+  viewer: {
+    isBlocked: boolean;
+    reason?: string | null;
+  };
+  blocks?: GeneratorQueueBlockEntry[];
+  redispatch?: {
+    attempted: number;
+    queued: number;
+    busy: number;
+    errors: { id: string; message: string }[];
+  };
+}
+
 export interface UserProfileModelSummary {
   id: string;
   title: string;

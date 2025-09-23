@@ -817,3 +817,8 @@
 - **General**: Enabled VisionSuit to receive live GPU agent status updates, capture generated artifacts, and surface finished renders directly in the On-Site Generator history.
 - **Technical Changes**: Added configurable callback base URLs, new generator callback endpoints, Prisma-backed artifact persistence, refreshed mapper logic, and front-end history enhancements with artifact galleries and failure messaging.
 - **Data Changes**: Introduced the `GeneratorArtifact` table and new `GeneratorRequest` columns for callback state (`errorReason`, `outputBucket`, `outputPrefix`).
+
+## 153 – [Addition] Generator queue governance
+- **General**: Delivered queue maintenance controls so administrators can pause/resume GPU dispatches, retry held jobs, and manage user-level generator access while curators see live queue telemetry.
+- **Technical Changes**: Added Prisma-backed queue state and blocklist models with new REST endpoints, wired admin UI controls and generator wizard banners, refreshed API helpers and styles, and taught the GPU agent to stream ComfyUI queue activity in health probes and status callbacks.
+- **Data Changes**: Added `GeneratorQueueState` and `GeneratorQueueBlock` tables plus a migration that persists queue snapshots and per-user generation blocks.
