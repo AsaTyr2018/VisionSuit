@@ -772,3 +772,8 @@
 - **General**: Added a Settings tab under Administration so operators can rename the site, toggle registration or maintenance mode, and update service endpoints while surfacing GPU worker status alongside other service beacons.
 - **Technical Changes**: Introduced a backend settings service that reads and writes the frontend/backend `.env` files, exposed secured admin routes plus a public platform config endpoint, translated service status messaging, extended health checks with GPU node probing, wired new React state for platform config, rendered tabbed settings forms, refreshed service badges, and updated styling, README guidance, and API helpers accordingly.
 - **Data Changes**: None.
+
+## 033 – [Addition] VisionSuit GPU agent service
+- **General**: Introduced a managed GPU agent package that executes VisionSIOt dispatches on the ComfyUI node and reports results back to VisionSuit.
+- **Technical Changes**: Added the FastAPI-based agent with workflow templating, MinIO sync, callback handling, installer, systemd unit, configuration sample, and refreshed documentation across the GPU worker and root README files.
+- **Data Changes**: None; runtime configuration only.
