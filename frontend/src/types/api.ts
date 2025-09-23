@@ -141,6 +141,21 @@ export interface GeneratorRequestArtifactSummary {
   createdAt: string;
 }
 
+export interface GeneratorArtifactImportResult {
+  image: {
+    id: string;
+    title: string;
+    storagePath: string;
+  };
+  gallery: {
+    id: string;
+    slug: string;
+    title: string;
+    isPublic: boolean;
+    wasCreated: boolean;
+  };
+}
+
 export interface GeneratorRequestSummary {
   id: string;
   status: string;

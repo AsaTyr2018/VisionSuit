@@ -2,13 +2,18 @@ import { Prisma, GeneratorAccessMode } from '@prisma/client';
 import type { GeneratorQueueState } from '@prisma/client';
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 
 import { appConfig } from '../config';
+import { determineAdultForImage } from '../lib/adult-content';
+import { getAdultKeywordLabels } from '../lib/adult-keywords';
+import { extractImageMetadata } from '../lib/metadata';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
+import { buildUniqueSlug } from '../lib/slug';
 import { resolveStorageLocation, storageClient } from '../lib/storage';
 import { dispatchGeneratorRequest } from '../lib/generator/dispatcher';
 
@@ -76,6 +81,33 @@ const parseGeneratorBaseModels = (value: unknown): GeneratorBaseModelConfig[] =>
     filename: entry.filename.trim(),
   }));
 };
+
+const STREAM_SIZE_LIMIT_ERROR = 'StreamSizeLimitError';
+const MAX_GENERATOR_IMPORT_BUFFER_SIZE = 32 * 1024 * 1024; // 32 MiB guardrail for metadata extraction
+
+const streamToBuffer = async (stream: Readable, limit?: number): Promise<Buffer> =>
+  new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+
+    stream.on('data', (chunk) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buffer.length;
+
+      if (limit && total > limit) {
+        stream.destroy();
+        const error = new Error('Stream exceeded allowed buffer limit.');
+        error.name = STREAM_SIZE_LIMIT_ERROR;
+        reject(error);
+        return;
+      }
+
+      chunks.push(buffer);
+    });
+
+    stream.on('error', (error) => reject(error));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+  });
 
 const extractSettingsBaseModels = (settings: unknown): unknown => {
   if (!settings || typeof settings !== 'object') {
@@ -980,6 +1012,49 @@ const generatorFailureCallbackSchema = z
     path: ['status'],
   })
   .passthrough();
+
+const generatorArtifactImportSchema = z
+  .object({
+    mode: z.enum(['existing', 'new']).default('existing'),
+    galleryId: z.string().trim().min(1).optional(),
+    galleryTitle: z.string().trim().min(1).max(200).optional(),
+    galleryDescription: z
+      .string()
+      .trim()
+      .max(1500)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
+    galleryVisibility: z.enum(['public', 'private']).optional(),
+    title: z
+      .string()
+      .trim()
+      .max(160)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
+    note: z
+      .string()
+      .trim()
+      .max(600)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode === 'existing' && !value.galleryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A collection ID is required when importing into an existing collection.',
+        path: ['galleryId'],
+      });
+    }
+
+    if (value.mode === 'new' && !value.galleryTitle) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide a title to create a new collection.',
+        path: ['galleryTitle'],
+      });
+    }
+  });
 
 const mapAgentStateToStatus = (state: GeneratorAgentState): GeneratorCallbackStatus => {
   switch (state) {
@@ -2073,6 +2148,358 @@ generatorRouter.get('/requests', requireAuth, async (req, res, next) => {
       requests: requests.map((request) =>
         mapGeneratorRequest(request as HydratedGeneratorRequest, { viewerRole: req.user?.role ?? null }),
       ),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, async (req, res, next) => {
+  try {
+    const requestId = req.params.id?.trim();
+    const artifactId = req.params.artifactId?.trim();
+
+    if (!requestId || !artifactId) {
+      res.status(404).json({ message: 'Generator artifact not found.' });
+      return;
+    }
+
+    const parsed = generatorArtifactImportSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid import payload.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const payload = parsed.data;
+    const viewer = req.user;
+    if (!viewer) {
+      res.status(401).json({ message: 'Authentication is required to import generator artifacts.' });
+      return;
+    }
+
+    const artifact = await prisma.generatorArtifact.findFirst({
+      where: { id: artifactId, requestId },
+      include: {
+        request: {
+          include: {
+            user: { select: { id: true, displayName: true, role: true } },
+            baseModel: { include: { tags: { include: { tag: true } } } },
+          },
+        },
+      },
+    });
+
+    if (!artifact) {
+      res.status(404).json({ message: 'Generator artifact not found.' });
+      return;
+    }
+
+    const isAdmin = viewer.role === 'ADMIN';
+    if (!isAdmin && artifact.request.userId !== viewer.id) {
+      res.status(403).json({ message: 'You are not allowed to import this generator artifact.' });
+      return;
+    }
+
+    const bucket = artifact.bucket?.trim();
+    const objectKey = artifact.objectKey?.trim();
+    const storagePath = artifact.storagePath?.trim();
+
+    if (!bucket || !objectKey || !storagePath) {
+      res.status(404).json({ message: 'Generator artifact storage location missing.' });
+      return;
+    }
+
+    const existingImage = await prisma.imageAsset.findUnique({ where: { storagePath } });
+    if (existingImage) {
+      res.status(409).json({ message: 'This artifact has already been imported as an image.' });
+      return;
+    }
+
+    const normalizeText = (value?: string | null) => {
+      if (!value) {
+        return null;
+      }
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    };
+
+    const normalizeSeed = (value?: string | null) => {
+      if (value == null) {
+        return null;
+      }
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    };
+
+    const normalizeDimension = (value?: number | null) =>
+      typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+
+    const normalizeNumber = (value?: number | null) =>
+      typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+    const normalizeInteger = (value?: number | null) =>
+      typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : null;
+
+    let galleryRecord: {
+      id: string;
+      slug: string;
+      title: string;
+      description: string | null;
+      isPublic: boolean;
+      ownerId: string;
+      coverImage: string | null;
+    } | null = null;
+
+    if (payload.mode === 'existing') {
+      const existingGallery = await prisma.gallery.findUnique({
+        where: { id: payload.galleryId! },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          description: true,
+          isPublic: true,
+          ownerId: true,
+          coverImage: true,
+        },
+      });
+
+      if (!existingGallery) {
+        res.status(404).json({ message: 'The selected collection could not be found.' });
+        return;
+      }
+
+      if (!isAdmin && existingGallery.ownerId !== viewer.id) {
+        res.status(403).json({ message: 'You are not allowed to import into this collection.' });
+        return;
+      }
+
+      galleryRecord = existingGallery;
+    }
+
+    let stat;
+    try {
+      stat = await storageClient.statObject(bucket, objectKey);
+    } catch (error) {
+      const code = (error as Error & { code?: string }).code;
+      if (code === 'NoSuchKey' || code === 'NotFound') {
+        res.status(404).json({ message: 'Generator artifact was not found in storage.' });
+        return;
+      }
+      throw error;
+    }
+
+    const reportedSize = Number(stat.size);
+    const statSize = Number.isFinite(reportedSize) && reportedSize >= 0 ? reportedSize : null;
+    const shouldFetchBuffer = !statSize || statSize <= MAX_GENERATOR_IMPORT_BUFFER_SIZE;
+
+    let objectBuffer: Buffer | null = null;
+
+    if (shouldFetchBuffer) {
+      let objectStream: Readable | null = null;
+      try {
+        objectStream = await storageClient.getObject(bucket, objectKey);
+      } catch (error) {
+        const code = (error as Error & { code?: string }).code;
+        if (code === 'NoSuchKey' || code === 'NotFound') {
+          res.status(404).json({ message: 'Generator artifact was not found in storage.' });
+          return;
+        }
+        throw error;
+      }
+
+      try {
+        objectBuffer = await streamToBuffer(objectStream as Readable, MAX_GENERATOR_IMPORT_BUFFER_SIZE);
+      } catch (error) {
+        if ((error as Error).name !== STREAM_SIZE_LIMIT_ERROR) {
+          throw error;
+        }
+        // The reported size was smaller than the limit; fall back to metadata-free import.
+        objectBuffer = null;
+      } finally {
+        objectStream?.destroy();
+      }
+    }
+
+    const contentType =
+      stat.metaData?.['content-type'] ??
+      stat.metaData?.['Content-Type'] ??
+      stat.metaData?.['Content-type'] ??
+      'image/png';
+
+    type ImageMetadataResult = Awaited<ReturnType<typeof extractImageMetadata>>;
+    let imageMetadata: ImageMetadataResult | null = null;
+
+    if (objectBuffer) {
+      try {
+        imageMetadata = await extractImageMetadata({
+          buffer: objectBuffer,
+          mimetype: contentType,
+          originalname: objectKey.split('/').pop() ?? objectKey,
+        });
+      } catch (error) {
+        console.warn('Failed to parse generator artifact metadata.', error);
+      }
+    }
+
+    const requestRecord = artifact.request;
+    const promptValue = normalizeText(requestRecord.prompt ?? imageMetadata?.prompt ?? null);
+    const negativePromptValue = normalizeText(
+      requestRecord.negativePrompt ?? imageMetadata?.negativePrompt ?? null,
+    );
+    const seedValue = normalizeSeed(imageMetadata?.seed ?? requestRecord.seed ?? null);
+    const cfgScaleValue = normalizeNumber(imageMetadata?.cfgScale ?? requestRecord.guidanceScale ?? null);
+    const stepsValue = normalizeInteger(imageMetadata?.steps ?? requestRecord.steps ?? null);
+    const samplerValue = normalizeText(imageMetadata?.sampler ?? null);
+    const modelValue = normalizeText(imageMetadata?.model ?? requestRecord.baseModel?.title ?? null);
+    const widthValue = normalizeDimension(imageMetadata?.width ?? requestRecord.width ?? null);
+    const heightValue = normalizeDimension(imageMetadata?.height ?? requestRecord.height ?? null);
+    const fileSize = statSize ?? objectBuffer?.length ?? null;
+
+    const fallbackLabel = objectKey.split('/').pop() ?? 'generator-artifact';
+    const titleCandidate = payload.title ?? promptValue ?? fallbackLabel;
+    const normalizedTitle = titleCandidate.length > 160 ? `${titleCandidate.slice(0, 159)}…` : titleCandidate;
+    const finalTitle = normalizedTitle.length > 0 ? normalizedTitle : fallbackLabel;
+
+    const adultKeywords = await getAdultKeywordLabels();
+    const loraSelections = Array.isArray(requestRecord.loraSelections)
+      ? (requestRecord.loraSelections as Array<{ id: string; title?: string | null }>)
+      : [];
+    const additionalTexts = loraSelections
+      .map((entry) => normalizeText(entry.title) ?? normalizeText(entry.id) ?? null)
+      .filter((entry): entry is string => Boolean(entry));
+    const metadataList: Prisma.JsonValue[] = imageMetadata?.extras
+      ? [(imageMetadata.extras as unknown) as Prisma.JsonValue]
+      : [];
+
+    const isAdult = determineAdultForImage({
+      title: finalTitle,
+      description: null,
+      prompt: promptValue,
+      negativePrompt: negativePromptValue,
+      model: modelValue,
+      sampler: samplerValue,
+      metadata: null,
+      metadataList,
+      additionalTexts,
+      tags: [],
+      adultKeywords,
+    });
+
+    const galleryDescription = payload.galleryDescription ?? null;
+    const galleryVisibility = payload.galleryVisibility === 'public' ? 'public' : 'private';
+    const noteValue = payload.note ?? null;
+    const ownerId = artifact.request.userId;
+
+    let newGalleryPlan: {
+      slug: string;
+      title: string;
+      description: string | null;
+      isPublic: boolean;
+    } | null = null;
+
+    if (!galleryRecord && payload.mode === 'new') {
+      const slug = await buildUniqueSlug(
+        payload.galleryTitle!,
+        (candidate) =>
+          prisma.gallery.findUnique({ where: { slug: candidate } }).then((existing) => Boolean(existing)),
+        'gallery',
+      );
+
+      newGalleryPlan = {
+        slug,
+        title: payload.galleryTitle!,
+        description: galleryDescription,
+        isPublic: galleryVisibility === 'public',
+      };
+    }
+
+    const importResult = await prisma.$transaction(async (tx) => {
+      let activeGallery = galleryRecord;
+      let wasCreated = false;
+
+      if (!activeGallery) {
+        const created = await tx.gallery.create({
+          data: {
+            slug: newGalleryPlan!.slug,
+            title: newGalleryPlan!.title,
+            description: newGalleryPlan!.description,
+            isPublic: newGalleryPlan!.isPublic,
+            ownerId,
+            coverImage: null,
+          },
+        });
+        activeGallery = created;
+        wasCreated = true;
+      }
+
+      const lastEntry = await tx.galleryEntry.findFirst({
+        where: { galleryId: activeGallery.id },
+        orderBy: { position: 'desc' },
+      });
+
+      const image = await tx.imageAsset.create({
+        data: {
+          title: finalTitle,
+          description: null,
+          width: widthValue,
+          height: heightValue,
+          ...(fileSize != null ? { fileSize } : {}),
+          storagePath,
+          prompt: promptValue,
+          negativePrompt: negativePromptValue,
+          seed: seedValue,
+          model: modelValue,
+          sampler: samplerValue,
+          cfgScale: cfgScaleValue,
+          steps: stepsValue,
+          isPublic: activeGallery.isPublic,
+          isAdult,
+          owner: { connect: { id: ownerId } },
+        },
+      });
+
+      await tx.galleryEntry.create({
+        data: {
+          galleryId: activeGallery.id,
+          imageId: image.id,
+          position: (lastEntry?.position ?? 0) + 1,
+          note: noteValue ?? null,
+        },
+      });
+
+      if (!activeGallery.coverImage) {
+        await tx.gallery.update({
+          where: { id: activeGallery.id },
+          data: { coverImage: storagePath },
+        });
+      }
+
+      const gallerySummary = await tx.gallery.findUnique({
+        where: { id: activeGallery.id },
+        select: { id: true, slug: true, title: true, isPublic: true },
+      });
+
+      if (!gallerySummary) {
+        throw new Error('GalleryNotFoundAfterImport');
+      }
+
+      return { image, gallery: gallerySummary, wasCreated };
+    });
+
+    res.status(201).json({
+      image: {
+        id: importResult.image.id,
+        title: importResult.image.title,
+        storagePath: importResult.image.storagePath,
+      },
+      gallery: {
+        id: importResult.gallery.id,
+        slug: importResult.gallery.slug,
+        title: importResult.gallery.title,
+        isPublic: importResult.gallery.isPublic,
+        wasCreated: importResult.wasCreated,
+      },
     });
   } catch (error) {
     next(error);
