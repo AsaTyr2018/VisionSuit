@@ -53,7 +53,7 @@ The installer performs the following steps:
 5. Grants ACL access for the agent user to the configured ComfyUI model, LoRA, output, workflow, and temp directories so downloads and uploads succeed without running the daemon as root.
 6. Installs the `visionsuit-gpu-agent.service` unit into systemd and enables it immediately.
 
-> **Tip:** Set the MinIO access key, secret key, bucket names, and ComfyUI API URL in `/etc/visionsuit-gpu-agent/config.yaml` before dispatching jobs.
+> **Tip:** Set the MinIO access key, secret key, bucket names, and ComfyUI API endpoint in `/etc/visionsuit-gpu-agent/config.yaml` before dispatching jobs. You can mirror the CLI workflow tester by supplying either a full `api_url` or the `scheme`/`host`/`port` trio used by `gpuworker/scripts/test-run-workflow.sh`.
 
 If you prefer to re-use an existing service account (for example the `comfyui` user created by the worker installer), export `AGENT_USER=<existing-user>` and optionally `AGENT_GROUP=<existing-group>` before running the installer. The ACL step honours these variables and will extend permissions for that account instead of creating `visionsuit`.
 
@@ -73,12 +73,14 @@ The script performs a `git pull` from the directory that originally cloned Visio
 `config/config.example.yaml` documents every available option:
 
 - `minio.*` – Connection details for the MinIO/S3 endpoint that holds base models, LoRAs, and output buckets.
-- `comfyui.*` – REST endpoint, timeout, polling cadence, and client identifier for ComfyUI.
+- `comfyui.*` – REST endpoint configuration (either a direct `api_url` or discrete `scheme`/`host`/`port` values), timeout, polling cadence, and client identifier for ComfyUI.
 - `paths.*` – Local filesystem paths for ComfyUI models, outputs, workflow cache, and temporary files.
 - `persistent_model_keys` – Keys that should never be deleted after download (typically base checkpoints).
 - `cleanup.*` – Toggle removal of temporary LoRAs or ad-hoc models after each job.
-- `callbacks.*` – TLS verification and timeout for VisionSIOt callback URLs.
+- `callbacks.*` – Optional `base_url` override plus TLS verification and timeout for VisionSIOt callback URLs.
 - `workflow_defaults` – Additional values injected into the workflow parameter context when building prompts.
+
+Set `callbacks.base_url` when the backend publishes relative callback paths or runs behind a reverse proxy so the agent rewrites those hooks to an externally reachable host instead of the default `http://127.0.0.1`.
 
 ## API contract
 

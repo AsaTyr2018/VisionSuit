@@ -43,6 +43,7 @@ class CleanupConfig:
 
 @dataclass
 class CallbackConfig:
+    base_url: Optional[str] = None
     verify_tls: bool = True
     timeout_seconds: int = 10
 
@@ -73,6 +74,51 @@ def _resolve_path(value: str) -> Path:
     return Path(expanded).resolve()
 
 
+def _normalize_url(value: str, default_scheme: str = "http") -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("ComfyUI API URL cannot be empty")
+    candidate = raw.rstrip("/")
+    if not candidate:
+        raise ValueError("ComfyUI API URL cannot be empty")
+    if candidate.startswith("http://") or candidate.startswith("https://"):
+        return candidate
+    return f"{default_scheme}://{candidate}"
+
+
+def _normalize_optional_url(value: Optional[str], default_scheme: str = "http") -> Optional[str]:
+    if value is None:
+        return None
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    return _normalize_url(raw, default_scheme)
+
+
+def _derive_comfy_api_url(section: Dict[str, Any]) -> str:
+    api_url = section.get("api_url") or section.get("base_url")
+    if api_url:
+        return _normalize_url(api_url)
+
+    scheme = str(section.get("scheme", "http") or "http").strip() or "http"
+    host_value = section.get("host", "127.0.0.1")
+    host = str(host_value or "").strip()
+    if not host:
+        raise ValueError("ComfyUI host cannot be empty")
+    if host.startswith("http://") or host.startswith("https://"):
+        return _normalize_url(host)
+
+    port_value = section.get("port", 8188)
+    try:
+        port = int(port_value)
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("ComfyUI port must be an integer") from exc
+
+    if ":" in host:
+        return _normalize_url(f"{scheme}://{host}", scheme)
+    return _normalize_url(f"{scheme}://{host}:{port}", scheme)
+
+
 def load_config(path: str | os.PathLike[str]) -> AgentConfig:
     cfg_path = Path(path)
     if not cfg_path.exists():
@@ -97,11 +143,12 @@ def load_config(path: str | os.PathLike[str]) -> AgentConfig:
         verify_tls=bool(payload.get("minio", {}).get("verify_tls", True)),
     )
 
+    comfy_section = payload.get("comfyui", {}) or {}
     comfy_cfg = ComfyUIConfig(
-        api_url=_require("comfyui", "api_url"),
-        timeout_seconds=int(payload.get("comfyui", {}).get("timeout_seconds", 900)),
-        poll_interval_seconds=float(payload.get("comfyui", {}).get("poll_interval_seconds", 2.0)),
-        client_id=str(payload.get("comfyui", {}).get("client_id", "visionsuit-gpu-agent")),
+        api_url=_derive_comfy_api_url(comfy_section),
+        timeout_seconds=int(comfy_section.get("timeout_seconds", 900)),
+        poll_interval_seconds=float(comfy_section.get("poll_interval_seconds", 2.0)),
+        client_id=str(comfy_section.get("client_id", "visionsuit-gpu-agent")),
     )
 
     paths_cfg = PathConfig(
@@ -118,6 +165,7 @@ def load_config(path: str | os.PathLike[str]) -> AgentConfig:
     )
 
     callbacks_cfg = CallbackConfig(
+        base_url=_normalize_optional_url(payload.get("callbacks", {}).get("base_url")),
         verify_tls=bool(payload.get("callbacks", {}).get("verify_tls", True)),
         timeout_seconds=int(payload.get("callbacks", {}).get("timeout_seconds", 10)),
     )

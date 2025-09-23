@@ -258,14 +258,30 @@ class GPUAgent:
         payload = {"jobId": job.jobId, "status": "error", "reason": normalized_reason}
         await self._post_callback(job.callbacks.failure, payload)
 
+    def _resolve_callback_url(self, url: str) -> str:
+        candidate = str(url or "").strip()
+        if not candidate:
+            raise ValueError("Callback URL cannot be empty")
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            return candidate
+        base = (self.config.callbacks.base_url or "").strip()
+        if not base:
+            return candidate
+        return f"{base.rstrip('/')}/{candidate.lstrip('/')}"
+
     async def _post_callback(self, url: str, payload: Dict[str, object]) -> None:
-        LOGGER.debug("Sending callback to %s: %s", url, payload)
+        try:
+            target = self._resolve_callback_url(url)
+        except ValueError as exc:
+            LOGGER.warning("Skipping callback with invalid target %s: %s", url, exc)
+            return
+        LOGGER.debug("Sending callback to %s: %s", target, payload)
         verify = self.config.callbacks.verify_tls
         timeout = httpx.Timeout(self.config.callbacks.timeout_seconds)
         async with httpx.AsyncClient(verify=verify, timeout=timeout) as client:
             try:
-                response = await client.post(url, json=payload)
+                response = await client.post(target, json=payload)
                 response.raise_for_status()
             except Exception as exc:  # noqa: BLE001
-                LOGGER.warning("Callback to %s failed: %s", url, exc)
+                LOGGER.warning("Callback to %s failed: %s", target, exc)
 
