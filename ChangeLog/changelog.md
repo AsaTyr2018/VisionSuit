@@ -943,3 +943,8 @@
 - **General**: Organized the generator administration console into focused sections so queue operations, error telemetry, and access controls stay easy to scan.
 - **Technical Changes**: Added a segmented sub-navigation with dedicated queue, failure log, and access panels, reset the active sub-tab when leaving the generator view, refreshed copy, styled the new controls, and updated the README to explain the streamlined workflow.
 - **Data Changes**: None.
+
+## 177 – [Addition] Generator queue activity tabs (commit TBD)
+- **General**: Kept the on-site generator focused on live work by separating active jobs from historical runs and trimming archived completions.
+- **Technical Changes**: Added queue history sub-tabs with tablist semantics, filtered the data model so completed and failed entries cap at the ten most recent, refreshed the generator history styles to accommodate the new controls, and documented the UX in the README.
+- **Data Changes**: None.
