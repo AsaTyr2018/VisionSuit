@@ -57,6 +57,17 @@ The installer performs the following steps:
 
 If you prefer to re-use an existing service account (for example the `comfyui` user created by the worker installer), export `AGENT_USER=<existing-user>` and optionally `AGENT_GROUP=<existing-group>` before running the installer. The ACL step honours these variables and will extend permissions for that account instead of creating `visionsuit`.
 
+## Updating the agent
+
+Run the bundled updater whenever new commits land in the repository clone on the GPU host:
+
+```bash
+cd ~/VisionSuit
+sudo ./gpuworker/agent/installer/update.sh
+```
+
+The script performs a `git pull` from the directory that originally cloned VisionSuit (no `.git` data lives inside `/opt/visionsuit-gpu-agent`), synchronises the refreshed sources into `/opt/visionsuit-gpu-agent`, upgrades dependencies inside the existing virtual environment, reapplies ownership, and restarts the `visionsuit-gpu-agent` systemd service. Override the detected service account by exporting `AGENT_USER`/`AGENT_GROUP` before running the updater if you deviated from the defaults during installation.
+
 ## Configuration
 
 `config/config.example.yaml` documents every available option:
