@@ -4,7 +4,7 @@ import json
 import logging
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, Set
 
 from .config import AgentConfig
 from .minio_client import MinioManager
@@ -59,6 +59,18 @@ def _build_node_lookup(workflow: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
             if isinstance(key, str) and key.isdigit() and isinstance(value, dict):
                 nodes[int(key)] = value
     return nodes
+
+
+def find_save_image_nodes(workflow: Dict[str, Any]) -> Set[int]:
+    save_nodes: Set[int] = set()
+    nodes = _build_node_lookup(workflow)
+    for identifier, node in nodes.items():
+        class_type = node.get("class_type")
+        if not isinstance(class_type, str):
+            continue
+        if class_type.lower().startswith("saveimage") or class_type.lower().startswith("save image"):
+            save_nodes.add(identifier)
+    return save_nodes
 
 
 def apply_mutations(workflow: Dict[str, Any], mutations: Iterable[WorkflowMutation]) -> Dict[str, Any]:

@@ -15,6 +15,8 @@ class AssetRef(BaseModel):
     key: str
     cacheStrategy: Literal["persistent", "ephemeral"] = "ephemeral"
     checksum: Optional[str] = None
+    display_name: Optional[str] = Field(None, alias="displayName")
+    original_name: Optional[str] = Field(None, alias="originalName")
 
 
 class WorkflowRef(BaseModel):
@@ -53,6 +55,7 @@ class CallbackConfigPayload(BaseModel):
     status: Optional[str] = Field(None, description="URL for in-flight status updates")
     completion: Optional[str] = Field(None, description="URL for job completion callbacks")
     failure: Optional[str] = Field(None, description="URL for job failure callbacks")
+    cancel: Optional[str] = Field(None, description="URL for cooperative cancellation requests")
 
 
 class Resolution(BaseModel):
@@ -80,6 +83,7 @@ class DispatchEnvelope(BaseModel):
     output: OutputSpec
     priority: Optional[str] = None
     requestedAt: Optional[str] = None
+    cancelToken: Optional[str] = Field(None, alias="cancel_token")
     workflowOverrides: List[WorkflowMutation] = Field(default_factory=list)
     workflowParameters: List[WorkflowParameterBinding] = Field(default_factory=list)
     callbacks: Optional[CallbackConfigPayload] = None

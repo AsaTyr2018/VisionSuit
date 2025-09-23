@@ -5,6 +5,7 @@ import os
 from typing import Any, Dict
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from pydantic import BaseModel
 
 from app.agent import GPUAgent
 from app.config import load_config
@@ -38,6 +39,9 @@ def create_app() -> FastAPI:
             "activity": await agent.describe_activity(),
         }
 
+    class CancelRequest(BaseModel):
+        token: str
+
     @app.post("/jobs", status_code=202)
     async def submit_job(job: DispatchEnvelope, background_tasks: BackgroundTasks) -> Dict[str, Any]:
         if not await agent.try_reserve_job():
@@ -52,6 +56,15 @@ def create_app() -> FastAPI:
         background_tasks.add_task(run_job)
         LOGGER.info("Accepted job %s", job.jobId)
         return {"status": "accepted", "jobId": job.jobId}
+
+    @app.post("/jobs/cancel")
+    async def cancel_job(payload: CancelRequest) -> Dict[str, Any]:
+        if not payload.token:
+            raise HTTPException(status_code=400, detail="Cancellation token is required")
+        accepted = await agent.request_cancel(payload.token)
+        if not accepted:
+            raise HTTPException(status_code=404, detail="No running job matches the provided token")
+        return {"status": "cancelling"}
 
     @app.on_event("shutdown")
     async def shutdown_event() -> None:  # pragma: no cover - FastAPI event
