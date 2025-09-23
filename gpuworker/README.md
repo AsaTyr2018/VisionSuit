@@ -46,6 +46,17 @@ All synchronization helpers now target ComfyUI's native directories (`/opt/comfy
 
 All helpers rely on the values stored in `/etc/comfyui/minio.env`. Update that file or export the variables inline to override destinations or prefixes.
 
+## GPU agent service
+
+The ComfyUI node can now be promoted to a managed VisionSuit GPU agent by installing the service in `gpuworker/agent/`. The agent runs alongside ComfyUI, exposes an authenticated queue endpoint, and speaks the dispatch envelope defined for VisionSIOt. Installation steps:
+
+1. Copy `gpuworker/agent/` to the GPU host.
+2. Run `sudo ./agent/installer/install.sh` from the repository root to install dependencies, create `/opt/visionsuit-gpu-agent`, and enable the `visionsuit-gpu-agent` systemd unit.
+3. Edit `/etc/visionsuit-gpu-agent/config.yaml` to provide MinIO credentials, ComfyUI endpoint, bucket names, and default workflow values.
+4. Confirm the service is healthy via `curl http://localhost:8081/healthz` – the response reports whether the agent is idle (`{"status":"ok","busy":false}`).
+
+Dispatch envelopes sent to `POST /jobs` must include all MinIO keys for base models, LoRAs, and the workflow template plus the desired output bucket and prefix. The agent downloads missing assets, renders via ComfyUI, uploads results back into MinIO, and deletes LoRAs or temporary models after completion while leaving persistent checkpoints intact.
+
 ## Test validation scripts
 
 When VisionSuit has not yet been wired to the worker you can still verify connectivity with the purpose-built test helpers (copied to `/usr/local/bin` alongside the other utilities):

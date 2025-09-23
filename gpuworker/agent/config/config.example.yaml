@@ -1,0 +1,27 @@
+minio:
+  endpoint: "http://127.0.0.1:9000"
+  access_key: "minioadmin"
+  secret_key: "minioadmin"
+  secure: false
+  verify_tls: false
+comfyui:
+  api_url: "http://127.0.0.1:8188"
+  timeout_seconds: 900
+  poll_interval_seconds: 2
+  client_id: "visionsuit-gpu-agent"
+paths:
+  base_models: "/opt/comfyui/models/checkpoints"
+  loras: "/opt/comfyui/models/loras"
+  workflows: "/opt/visionsuit-gpu-agent/workflows"
+  outputs: "/opt/comfyui/output"
+  temp: "/opt/visionsuit-gpu-agent/tmp"
+persistent_model_keys:
+  - "models/checkpoints/base-model.safetensors"
+cleanup:
+  delete_downloaded_loras: true
+  delete_downloaded_models: true
+callbacks:
+  verify_tls: true
+  timeout_seconds: 10
+workflow_defaults:
+  sampler: "dpmpp_2m_sde_gpu"
