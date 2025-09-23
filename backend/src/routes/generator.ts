@@ -236,6 +236,40 @@ type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: typeof generatorRequestInclude;
 }>;
 
+const MAX_GENERATOR_ERROR_REASON_LENGTH = 1000;
+
+const normalizeGeneratorErrorReason = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.length > MAX_GENERATOR_ERROR_REASON_LENGTH) {
+    return `${trimmed.slice(0, MAX_GENERATOR_ERROR_REASON_LENGTH - 1)}…`;
+  }
+
+  return trimmed;
+};
+
+const buildPublicGeneratorErrorReason = (reason: string | null, viewerRole?: string): string | null => {
+  if (!reason) {
+    return null;
+  }
+
+  if (viewerRole === 'ADMIN') {
+    return reason;
+  }
+
+  return 'Generation failed. Contact an administrator for the diagnostic log.';
+};
+
+const generatorFailureStatuses = ['error', 'failed'] as const;
+const generatorFailureStatusList = [...generatorFailureStatuses];
+
 const sanitizeGeneratorSettingsBaseModels = async () => {
   try {
     await prisma.$executeRawUnsafe(`
@@ -352,7 +386,7 @@ const redispatchPendingRequests = async (): Promise<RedispatchSummary> => {
   }
 
   const candidates = await prisma.generatorRequest.findMany({
-    where: { status: { in: ['pending', 'held', 'error'] } },
+    where: { status: { in: ['pending', 'held', 'error', 'failed'] } },
     include: generatorRequestInclude,
     orderBy: { createdAt: 'asc' },
   });
@@ -387,17 +421,19 @@ const redispatchPendingRequests = async (): Promise<RedispatchSummary> => {
       }
 
       const message = result.message ?? 'GPU agent rejected the request.';
-      summary.errors.push({ id: candidate.id, message });
+      const sanitizedMessage = normalizeGeneratorErrorReason(message) ?? message;
+      summary.errors.push({ id: candidate.id, message: sanitizedMessage });
       await prisma.generatorRequest.update({
         where: { id: candidate.id },
-        data: { status: 'error', errorReason: message },
+        data: { status: 'error', errorReason: sanitizedMessage },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to dispatch generator request.';
-      summary.errors.push({ id: candidate.id, message });
+      const sanitizedMessage = normalizeGeneratorErrorReason(message) ?? message;
+      summary.errors.push({ id: candidate.id, message: sanitizedMessage });
       await prisma.generatorRequest.update({
         where: { id: candidate.id },
-        data: { status: 'error', errorReason: message },
+        data: { status: 'error', errorReason: sanitizedMessage },
       });
     }
   }
@@ -450,7 +486,10 @@ const buildQueueResponse = async (viewer: { id: string; role: string }) => {
   };
 };
 
-const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
+const mapGeneratorRequest = (
+  request: HydratedGeneratorRequest,
+  options?: { viewerRole?: string | null; includeErrorDetails?: boolean },
+) => {
   const storedSelections = parseStoredBaseModelSelections(request.baseModelSelections);
   const primarySelection = storedSelections[0] ?? null;
   const baseModelRecord = request.baseModel ?? null;
@@ -491,10 +530,18 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
     source: entry.source,
   }));
 
+  const viewerRole = options?.viewerRole ?? null;
+  const includeErrorDetails = options?.includeErrorDetails ?? viewerRole === 'ADMIN';
+  const normalizedError = normalizeGeneratorErrorReason(request.errorReason);
+  const publicErrorReason = includeErrorDetails
+    ? normalizedError
+    : buildPublicGeneratorErrorReason(normalizedError, viewerRole ?? undefined);
+
   return {
     id: request.id,
     status: request.status,
-    errorReason: request.errorReason ?? null,
+    errorReason: publicErrorReason,
+    ...(includeErrorDetails ? { errorDetail: normalizedError ?? null } : {}),
     prompt: request.prompt,
     negativePrompt: request.negativePrompt,
     seed: request.seed,
@@ -644,11 +691,26 @@ const generatorRequestSchema = z.object({
   height: z.coerce.number().int().min(256).max(2048),
 });
 
-const generatorStatusCallbackSchema = z.object({
-  jobId: z.string().min(1),
-  status: z.enum(['queued', 'running', 'uploading']),
-  extra: z.record(z.string(), z.unknown()).optional(),
-});
+const generatorStatusCallbackSchema = z
+  .object({
+    jobId: z.string().min(1),
+    status: z.enum(['queued', 'running', 'uploading', 'error']),
+    extra: z.record(z.string(), z.unknown()).optional(),
+    reason: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.status === 'error') {
+      return;
+    }
+
+    if (value.reason && value.reason.trim().length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Reason can only accompany error status updates.',
+        path: ['reason'],
+      });
+    }
+  });
 
 const generatorCompletionCallbackSchema = z.object({
   jobId: z.string().min(1),
@@ -658,7 +720,7 @@ const generatorCompletionCallbackSchema = z.object({
 
 const generatorFailureCallbackSchema = z.object({
   jobId: z.string().min(1),
-  status: z.enum(['failed', 'error']).default('failed'),
+  status: z.enum(['failed', 'error']).default('error'),
   reason: z.string().optional(),
 });
 
@@ -1171,7 +1233,11 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
       include: generatorRequestInclude,
     });
 
-    res.status(201).json({ request: mapGeneratorRequest(refreshed as HydratedGeneratorRequest) });
+    res.status(201).json({
+      request: mapGeneratorRequest(refreshed as HydratedGeneratorRequest, {
+        viewerRole: req.user?.role ?? null,
+      }),
+    });
   } catch (error) {
     next(error);
   }
@@ -1191,9 +1257,15 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
       return;
     }
 
+    const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
+    const updateData =
+      parsed.data.status === 'error'
+        ? { status: 'error', errorReason: normalizedReason }
+        : { status: parsed.data.status, errorReason: null };
+
     const updated = await prisma.generatorRequest.update({
       where: { id: jobId },
-      data: { status: parsed.data.status, errorReason: null },
+      data: updateData,
       include: generatorRequestInclude,
     });
 
@@ -1216,7 +1288,9 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
       }
     }
 
-    res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
+    res.json({
+      request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       res.status(404).json({ message: 'Generator request not found for status update.' });
@@ -1279,7 +1353,9 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
       include: generatorRequestInclude,
     });
 
-    res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
+    res.json({
+      request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
+    });
   } catch (error) {
     next(error);
   }
@@ -1299,21 +1375,53 @@ generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) =
       return;
     }
 
-    const reason = parsed.data.reason?.trim() ?? null;
+    const normalizedReason = normalizeGeneratorErrorReason(parsed.data.reason);
+    const failureStatus = parsed.data.status === 'failed' ? 'error' : parsed.data.status;
 
     const updated = await prisma.generatorRequest.update({
       where: { id: jobId },
-      data: { status: parsed.data.status, errorReason: reason },
+      data: { status: failureStatus, errorReason: normalizedReason },
       include: generatorRequestInclude,
     });
 
-    res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
+    res.json({
+      request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       res.status(404).json({ message: 'Generator request not found for failure callback.' });
       return;
     }
 
+    next(error);
+  }
+});
+
+generatorRouter.get('/errors', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const parsedLimit = typeof req.query.limit === 'string' ? Number.parseInt(req.query.limit, 10) : NaN;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 50;
+
+    const where: Prisma.GeneratorRequestWhereInput = { status: { in: generatorFailureStatusList } };
+
+    const [records, total] = await Promise.all([
+      prisma.generatorRequest.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        include: generatorRequestInclude,
+      }),
+      prisma.generatorRequest.count({ where }),
+    ]);
+
+    res.json({
+      errors: records.map((record) =>
+        mapGeneratorRequest(record as HydratedGeneratorRequest, { includeErrorDetails: true }),
+      ),
+      total,
+      limit,
+    });
+  } catch (error) {
     next(error);
   }
 });
@@ -1335,7 +1443,11 @@ generatorRouter.get('/requests', requireAuth, async (req, res, next) => {
       include: generatorRequestInclude,
     });
 
-    res.json({ requests: requests.map((request) => mapGeneratorRequest(request as HydratedGeneratorRequest)) });
+    res.json({
+      requests: requests.map((request) =>
+        mapGeneratorRequest(request as HydratedGeneratorRequest, { viewerRole: req.user?.role ?? null }),
+      ),
+    });
   } catch (error) {
     next(error);
   }

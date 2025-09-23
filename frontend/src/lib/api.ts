@@ -9,6 +9,7 @@ import type {
   GeneratorRequestSummary,
   GeneratorQueueResponse,
   GeneratorSettings,
+  GeneratorFailureLogResponse,
   ImageAsset,
   MetaStats,
   ModerationQueue,
@@ -342,6 +343,13 @@ const getGeneratorRequests = (token: string, scope: 'mine' | 'all' = 'mine') => 
 
 const getGeneratorQueue = (token: string) => request<GeneratorQueueResponse>('/api/generator/queue', {}, token);
 
+const getGeneratorFailureLog = (token: string, limit?: number) => {
+  const parsedLimit = typeof limit === 'number' && Number.isFinite(limit) ? Math.max(1, Math.floor(limit)) : null;
+  const constrained = parsedLimit ? Math.min(parsedLimit, 200) : null;
+  const query = constrained ? `?limit=${constrained}` : '';
+  return request<GeneratorFailureLogResponse>(`/api/generator/errors${query}`, {}, token);
+};
+
 const pauseGeneratorQueue = (token: string) =>
   request<GeneratorQueueResponse>(
     '/api/generator/queue/actions/pause',
@@ -432,6 +440,7 @@ export const api = {
   getGeneratorBaseModelCatalog,
   getGeneratorBaseModels,
   getGeneratorQueue,
+  getGeneratorFailureLog,
   pauseGeneratorQueue,
   resumeGeneratorQueue,
   retryGeneratorQueue,

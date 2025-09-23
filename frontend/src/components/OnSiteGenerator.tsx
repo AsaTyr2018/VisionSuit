@@ -1262,6 +1262,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
           const normalizedStatus = request.status.toLowerCase();
           const isFailureStatus = ['failed', 'error', 'cancelled'].includes(normalizedStatus);
           const failureLabel = normalizedStatus === 'cancelled' ? 'Cleared' : 'Failure';
+          const failureDetail = request.errorDetail ?? request.errorReason ?? null;
           const historyBaseModels =
             request.baseModels.length > 0
               ? request.baseModels
@@ -1338,8 +1339,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               )}
               {isFailureStatus ? (
                 <p className="generator-history__failure">
-                  {request.errorReason
-                    ? `${failureLabel}: ${request.errorReason}`
+                  {failureDetail
+                    ? `${failureLabel}: ${failureDetail}`
                     : `${failureLabel}: reason not provided.`}
                 </p>
               ) : null}

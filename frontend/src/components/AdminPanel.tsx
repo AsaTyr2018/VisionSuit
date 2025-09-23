@@ -8,6 +8,7 @@ import type {
   Gallery,
   GeneratorAccessMode,
   GeneratorBaseModelConfig,
+  GeneratorFailureLogResponse,
   GeneratorQueueResponse,
   GeneratorSettings,
   ImageAsset,
@@ -136,6 +137,7 @@ type TierDraft = {
 };
 
 type ModelVersionEntry = ModelAsset['versions'][number];
+type GeneratorErrorEntry = GeneratorFailureLogResponse['errors'][number];
 
 const generatorBaseModelTypeOptions: GeneratorBaseModelConfig['type'][] = ['SD1.5', 'SDXL', 'PonyXL'];
 
@@ -456,6 +458,10 @@ export const AdminPanel = ({
   const [queueError, setQueueError] = useState<string | null>(null);
   const [isQueueActionRunning, setIsQueueActionRunning] = useState(false);
   const [queueRedispatch, setQueueRedispatch] = useState<GeneratorQueueResponse['redispatch'] | null>(null);
+  const [generatorErrorLog, setGeneratorErrorLog] = useState<GeneratorErrorEntry[]>([]);
+  const [generatorErrorLogTotal, setGeneratorErrorLogTotal] = useState(0);
+  const [isGeneratorErrorLogLoading, setIsGeneratorErrorLogLoading] = useState(false);
+  const [generatorErrorLogError, setGeneratorErrorLogError] = useState<string | null>(null);
   const [blockUserId, setBlockUserId] = useState('');
   const [blockReason, setBlockReason] = useState('');
   const flaggedModelCount = moderationQueue?.models.length ?? 0;
@@ -675,6 +681,22 @@ export const AdminPanel = ({
     }
   }, [token, setStatus]);
 
+  const fetchGeneratorErrorLog = useCallback(async () => {
+    setIsGeneratorErrorLogLoading(true);
+    setGeneratorErrorLogError(null);
+    try {
+      const response = await api.getGeneratorFailureLog(token);
+      setGeneratorErrorLog(response.errors);
+      setGeneratorErrorLogTotal(response.total);
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to load generator failure log.';
+      setGeneratorErrorLogError(message);
+    } finally {
+      setIsGeneratorErrorLogLoading(false);
+    }
+  }, [token]);
+
   const runQueueAction = useCallback(
     async (
       action: () => Promise<GeneratorQueueResponse>,
@@ -688,6 +710,7 @@ export const AdminPanel = ({
         setQueueError(null);
         const message = typeof successMessage === 'function' ? successMessage(response) : successMessage;
         setStatus({ type: 'success', message });
+        void fetchGeneratorErrorLog();
         return response;
       } catch (error) {
         const message = error instanceof ApiError ? error.message : 'Queue operation failed.';
@@ -698,7 +721,7 @@ export const AdminPanel = ({
         setIsQueueActionRunning(false);
       }
     },
-    [setStatus],
+    [fetchGeneratorErrorLog, setStatus],
   );
 
   const handlePauseQueue = useCallback(() => {
@@ -728,7 +751,12 @@ export const AdminPanel = ({
 
   const handleRefreshQueue = useCallback(() => {
     void fetchGeneratorQueue();
-  }, [fetchGeneratorQueue]);
+    void fetchGeneratorErrorLog();
+  }, [fetchGeneratorErrorLog, fetchGeneratorQueue]);
+
+  const handleRefreshErrorLog = useCallback(() => {
+    void fetchGeneratorErrorLog();
+  }, [fetchGeneratorErrorLog]);
 
   const handleBlockUserSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -809,8 +837,9 @@ export const AdminPanel = ({
   useEffect(() => {
     if (activeTab === 'generator') {
       void fetchGeneratorQueue();
+      void fetchGeneratorErrorLog();
     }
-  }, [activeTab, fetchGeneratorQueue]);
+  }, [activeTab, fetchGeneratorErrorLog, fetchGeneratorQueue]);
 
   const updateGeneralSetting = <K extends keyof AdminSettings['general']>(
     key: K,
@@ -3826,6 +3855,83 @@ export const AdminPanel = ({
                 <p className="generator-queue__empty">No users are currently blocked from generating.</p>
               )}
             </div>
+          </section>
+          <section className="admin__section admin__section--generator-errors">
+            <div className="admin__section-intro">
+              <h3>Generation failure log</h3>
+              <p>Inspect recent GPU agent errors. Detailed diagnostics remain available only to administrators.</p>
+            </div>
+            <div className="generator-errors__actions">
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleRefreshErrorLog}
+                disabled={isGeneratorErrorLogLoading}
+              >
+                {isGeneratorErrorLogLoading ? 'Refreshing…' : 'Refresh log'}
+              </button>
+              <span>
+                Showing <strong>{generatorErrorLog.length}</strong> of{' '}
+                <strong>{generatorErrorLogTotal}</strong> failures
+              </span>
+            </div>
+            {generatorErrorLogError ? (
+              <p className="generator-errors__error">{generatorErrorLogError}</p>
+            ) : null}
+            {isGeneratorErrorLogLoading ? (
+              <p className="generator-errors__status">Loading failure log…</p>
+            ) : null}
+            {!isGeneratorErrorLogLoading && generatorErrorLog.length === 0 && !generatorErrorLogError ? (
+              <p className="generator-errors__empty">No generator failures recorded in the selected window.</p>
+            ) : null}
+            {generatorErrorLog.length > 0 ? (
+              <ul className="generator-errors__list">
+                {generatorErrorLog.map((entry) => {
+                  const failureMoment = new Date(entry.updatedAt);
+                  const detail = entry.errorDetail ?? entry.errorReason ?? 'Reason not provided.';
+                  const baseSummary =
+                    entry.baseModels.length > 0
+                      ? entry.baseModels.map((model) => model.name).join(', ')
+                      : entry.baseModel.title;
+                  return (
+                    <li key={entry.id} className="generator-errors__item">
+                      <header className="generator-errors__item-header">
+                        <div>
+                          <strong>{entry.owner.displayName}</strong>
+                          <span
+                            className={`generator-errors__status-tag generator-errors__status-tag--${entry.status.toLowerCase()}`}
+                          >
+                            {entry.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <time dateTime={entry.updatedAt}>{failureMoment.toLocaleString()}</time>
+                      </header>
+                      <p className="generator-errors__item-reason">{detail}</p>
+                      <dl className="generator-errors__meta">
+                        <div>
+                          <dt>Job ID</dt>
+                          <dd>{entry.id}</dd>
+                        </div>
+                        <div>
+                          <dt>Base models</dt>
+                          <dd>{baseSummary}</dd>
+                        </div>
+                        <div>
+                          <dt>Prompt</dt>
+                          <dd>{entry.prompt}</dd>
+                        </div>
+                        <div>
+                          <dt>Resolution</dt>
+                          <dd>
+                            {entry.width} × {entry.height}
+                          </dd>
+                        </div>
+                      </dl>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </section>
           <section className="admin__section admin__section--generator">
             <div className="admin__section-intro">
