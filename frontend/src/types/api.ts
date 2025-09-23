@@ -145,6 +145,7 @@ export interface GeneratorRequestSummary {
   id: string;
   status: string;
   errorReason?: string | null;
+  errorDetail?: string | null;
   prompt: string;
   negativePrompt?: string | null;
   seed?: string | null;
@@ -176,6 +177,12 @@ export interface GeneratorRequestSummary {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GeneratorFailureLogResponse {
+  errors: GeneratorRequestSummary[];
+  total: number;
+  limit?: number;
 }
 
 export interface GeneratorQueueStats {

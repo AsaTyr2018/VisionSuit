@@ -205,7 +205,23 @@ class GPUAgent:
                 except Exception as exc:  # noqa: BLE001
                     LOGGER.warning("Failed to remove model %s: %s", path, exc)
 
-    async def _emit_status(self, job: DispatchEnvelope, status: str, extra: Optional[Dict[str, object]] = None) -> None:
+    def _normalize_failure_reason(self, reason: Optional[str]) -> str:
+        if not reason:
+            return "GPU worker reported an unknown failure."
+        normalized = str(reason).strip()
+        if not normalized:
+            return "GPU worker reported an unknown failure."
+        if len(normalized) > 500:
+            return f"{normalized[:497]}…"
+        return normalized
+
+    async def _emit_status(
+        self,
+        job: DispatchEnvelope,
+        status: str,
+        extra: Optional[Dict[str, object]] = None,
+        reason: Optional[str] = None,
+    ) -> None:
         if not job.callbacks or not job.callbacks.status:
             return
         payload_extra: Dict[str, object] = {}
@@ -219,6 +235,8 @@ class GPUAgent:
         if activity:
             payload_extra["activity"] = activity
         payload: Dict[str, object] = {"jobId": job.jobId, "status": status}
+        if reason:
+            payload["reason"] = reason
         if payload_extra:
             payload["extra"] = payload_extra
         await self._post_callback(job.callbacks.status, payload)
@@ -232,7 +250,12 @@ class GPUAgent:
     async def _emit_failure(self, job: DispatchEnvelope, reason: str) -> None:
         if not job.callbacks or not job.callbacks.failure:
             return
-        payload = {"jobId": job.jobId, "status": "failed", "reason": reason}
+        normalized_reason = self._normalize_failure_reason(reason)
+        try:
+            await self._emit_status(job, "error", reason=normalized_reason)
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to emit error status callback for %s", job.jobId, exc_info=True)
+        payload = {"jobId": job.jobId, "status": "error", "reason": normalized_reason}
         await self._post_callback(job.callbacks.failure, payload)
 
     async def _post_callback(self, url: str, payload: Dict[str, object]) -> None:

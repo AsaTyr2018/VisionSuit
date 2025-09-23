@@ -862,3 +862,8 @@
 - **General**: Prevented remote GPU workers from crashing when VisionSuit dispatched workflows with backend-only filesystem paths.
 - **Technical Changes**: Added an opt-in `GENERATOR_WORKFLOW_EXPOSE_LOCAL_PATH` flag, defaulted dispatch envelopes to MinIO-hosted templates, and documented the new control in the README.
 - **Data Changes**: None; configuration defaults only.
+
+## 162 – [Addition] Generator failure telemetry and admin log
+- **General**: Ensured stuck generator jobs now flip to error while giving administrators a dedicated log of GPU failure diagnostics.
+- **Technical Changes**: Taught the GPU agent to emit error status callbacks with normalized reasons, tightened backend failure handling and masking for non-admins, exposed an `/api/generator/errors` endpoint plus admin UI log with refreshed styles, and extended the API client/types to surface detailed failure entries.
+- **Data Changes**: None; leverages existing `GeneratorRequest` records.
