@@ -267,7 +267,7 @@ const buildWorkflowReference = () => {
     version: workflow.version ?? null,
     bucket: workflow.bucket ?? null,
     minioKey: workflow.minioKey ?? null,
-    localPath: workflow.localPath ?? null,
+    localPath: workflow.exposeLocalPath ? workflow.localPath ?? null : null,
     inline: workflow.inline,
   };
 

@@ -262,6 +262,7 @@ const resolveWorkflowTemplatePath = (): string | undefined => {
 };
 
 const resolvedWorkflowLocalPath = resolveWorkflowTemplatePath();
+const exposeLocalWorkflowPath = toBoolean(process.env.GENERATOR_WORKFLOW_EXPOSE_LOCAL_PATH, false);
 const parsedWorkflowParameterBindings = parseWorkflowParameterBindings(process.env.GENERATOR_WORKFLOW_PARAMETERS);
 const workflowParameterBindings =
   parsedWorkflowParameterBindings.length > 0 ? parsedWorkflowParameterBindings : defaultWorkflowParameterBindings;
@@ -337,6 +338,7 @@ export const appConfig = {
       bucket: process.env.GENERATOR_WORKFLOW_BUCKET?.trim() || 'generator-workflows',
       minioKey: process.env.GENERATOR_WORKFLOW_MINIO_KEY?.trim() || 'default.json',
       localPath: resolvedWorkflowLocalPath ?? undefined,
+      exposeLocalPath: exposeLocalWorkflowPath,
       inline: parseJsonValue(process.env.GENERATOR_WORKFLOW_INLINE, 'GENERATOR_WORKFLOW_INLINE'),
       parameters: workflowParameterBindings,
       overrides: workflowOverrides,

@@ -139,6 +139,7 @@ VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Poin
 
 - `GENERATOR_WORKFLOW_ID`, `GENERATOR_WORKFLOW_BUCKET`, and `GENERATOR_WORKFLOW_MINIO_KEY` (or `GENERATOR_WORKFLOW_LOCAL_PATH` / `GENERATOR_WORKFLOW_INLINE`) to tell the agent which JSON graph to load.
 - A starter SDXL workflow ships at [`backend/generator-workflows/default.json`](backend/generator-workflows/default.json); when no custom `GENERATOR_WORKFLOW_LOCAL_PATH` is provided the backend uploads this template to MinIO automatically.
+- `GENERATOR_WORKFLOW_EXPOSE_LOCAL_PATH` defaults to `false` so dispatch envelopes always reference the MinIO object; set it to `true` only when the GPU agent can read the same filesystem path (for example on a co-located host).
 - VisionSuit now auto-seeds the configured workflow into `GENERATOR_WORKFLOW_BUCKET` before every dispatch, so provide either a
   local template path or inline JSON when rolling out a new graph to avoid 404s on the GPU node.
 - Prompt, sampler, and resolution bindings are pre-wired for the bundled workflow—only override `GENERATOR_WORKFLOW_PARAMETERS` when publishing a custom node layout.

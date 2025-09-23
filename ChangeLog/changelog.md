@@ -857,3 +857,8 @@
 - **General**: Eliminated permission errors on the GPU agent by provisioning access during installation.
 - **Technical Changes**: Added configurable service user variables, templated the systemd unit, automatically applied ACLs to ComfyUI directories, and refreshed the GPU agent README with override guidance.
 - **Data Changes**: None; filesystem ACL updates only.
+
+## 161 – [Fix] GPU agent workflow isolation
+- **General**: Prevented remote GPU workers from crashing when VisionSuit dispatched workflows with backend-only filesystem paths.
+- **Technical Changes**: Added an opt-in `GENERATOR_WORKFLOW_EXPOSE_LOCAL_PATH` flag, defaulted dispatch envelopes to MinIO-hosted templates, and documented the new control in the README.
+- **Data Changes**: None; configuration defaults only.
