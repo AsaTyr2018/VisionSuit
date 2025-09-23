@@ -852,3 +852,8 @@
 - **General**: Eliminated missing-workflow dispatch failures by shipping a default ComfyUI graph and automatic MinIO seeding.
 - **Technical Changes**: Added `backend/generator-workflows/default.json`, taught the backend to fall back to the bundled template and default parameter bindings, updated the GPU agent to mutate legacy node layouts, refreshed environment samples, and documented the workflow behavior in the README.
 - **Data Changes**: Seeds `generator-workflows/default.json` into MinIO on demand; no database schema updates.
+
+## 160 – [Fix] GPU agent permission automation (commit TBD)
+- **General**: Eliminated permission errors on the GPU agent by provisioning access during installation.
+- **Technical Changes**: Added configurable service user variables, templated the systemd unit, automatically applied ACLs to ComfyUI directories, and refreshed the GPU agent README with override guidance.
+- **Data Changes**: None; filesystem ACL updates only.

@@ -47,12 +47,15 @@ sudo ./installer/install.sh
 The installer performs the following steps:
 
 1. Creates the service directories `/opt/visionsuit-gpu-agent` and `/etc/visionsuit-gpu-agent`.
-2. Adds the system user `visionsuit` if it does not yet exist.
+2. Adds the system user `visionsuit` (override with `AGENT_USER`/`AGENT_GROUP`) if it does not yet exist.
 3. Copies the agent sources, creates a Python virtual environment, and installs the required dependencies.
 4. Places a default configuration at `/etc/visionsuit-gpu-agent/config.yaml` (update the MinIO credentials, endpoints, and workflow defaults before starting the service).
-5. Installs the `visionsuit-gpu-agent.service` unit into systemd and enables it immediately.
+5. Grants ACL access for the agent user to the configured ComfyUI model, LoRA, output, workflow, and temp directories so downloads and uploads succeed without running the daemon as root.
+6. Installs the `visionsuit-gpu-agent.service` unit into systemd and enables it immediately.
 
 > **Tip:** Set the MinIO access key, secret key, bucket names, and ComfyUI API URL in `/etc/visionsuit-gpu-agent/config.yaml` before dispatching jobs.
+
+If you prefer to re-use an existing service account (for example the `comfyui` user created by the worker installer), export `AGENT_USER=<existing-user>` and optionally `AGENT_GROUP=<existing-group>` before running the installer. The ACL step honours these variables and will extend permissions for that account instead of creating `visionsuit`.
 
 ## Configuration
 

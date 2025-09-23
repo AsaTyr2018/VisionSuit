@@ -6,6 +6,8 @@ CONFIG_DIR="/etc/visionsuit-gpu-agent"
 SERVICE_NAME="visionsuit-gpu-agent.service"
 SYSTEMD_DIR="/etc/systemd/system"
 PYTHON_BIN="python3"
+AGENT_USER="${AGENT_USER:-visionsuit}"
+AGENT_GROUP="${AGENT_GROUP:-$AGENT_USER}"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "This installer must be run as root." >&2
@@ -41,8 +43,20 @@ fi
 install -d -o root -g root "${AGENT_ROOT}" "${CONFIG_DIR}"
 install -d -o root -g root "${AGENT_ROOT}/workflows" "${AGENT_ROOT}/tmp"
 
-if ! id visionsuit >/dev/null 2>&1; then
-  useradd --system --home "${AGENT_ROOT}" --shell /usr/sbin/nologin visionsuit
+if ! getent group "${AGENT_GROUP}" >/dev/null 2>&1; then
+  groupadd --system "${AGENT_GROUP}"
+fi
+
+if ! id "${AGENT_USER}" >/dev/null 2>&1; then
+  if [[ "${AGENT_GROUP}" != "${AGENT_USER}" ]]; then
+    useradd --system --home "${AGENT_ROOT}" --shell /usr/sbin/nologin --gid "${AGENT_GROUP}" "${AGENT_USER}"
+  else
+    useradd --system --home "${AGENT_ROOT}" --shell /usr/sbin/nologin "${AGENT_USER}"
+  fi
+else
+  if ! id -nG "${AGENT_USER}" | tr ' ' '\n' | grep -Fx "${AGENT_GROUP}" >/dev/null 2>&1; then
+    usermod -a -G "${AGENT_GROUP}" "${AGENT_USER}" >/dev/null 2>&1 || true
+  fi
 fi
 
 SOURCE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -54,7 +68,7 @@ else
   cp -r "${SOURCE_DIR}"/* "${AGENT_ROOT}/"
   rm -rf "${AGENT_ROOT}/installer"
 fi
-chown -R visionsuit:visionsuit "${AGENT_ROOT}"
+chown -R "${AGENT_USER}":"${AGENT_GROUP}" "${AGENT_ROOT}"
 
 cd "${AGENT_ROOT}" || exit 1
 
@@ -70,12 +84,77 @@ deactivate
 
 if [[ ! -f "${CONFIG_DIR}/config.yaml" ]]; then
   cp "${AGENT_ROOT}/config/config.example.yaml" "${CONFIG_DIR}/config.yaml"
-  chown visionsuit:visionsuit "${CONFIG_DIR}/config.yaml"
+  chown "${AGENT_USER}":"${AGENT_GROUP}" "${CONFIG_DIR}/config.yaml"
   chmod 640 "${CONFIG_DIR}/config.yaml"
   echo "A default configuration has been installed at ${CONFIG_DIR}/config.yaml. Please update it before starting the service."
 fi
 
-cp "${AGENT_ROOT}/config/visionsuit-gpu-agent.service" "${SYSTEMD_DIR}/${SERVICE_NAME}"
+CONFIG_SOURCE="${CONFIG_DIR}/config.yaml"
+if [[ ! -f "${CONFIG_SOURCE}" ]]; then
+  CONFIG_SOURCE="${AGENT_ROOT}/config/config.example.yaml"
+fi
+
+mapfile -t ACCESS_PATHS < <("${AGENT_ROOT}/venv/bin/python" - <<'PY' "${CONFIG_SOURCE}"
+import sys
+from pathlib import Path
+
+try:
+    import yaml  # type: ignore
+except ModuleNotFoundError:
+    raise SystemExit
+
+config_path = Path(sys.argv[1])
+if not config_path.exists():
+    raise SystemExit
+
+with config_path.open("r", encoding="utf-8") as handle:
+    data = yaml.safe_load(handle) or {}
+
+paths = set()
+for key in ("base_models", "loras", "outputs", "workflows", "temp"):
+    value = ((data.get("paths") or {}).get(key))
+    if isinstance(value, str) and value:
+        current = Path(value).resolve()
+        for candidate in [current, *current.parents]:
+            if str(candidate) == "/":
+                continue
+            paths.add(str(candidate))
+
+if paths:
+    print("\n".join(sorted(paths)))
+PY
+)
+
+if ((${#ACCESS_PATHS[@]} > 0)); then
+  if ! command -v setfacl >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+      apt-get update -y >/dev/null 2>&1 || true
+      apt-get install -y --no-install-recommends acl >/dev/null 2>&1 || true
+    fi
+  fi
+  if command -v setfacl >/dev/null 2>&1; then
+    echo "Granting ${AGENT_USER} access to ComfyUI asset directories"
+    for path in "${ACCESS_PATHS[@]}"; do
+      if [[ -d "${path}" ]]; then
+        setfacl -m "u:${AGENT_USER}:rwx" "${path}" || true
+        setfacl -d -m "u:${AGENT_USER}:rwx" "${path}" >/dev/null 2>&1 || true
+      fi
+    done
+  else
+    cat >&2 <<EOWARN
+WARNING: Unable to locate the setfacl utility. The ${AGENT_USER} user may not have
+permission to read or write the configured ComfyUI paths. Grant access manually or
+re-run the installer after installing the "acl" package.
+EOWARN
+  fi
+fi
+
+SERVICE_TEMPLATE="${AGENT_ROOT}/config/visionsuit-gpu-agent.service"
+TEMP_SERVICE_UNIT="$(mktemp)"
+sed -e "s/@AGENT_USER@/${AGENT_USER}/g" -e "s/@AGENT_GROUP@/${AGENT_GROUP}/g" "${SERVICE_TEMPLATE}" >"${TEMP_SERVICE_UNIT}"
+install -m 0644 "${TEMP_SERVICE_UNIT}" "${SYSTEMD_DIR}/${SERVICE_NAME}"
+rm -f "${TEMP_SERVICE_UNIT}"
+
 systemctl daemon-reload
 systemctl enable --now "${SERVICE_NAME}"
 
