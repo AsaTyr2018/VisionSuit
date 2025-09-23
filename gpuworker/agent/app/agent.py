@@ -30,10 +30,9 @@ class GPUAgent:
     async def try_reserve_job(self) -> bool:
         """Attempt to reserve the execution lock without waiting."""
 
-        try:
-            await asyncio.wait_for(self._lock.acquire(), timeout=0)
-        except asyncio.TimeoutError:
+        if self._lock.locked():
             return False
+        await self._lock.acquire()
         return True
 
     async def run_reserved_job(self, job: DispatchEnvelope) -> Dict[str, List[str]]:

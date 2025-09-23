@@ -822,3 +822,8 @@
 - **General**: Delivered queue maintenance controls so administrators can pause/resume GPU dispatches, retry held jobs, and manage user-level generator access while curators see live queue telemetry.
 - **Technical Changes**: Added Prisma-backed queue state and blocklist models with new REST endpoints, wired admin UI controls and generator wizard banners, refreshed API helpers and styles, and taught the GPU agent to stream ComfyUI queue activity in health probes and status callbacks.
 - **Data Changes**: Added `GeneratorQueueState` and `GeneratorQueueBlock` tables plus a migration that persists queue snapshots and per-user generation blocks.
+
+## 154 – [Fix] GPU agent reservation guard
+- **General**: Restored GPU job acceptance by preventing idle agents from rejecting new dispatches with spurious conflicts.
+- **Technical Changes**: Replaced the zero-time `asyncio.wait_for` lock acquisition with an immediate lock check and acquisition to avoid TimeoutErrors when the worker is idle.
+- **Data Changes**: None.
