@@ -953,3 +953,13 @@
 - **General**: Ensured the On-Site Generator only queues one curated base checkpoint per request and trimmed the LoRA gallery to twenty visible adapters while catalog searches still span every stored entry.
 - **Technical Changes**: Replaced the base-model checkbox matrix with a radio-driven roster that preserves defaults/reset behaviour, tightened submission guards around the lone selection, sliced the LoRA list to the first twenty matches with a refinement hint, and refreshed the README to explain the focused picker.
 - **Data Changes**: None.
+
+## 179 – [Addition] Generator artifact detail imports
+- **General**: Opened a dedicated detail page for completed generator artifacts with an embedded download control and a guided import workflow that can slot renders into an existing collection or spin up a new gallery instantly.
+- **Technical Changes**: Added `POST /api/generator/requests/:id/artifacts/:artifactId/import`, streamed artifact buffers to extract metadata and detect adult signals, created Prisma transactions that mint `ImageAsset` records plus gallery entries, refreshed the frontend history cards to open the detail view, built the new React form with gallery loading, download handling, and success feedback, and introduced supportive styling for the preview/metadata layout. Updated the README to describe the new flow.
+- **Data Changes**: None; the import API reuses existing image and gallery tables without altering the schema.
+
+## 180 – [Fix] Generator artifact import memory guard
+- **General**: Prevented artifact imports from buffering massive generator renders so detail-page onboarding stays responsive.
+- **Technical Changes**: Added a 32 MiB streaming guard that only hydrates metadata when safe, skips buffer hydration for oversized files, and preserves adult-content checks using request data fallbacks while keeping gallery creation intact.
+- **Data Changes**: None.

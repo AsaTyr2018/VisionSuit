@@ -10,6 +10,7 @@ import type {
   GeneratorQueueResponse,
   GeneratorSettings,
   GeneratorFailureLogResponse,
+  GeneratorArtifactImportResult,
   ImageAsset,
   MetaStats,
   ModerationQueue,
@@ -475,6 +476,28 @@ export const api = {
   unblockGeneratorUser,
   createGeneratorRequest,
   getGeneratorRequests,
+  importGeneratorArtifact: (
+    token: string,
+    requestId: string,
+    artifactId: string,
+    payload: {
+      mode: 'existing' | 'new';
+      galleryId?: string;
+      galleryTitle?: string;
+      galleryDescription?: string | null;
+      galleryVisibility?: 'public' | 'private';
+      title?: string;
+      note?: string;
+    },
+  ) =>
+    request<GeneratorArtifactImportResult>(
+      `/api/generator/requests/${requestId}/artifacts/${artifactId}/import`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
   cancelGeneratorRequest,
   getAdminSettings,
   updateAdminSettings,

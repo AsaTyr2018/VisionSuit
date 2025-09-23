@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 
 import { ApiError, api } from '../lib/api';
 import { generatorBaseModelBucket } from '../config';
@@ -9,6 +10,8 @@ import type {
   GeneratorBaseModelOption,
   GeneratorBaseModelSource,
   GeneratorQueueResponse,
+  GeneratorArtifactImportResult,
+  Gallery,
   ModelAsset,
   Tag,
   User,
@@ -234,11 +237,46 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [baseModelCatalog, setBaseModelCatalog] = useState<ModelAsset[]>([]);
   const [isBaseModelCatalogLoading, setIsBaseModelCatalogLoading] = useState(false);
   const [baseModelCatalogError, setBaseModelCatalogError] = useState<string | null>(null);
+  const [selectedArtifact, setSelectedArtifact] = useState<
+    | {
+        request: GeneratorRequestSummary;
+        artifact: GeneratorRequestSummary['artifacts'][number];
+      }
+    | null
+  >(null);
+  const [artifactDownloadError, setArtifactDownloadError] = useState<string | null>(null);
+  const [isDownloadingArtifact, setIsDownloadingArtifact] = useState(false);
+  const [availableGalleries, setAvailableGalleries] = useState<Gallery[]>([]);
+  const [isLoadingGalleries, setIsLoadingGalleries] = useState(false);
+  const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<'existing' | 'new'>('existing');
+  const [importTitle, setImportTitle] = useState('');
+  const [importNote, setImportNote] = useState('');
+  const [newGalleryTitle, setNewGalleryTitle] = useState('');
+  const [newGalleryDescription, setNewGalleryDescription] = useState('');
+  const [newGalleryVisibility, setNewGalleryVisibility] = useState<'public' | 'private'>('private');
+  const [isImportingArtifact, setIsImportingArtifact] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<GeneratorArtifactImportResult | null>(null);
 
   const selectedBaseModelIds = useMemo(
     () => (selectedBaseModelId ? [selectedBaseModelId] : []),
     [selectedBaseModelId],
   );
+
+  const loadAccessibleGalleries = useCallback(async () => {
+    if (!token) {
+      return [] as Gallery[];
+    }
+
+    const entries = await api.getGalleries(token);
+    if (currentUser.role === 'ADMIN') {
+      return entries;
+    }
+
+    return entries.filter((gallery) => gallery.owner.id === currentUser.id);
+  }, [token, currentUser]);
 
   const sortedHistory = useMemo(
     () =>
@@ -358,6 +396,87 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       isMounted = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!selectedArtifact) {
+      setAvailableGalleries([]);
+      setSelectedGalleryId(null);
+      setImportMode('existing');
+      setImportTitle('');
+      setImportNote('');
+      setNewGalleryTitle('');
+      setNewGalleryDescription('');
+      setNewGalleryVisibility('private');
+      setImportError(null);
+      setImportResult(null);
+      setArtifactDownloadError(null);
+      setIsDownloadingArtifact(false);
+      setGalleryError(null);
+      setIsLoadingGalleries(false);
+      return;
+    }
+
+    setImportTitle('');
+    setImportNote('');
+    setNewGalleryTitle('');
+    setNewGalleryDescription('');
+    setNewGalleryVisibility('private');
+    setImportError(null);
+    setImportResult(null);
+    setArtifactDownloadError(null);
+    setImportMode('existing');
+  }, [selectedArtifact]);
+
+  useEffect(() => {
+    if (!selectedArtifact) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoadingGalleries(true);
+    setGalleryError(null);
+
+    loadAccessibleGalleries()
+      .then((entries) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setAvailableGalleries(entries);
+        setSelectedGalleryId((previous) => {
+          if (previous && entries.some((gallery) => gallery.id === previous)) {
+            return previous;
+          }
+          return entries[0]?.id ?? null;
+        });
+        setImportMode((previous) => {
+          if (entries.length === 0) {
+            return 'new';
+          }
+          return previous;
+        });
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        console.error('Failed to load collections', error);
+        const message = error instanceof ApiError ? error.message : 'Could not load collections.';
+        setGalleryError(message);
+        setAvailableGalleries([]);
+        setSelectedGalleryId(null);
+        setImportMode('new');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoadingGalleries(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedArtifact, loadAccessibleGalleries]);
 
   const baseModelCatalogById = useMemo(() => new Map(baseModelCatalog.map((asset) => [asset.id, asset])), [baseModelCatalog]);
 
@@ -1292,6 +1411,144 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     return filename || artifact.objectKey;
   };
 
+  const handleDownloadArtifact = useCallback(async () => {
+    if (!selectedArtifact) {
+      return;
+    }
+
+    const { artifact } = selectedArtifact;
+    const artifactUrl = artifact.url ? appendAccessToken(artifact.url) : null;
+
+    if (!artifactUrl) {
+      setArtifactDownloadError('Download URL is not available for this artifact.');
+      return;
+    }
+
+    try {
+      setIsDownloadingArtifact(true);
+      setArtifactDownloadError(null);
+      const response = await fetch(artifactUrl);
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
+      const blob = await response.blob();
+      const label = renderArtifactLabel(artifact);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = label;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Failed to download generator artifact', error);
+      const message = error instanceof Error ? error.message : 'Download failed.';
+      setArtifactDownloadError(message);
+    } finally {
+      setIsDownloadingArtifact(false);
+    }
+  }, [selectedArtifact]);
+
+  const handleImportArtifact = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (!selectedArtifact) {
+        return;
+      }
+
+      setImportError(null);
+      setImportResult(null);
+
+      if (importMode === 'existing' && !selectedGalleryId) {
+        setImportError('Select a collection to import into.');
+        return;
+      }
+
+      if (importMode === 'new' && newGalleryTitle.trim().length === 0) {
+        setImportError('Provide a title for the new collection.');
+        return;
+      }
+
+      try {
+        setIsImportingArtifact(true);
+        const payload: Parameters<typeof api.importGeneratorArtifact>[3] = {
+          mode: importMode,
+          title: importTitle.trim().length > 0 ? importTitle.trim() : undefined,
+          note: importNote.trim().length > 0 ? importNote.trim() : undefined,
+        };
+
+        if (importMode === 'existing') {
+          payload.galleryId = selectedGalleryId ?? undefined;
+        } else {
+          payload.galleryTitle = newGalleryTitle.trim();
+          payload.galleryDescription = newGalleryDescription.trim().length > 0 ? newGalleryDescription.trim() : undefined;
+          payload.galleryVisibility = newGalleryVisibility;
+        }
+
+        const response = await api.importGeneratorArtifact(
+          token,
+          selectedArtifact.request.id,
+          selectedArtifact.artifact.id,
+          payload,
+        );
+        setImportResult(response);
+        setImportTitle('');
+        setImportNote('');
+        if (importMode === 'new') {
+          setNewGalleryTitle('');
+          setNewGalleryDescription('');
+          setNewGalleryVisibility('private');
+        }
+        try {
+          const refreshed = await loadAccessibleGalleries();
+          setAvailableGalleries(refreshed);
+          if (refreshed.some((gallery) => gallery.id === response.gallery.id)) {
+            setSelectedGalleryId(response.gallery.id);
+          }
+        } catch (refreshError) {
+          console.error('Failed to refresh collections after import', refreshError);
+        }
+        setImportMode('existing');
+        onNotify?.({
+          type: 'success',
+          message: `Imported render into “${response.gallery.title}”.`,
+        });
+      } catch (error) {
+        console.error('Failed to import generator artifact', error);
+        const message = error instanceof ApiError ? error.message : 'Import failed.';
+        setImportError(message);
+      } finally {
+        setIsImportingArtifact(false);
+      }
+    },
+    [
+      selectedArtifact,
+      importMode,
+      selectedGalleryId,
+      newGalleryTitle,
+      newGalleryDescription,
+      newGalleryVisibility,
+      importTitle,
+      importNote,
+      token,
+      loadAccessibleGalleries,
+      onNotify,
+    ],
+  );
+
+  const handleOpenArtifactDetail = useCallback(
+    (request: GeneratorRequestSummary, artifact: GeneratorRequestSummary['artifacts'][number]) => {
+      setSelectedArtifact({ request, artifact });
+    },
+    [],
+  );
+
+  const handleCloseArtifactDetail = useCallback(() => {
+    setSelectedArtifact(null);
+  }, []);
+
   const renderHistory = () => {
     const historyListId = 'generator-history-panel';
     const tabDescriptors: { key: HistoryFilter; label: string; meta: string; count: number }[] = [
@@ -1451,22 +1708,23 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                     {request.artifacts.map((artifact) => {
                       const label = renderArtifactLabel(artifact);
                       const artifactUrl = appendAccessToken(artifact.url);
+                      const buttonClass = artifactUrl
+                        ? 'generator-history__artifact-link'
+                        : 'generator-history__artifact-link generator-history__artifact-link--placeholder';
                       return (
                         <li key={artifact.id} className="generator-history__artifacts-item">
-                          {artifactUrl ? (
-                            <a
-                              href={artifactUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="generator-history__artifact-link"
-                            >
+                          <button
+                            type="button"
+                            className={buttonClass}
+                            onClick={() => handleOpenArtifactDetail(request, artifact)}
+                            aria-label={`Open artifact ${label}`}
+                          >
+                            {artifactUrl ? (
                               <img src={artifactUrl} alt={label} loading="lazy" />
-                            </a>
-                          ) : (
-                            <div className="generator-history__artifact-link generator-history__artifact-link--placeholder">
+                            ) : (
                               <span>{label}</span>
-                            </div>
-                          )}
+                            )}
+                          </button>
                           <span className="generator-history__artifact-name">{label}</span>
                         </li>
                       );
@@ -1483,6 +1741,260 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       </section>
     );
   };
+
+  const renderArtifactDetail = () => {
+    if (!selectedArtifact) {
+      return null;
+    }
+
+    const { request, artifact } = selectedArtifact;
+    const label = renderArtifactLabel(artifact);
+    const artifactUrl = artifact.url ? appendAccessToken(artifact.url) : null;
+    const createdAtLabel = new Date(artifact.createdAt).toLocaleString();
+    const baseModels =
+      request.baseModels.length > 0
+        ? request.baseModels.map((entry) => entry.title ?? entry.name)
+        : [request.baseModel.title];
+    const importFeedback = importResult
+      ? `Imported into “${importResult.gallery.title}”${
+          importResult.gallery.wasCreated ? ' (new collection)' : ''
+        }.`
+      : null;
+
+    return (
+      <section className="generator generator--artifact">
+        <div className="generator-artifact">
+          <header className="generator-artifact__header">
+            <button type="button" className="button" onClick={handleCloseArtifactDetail}>
+              Back to history
+            </button>
+            <div className="generator-artifact__title-block">
+              <h1>{label}</h1>
+              <p>{createdAtLabel}</p>
+            </div>
+          </header>
+          <div className="generator-artifact__layout">
+            <div className="generator-artifact__preview">
+              {artifactUrl ? (
+                <img src={artifactUrl} alt={label} />
+              ) : (
+                <div className="generator-artifact__preview-placeholder">
+                  <span>Preview unavailable</span>
+                </div>
+              )}
+            </div>
+            <aside className="generator-artifact__sidebar">
+              <div className="generator-artifact__actions">
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onClick={handleDownloadArtifact}
+                  disabled={isDownloadingArtifact}
+                >
+                  {isDownloadingArtifact ? 'Downloading…' : 'Download'}
+                </button>
+                {artifactDownloadError ? (
+                  <p className="generator-artifact__error" role="alert">
+                    {artifactDownloadError}
+                  </p>
+                ) : null}
+              </div>
+              <div className="generator-artifact__import">
+                <h2>Import into collection</h2>
+                {isLoadingGalleries ? (
+                  <p className="generator-artifact__hint">Loading collections…</p>
+                ) : null}
+                <form className="generator-artifact__form" onSubmit={handleImportArtifact}>
+                  <div className="generator-artifact__radio-group">
+                    <label className="generator-artifact__radio">
+                      <input
+                        type="radio"
+                        name="artifact-import-mode"
+                        value="existing"
+                        checked={importMode === 'existing'}
+                        onChange={() => setImportMode('existing')}
+                        disabled={isImportingArtifact || availableGalleries.length === 0}
+                      />
+                      <span>Existing collection</span>
+                    </label>
+                    <label className="generator-artifact__radio">
+                      <input
+                        type="radio"
+                        name="artifact-import-mode"
+                        value="new"
+                        checked={importMode === 'new'}
+                        onChange={() => setImportMode('new')}
+                        disabled={isImportingArtifact}
+                      />
+                      <span>Create new collection</span>
+                    </label>
+                  </div>
+                  {importMode === 'existing' ? (
+                    <div className="generator-artifact__field">
+                      <label>
+                        Collection
+                        <select
+                          value={selectedGalleryId ?? ''}
+                          onChange={(event) => setSelectedGalleryId(event.target.value || null)}
+                          disabled={isImportingArtifact || availableGalleries.length === 0}
+                        >
+                          {availableGalleries.map((gallery) => (
+                            <option key={gallery.id} value={gallery.id}>
+                              {gallery.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {availableGalleries.length === 0 ? (
+                        <p className="generator-artifact__hint">
+                          You do not have any collections yet. Create one below.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="generator-artifact__new-collection">
+                      <label>
+                        Collection title
+                        <input
+                          type="text"
+                          value={newGalleryTitle}
+                          onChange={(event) => setNewGalleryTitle(event.target.value)}
+                          disabled={isImportingArtifact}
+                          maxLength={200}
+                        />
+                      </label>
+                      <label>
+                        Description <span className="generator-artifact__muted">(optional)</span>
+                        <textarea
+                          value={newGalleryDescription}
+                          onChange={(event) => setNewGalleryDescription(event.target.value)}
+                          disabled={isImportingArtifact}
+                          rows={3}
+                          maxLength={1500}
+                        />
+                      </label>
+                      <label>
+                        Visibility
+                        <select
+                          value={newGalleryVisibility}
+                          onChange={(event) =>
+                            setNewGalleryVisibility(event.target.value === 'public' ? 'public' : 'private')
+                          }
+                          disabled={isImportingArtifact}
+                        >
+                          <option value="private">Private</option>
+                          <option value="public">Public</option>
+                        </select>
+                      </label>
+                    </div>
+                  )}
+                  <div className="generator-artifact__field">
+                    <label>
+                      Custom title <span className="generator-artifact__muted">(optional)</span>
+                      <input
+                        type="text"
+                        value={importTitle}
+                        onChange={(event) => setImportTitle(event.target.value)}
+                        disabled={isImportingArtifact}
+                        placeholder={label}
+                        maxLength={160}
+                      />
+                    </label>
+                  </div>
+                  <div className="generator-artifact__field">
+                    <label>
+                      Collection note <span className="generator-artifact__muted">(optional)</span>
+                      <input
+                        type="text"
+                        value={importNote}
+                        onChange={(event) => setImportNote(event.target.value)}
+                        disabled={isImportingArtifact}
+                        maxLength={600}
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="submit"
+                    className="button button--primary"
+                    disabled={isImportingArtifact || (importMode === 'existing' && !selectedGalleryId)}
+                  >
+                    {isImportingArtifact ? 'Importing…' : 'Import render'}
+                  </button>
+                  {importError ? (
+                    <p className="generator-artifact__error" role="alert">
+                      {importError}
+                    </p>
+                  ) : null}
+                  {importFeedback ? (
+                    <p className="generator-artifact__success" role="status">{importFeedback}</p>
+                  ) : null}
+                  {galleryError ? (
+                    <p className="generator-artifact__error" role="alert">
+                      {galleryError}
+                    </p>
+                  ) : null}
+                </form>
+              </div>
+              <div className="generator-artifact__meta">
+                <h2>Generation details</h2>
+                <dl className="generator-artifact__meta-list">
+                  <div>
+                    <dt>Base models</dt>
+                    <dd>{baseModels.join(', ')}</dd>
+                  </div>
+                  <div>
+                    <dt>Prompt</dt>
+                    <dd>{request.prompt || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Negative prompt</dt>
+                    <dd>{request.negativePrompt || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Dimensions</dt>
+                    <dd>
+                      {request.width} × {request.height}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>CFG / Steps</dt>
+                    <dd>
+                      {request.guidanceScale ? request.guidanceScale.toFixed(1) : '—'} · {request.steps ?? '—'} steps
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Seed</dt>
+                    <dd>{request.seed ?? 'Auto (random)'}</dd>
+                  </div>
+                </dl>
+                {request.loras.length > 0 ? (
+                  <ul className="generator-artifact__loras">
+                    {request.loras.map((entry) => (
+                      <li key={entry.id}>
+                        <span>{entry.title ?? entry.id}</span>
+                        <span className="generator-artifact__loras-strength">
+                          {normalizeStrength(entry.strength).toFixed(2)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="generator-artifact__hint">No LoRA adapters for this render.</p>
+                )}
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  if (selectedArtifact) {
+    const detailView = renderArtifactDetail();
+    if (detailView) {
+      return detailView;
+    }
+  }
 
   return (
     <section className="generator">
