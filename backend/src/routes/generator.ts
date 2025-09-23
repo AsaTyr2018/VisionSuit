@@ -349,21 +349,26 @@ const mapQueueActivitySnapshot = (state: GeneratorQueueState) => {
   };
 };
 
-const computeQueueStats = async () => {
+const computeQueueStats = async (where?: Prisma.GeneratorRequestWhereInput) => {
   const grouped = await prisma.generatorRequest.groupBy({
     by: ['status'],
     _count: { _all: true },
+    ...(where ? { where } : {}),
   });
 
   const counts = grouped.reduce<Record<string, number>>((accumulator, entry) => {
-    accumulator[entry.status] = entry._count._all;
+    const total = typeof entry._count === 'object' && entry._count ? entry._count._all ?? 0 : 0;
+    accumulator[entry.status] = total;
     return accumulator;
   }, {});
 
   const getCount = (...statuses: string[]) =>
     statuses.reduce((total, status) => total + (counts[status] ?? 0), 0);
 
-  const total = grouped.reduce((sum, entry) => sum + entry._count._all, 0);
+  const total = grouped.reduce((sum, entry) => {
+    const aggregate = typeof entry._count === 'object' && entry._count ? entry._count._all ?? 0 : 0;
+    return sum + aggregate;
+  }, 0);
 
   return {
     total,
@@ -377,6 +382,165 @@ const computeQueueStats = async () => {
   };
 };
 
+const generatorActiveStatuses = new Set(['queued', 'running', 'uploading']);
+const generatorQueueLockTtlMs = 30_000;
+
+const releaseQueueLock = async (
+  stateId: number,
+  extra?: Prisma.GeneratorQueueStateUpdateInput,
+) => {
+  try {
+    await prisma.generatorQueueState.update({
+      where: { id: stateId },
+      data: { lockedAt: null, ...(extra ?? {}) },
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to release generator queue lock:', error);
+    }
+  }
+};
+
+function scheduleGeneratorQueueProcessing(delayMs = 0): void {
+  setTimeout(() => {
+    void processGeneratorQueue().catch((error) => {
+      if (process.env.NODE_ENV === 'development') {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to process generator queue:', error);
+      }
+    });
+  }, delayMs);
+}
+
+const acquireQueueLock = async (stateId: number) => {
+  const now = new Date();
+  const expiry = new Date(now.getTime() - generatorQueueLockTtlMs);
+  const result = await prisma.generatorQueueState.updateMany({
+    where: {
+      id: stateId,
+      OR: [{ lockedAt: null }, { lockedAt: { lt: expiry } }],
+    },
+    data: { lockedAt: now },
+  });
+
+  return result.count > 0;
+};
+
+const processGeneratorQueue = async (): Promise<void> => {
+  const state = await ensureQueueState();
+  if (state.isPaused || state.declineNewRequests) {
+    return;
+  }
+
+  const lockAcquired = await acquireQueueLock(state.id);
+  if (!lockAcquired) {
+    return;
+  }
+
+  let candidate: HydratedGeneratorRequest | null = null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const queueState = await tx.generatorQueueState.findUnique({ where: { id: state.id } });
+      if (!queueState || queueState.isPaused || queueState.declineNewRequests) {
+        return;
+      }
+
+      if (queueState.activeRequestId) {
+        const activeRequest = await tx.generatorRequest.findUnique({
+          where: { id: queueState.activeRequestId },
+          select: { id: true, status: true },
+        });
+
+        if (activeRequest && generatorActiveStatuses.has(activeRequest.status)) {
+          candidate = null;
+          return;
+        }
+
+        await tx.generatorQueueState.update({
+          where: { id: queueState.id },
+          data: { activeRequestId: null },
+        });
+      }
+
+      const next = await tx.generatorRequest.findFirst({
+        where: { status: 'pending' },
+        orderBy: { createdAt: 'asc' },
+        include: generatorRequestInclude,
+      });
+
+      if (!next) {
+        candidate = null;
+        return;
+      }
+
+      await tx.generatorQueueState.update({
+        where: { id: queueState.id },
+        data: { activeRequestId: next.id },
+      });
+
+      candidate = next as HydratedGeneratorRequest;
+    });
+  } catch (error) {
+    await releaseQueueLock(state.id);
+    throw error;
+  }
+
+  if (!candidate) {
+    await releaseQueueLock(state.id);
+    return;
+  }
+
+  const job = candidate as HydratedGeneratorRequest;
+
+  const dispatchResult = await dispatchGeneratorRequest(job);
+
+  if (dispatchResult.status === 'queued') {
+    await prisma.generatorRequest.update({
+      where: { id: job.id },
+      data: { status: 'queued', errorReason: null },
+    });
+
+    await releaseQueueLock(state.id);
+    return;
+  }
+
+  const isBusy = dispatchResult.status === 'busy';
+  const message = dispatchResult.message ?? 'GPU agent rejected the request.';
+  const sanitizedMessage = normalizeGeneratorErrorReason(message) ?? message;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.generatorRequest.update({
+      where: { id: job.id },
+      data: isBusy ? { status: 'pending' } : { status: 'error', errorReason: sanitizedMessage },
+    });
+
+    await tx.generatorQueueState.update({
+      where: { id: state.id },
+      data: { activeRequestId: null, lockedAt: null },
+    });
+  });
+
+  if (isBusy) {
+    scheduleGeneratorQueueProcessing(2000);
+    return;
+  }
+
+  scheduleGeneratorQueueProcessing();
+};
+
+const releaseActiveRequest = async (requestId: string) => {
+  const result = await prisma.generatorQueueState.updateMany({
+    where: { activeRequestId: requestId },
+    data: { activeRequestId: null },
+  });
+
+  if (result.count > 0) {
+    scheduleGeneratorQueueProcessing();
+  }
+};
+
 type RedispatchSummary = {
   attempted: number;
   queued: number;
@@ -386,63 +550,50 @@ type RedispatchSummary = {
 
 const redispatchPendingRequests = async (): Promise<RedispatchSummary> => {
   const state = await ensureQueueState();
-  if (state.isPaused) {
+  if (state.isPaused || state.declineNewRequests) {
     return { attempted: 0, queued: 0, busy: 0, errors: [] };
   }
 
   const candidates = await prisma.generatorRequest.findMany({
     where: { status: { in: ['pending', 'held', 'error', 'failed'] } },
-    include: generatorRequestInclude,
+    select: { id: true, status: true },
     orderBy: { createdAt: 'asc' },
   });
 
-  const summary: RedispatchSummary = { attempted: candidates.length, queued: 0, busy: 0, errors: [] };
-
-  for (const candidate of candidates) {
-    await prisma.generatorRequest.update({
-      where: { id: candidate.id },
-      data: { status: 'pending', errorReason: null },
-    });
-
-    try {
-      const result = await dispatchGeneratorRequest(candidate as HydratedGeneratorRequest);
-
-      if (result.status === 'queued') {
-        summary.queued += 1;
-        await prisma.generatorRequest.update({
-          where: { id: candidate.id },
-          data: { status: 'queued', errorReason: null },
-        });
-        continue;
-      }
-
-      if (result.status === 'busy') {
-        summary.busy += 1;
-        await prisma.generatorRequest.update({
-          where: { id: candidate.id },
-          data: { status: 'pending' },
-        });
-        continue;
-      }
-
-      const message = result.message ?? 'GPU agent rejected the request.';
-      const sanitizedMessage = normalizeGeneratorErrorReason(message) ?? message;
-      summary.errors.push({ id: candidate.id, message: sanitizedMessage });
-      await prisma.generatorRequest.update({
-        where: { id: candidate.id },
-        data: { status: 'error', errorReason: sanitizedMessage },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to dispatch generator request.';
-      const sanitizedMessage = normalizeGeneratorErrorReason(message) ?? message;
-      summary.errors.push({ id: candidate.id, message: sanitizedMessage });
-      await prisma.generatorRequest.update({
-        where: { id: candidate.id },
-        data: { status: 'error', errorReason: sanitizedMessage },
-      });
-    }
+  if (candidates.length === 0) {
+    return { attempted: 0, queued: 0, busy: 0, errors: [] };
   }
 
+  await prisma.$transaction(
+    candidates.map((candidate) =>
+      prisma.generatorRequest.update({
+        where: { id: candidate.id },
+        data: {
+          status: 'pending',
+          ...(candidate.status === 'error' || candidate.status === 'failed'
+            ? { errorReason: null }
+            : {}),
+        },
+      }),
+    ),
+  );
+
+  const summary: RedispatchSummary = { attempted: candidates.length, queued: 0, busy: 0, errors: [] };
+
+  try {
+    await processGeneratorQueue();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to process generator queue.';
+    const sanitizedMessage = normalizeGeneratorErrorReason(message) ?? message;
+    summary.errors.push({ id: 'queue', message: sanitizedMessage });
+    return summary;
+  }
+
+  const queuedCount = await prisma.generatorRequest.count({
+    where: { id: { in: candidates.map((entry) => entry.id) }, status: 'queued' },
+  });
+
+  summary.queued = queuedCount;
   return summary;
 };
 
@@ -463,9 +614,10 @@ const mapQueueBlock = (
 });
 
 const buildQueueResponse = async (viewer: { id: string; role: string }) => {
-  const [state, stats, viewerBlock] = await Promise.all([
+  const [state, globalStats, viewerStats, viewerBlock] = await Promise.all([
     ensureQueueState(),
     computeQueueStats(),
+    computeQueueStats({ userId: viewer.id }),
     prisma.generatorQueueBlock.findUnique({ where: { userId: viewer.id } }),
   ]);
 
@@ -481,7 +633,8 @@ const buildQueueResponse = async (viewer: { id: string; role: string }) => {
 
   return {
     state: mapQueueStateRecord(state),
-    stats,
+    stats: viewerStats,
+    ...(viewer.role === 'ADMIN' ? { globalStats } : {}),
     activity: mapQueueActivitySnapshot(state),
     viewer: {
       isBlocked: Boolean(viewerBlock),
@@ -1195,10 +1348,23 @@ generatorRouter.post('/queue/actions/retry', requireAuth, requireAdmin, async (r
 generatorRouter.post('/queue/actions/clear', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const statusesToClear = ['pending', 'queued', 'held', 'error'];
+    const clearing = await prisma.generatorRequest.findMany({
+      where: { status: { in: statusesToClear } },
+      select: { id: true },
+    });
+
     const result = await prisma.generatorRequest.updateMany({
       where: { status: { in: statusesToClear } },
       data: { status: 'cancelled', errorReason: 'Cleared by administrator.' },
     });
+
+    if (clearing.length > 0) {
+      await Promise.all(clearing.map((entry) => releaseActiveRequest(entry.id)));
+    }
+
+    if (result.count > 0) {
+      scheduleGeneratorQueueProcessing();
+    }
 
     const viewer = req.user!;
     const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
@@ -1423,6 +1589,7 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
         width: parsed.data.width,
         height: parsed.data.height,
         loraSelections: loraDetails,
+        status: 'pending',
       },
       include: generatorRequestInclude,
     });
@@ -1448,38 +1615,16 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
       });
     } else {
       try {
-        const dispatchResult = await dispatchGeneratorRequest(created as HydratedGeneratorRequest);
-
-        if (dispatchResult.status === 'queued') {
-          await prisma.generatorRequest.update({
-            where: { id: created.id },
-            data: { status: 'queued' },
-          });
-        } else if (dispatchResult.status === 'busy') {
-          await prisma.generatorRequest.update({
-            where: { id: created.id },
-            data: { status: 'pending' },
-          });
-          if (dispatchResult.message) {
-            // eslint-disable-next-line no-console
-            console.warn(`Generator agent busy: ${dispatchResult.message}`);
-          }
-        } else if (dispatchResult.status === 'error') {
-          await prisma.generatorRequest.update({
-            where: { id: created.id },
-            data: { status: 'error', errorReason: dispatchResult.message ?? null },
-          });
-          if (dispatchResult.message) {
-            // eslint-disable-next-line no-console
-            console.error(`Generator agent rejected request ${created.id}: ${dispatchResult.message}`);
-          }
-        }
+        await processGeneratorQueue();
       } catch (dispatchError) {
         // eslint-disable-next-line no-console
-        console.error('Failed to dispatch generator request', dispatchError);
+        console.error('Failed to enqueue generator request', dispatchError);
         await prisma.generatorRequest.update({
           where: { id: created.id },
-          data: { status: 'error', errorReason: dispatchError instanceof Error ? dispatchError.message : null },
+          data: {
+            status: 'error',
+            errorReason: dispatchError instanceof Error ? dispatchError.message : 'Queue dispatch failed.',
+          },
         });
       }
     }
@@ -1559,6 +1704,8 @@ generatorRouter.post('/requests/:id/actions/cancel', requireAuth, requireAdmin, 
       return;
     }
 
+    await releaseActiveRequest(requestId);
+
     res.json({
       request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
     });
@@ -1624,6 +1771,7 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
     }
 
     if (isFinalGeneratorStatus(existing.status)) {
+      await releaseActiveRequest(existing.id);
       res.json({
         request: mapGeneratorRequest(existing as HydratedGeneratorRequest, { includeErrorDetails: true }),
       });
@@ -1692,6 +1840,7 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
     }
 
     if (isFinalGeneratorStatus(existing.status)) {
+      await releaseActiveRequest(existing.id);
       res.json({
         request: mapGeneratorRequest(existing as HydratedGeneratorRequest, { includeErrorDetails: true }),
       });
@@ -1740,6 +1889,8 @@ generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next
       where: { id: jobId },
       include: generatorRequestInclude,
     });
+
+    await releaseActiveRequest(jobId);
 
     res.json({
       request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),
@@ -1831,6 +1982,8 @@ generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) =
       data: { status: failureStatus, errorReason: normalizedReason },
       include: generatorRequestInclude,
     });
+
+    await releaseActiveRequest(jobId);
 
     res.json({
       request: mapGeneratorRequest(updated as HydratedGeneratorRequest, { includeErrorDetails: true }),

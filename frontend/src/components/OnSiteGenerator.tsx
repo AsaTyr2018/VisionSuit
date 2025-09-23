@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ApiError, api } from '../lib/api';
 import { generatorBaseModelBucket } from '../config';
-import { resolveCachedStorageUrl } from '../lib/storage';
+import { appendAccessToken, resolveCachedStorageUrl } from '../lib/storage';
 import type {
   GeneratorRequestLoRASelection,
   GeneratorRequestSummary,
@@ -1350,16 +1350,17 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                   <ul className="generator-history__artifacts-list">
                     {request.artifacts.map((artifact) => {
                       const label = renderArtifactLabel(artifact);
+                      const artifactUrl = appendAccessToken(artifact.url);
                       return (
                         <li key={artifact.id} className="generator-history__artifacts-item">
-                          {artifact.url ? (
+                          {artifactUrl ? (
                             <a
-                              href={artifact.url}
+                              href={artifactUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="generator-history__artifact-link"
                             >
-                              <img src={artifact.url} alt={label} loading="lazy" />
+                              <img src={artifactUrl} alt={label} loading="lazy" />
                             </a>
                           ) : (
                             <div className="generator-history__artifact-link generator-history__artifact-link--placeholder">
