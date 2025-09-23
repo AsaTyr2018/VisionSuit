@@ -903,3 +903,8 @@
 - **General**: Restored generator completion updates when the GPU agent runs on a separate host by letting it retarget VisionSuit callbacks away from loopback addresses.
 - **Technical Changes**: Hardened callback base URL derivation to skip empty public-domain hints, always bundled callback paths in dispatch envelopes, taught the agent to rewrite absolute URLs against `callbacks.base_url`, and refreshed the README guidance to highlight the override.
 - **Data Changes**: None; configuration behavior only.
+
+## 169 – [Addition] GPU agent asset validation and cancellation
+- **General**: Hardened GPU job execution with strict ComfyUI asset name validation, friendlier LoRA/model naming, resumable callbacks, and a cooperative cancellation path that reports partial uploads without aborting the job.
+- **Technical Changes**: Introduced pretty-name symlink management for checkpoints and LoRAs with metadata fallbacks, invalidated and refreshed ComfyUI asset caches before submission, enforced whitelist validation via `/object_info`, added retrying callbacks and cancellation tokens, derived dynamic timeouts, captured node errors in failure callbacks, exposed `POST /jobs/cancel`, updated upload metadata plus deterministic key naming, and refreshed the sample configuration and README to document the new knobs.
+- **Data Changes**: Generator outputs now land under `comfy-outputs/{job_id}/{index}_{seed}.{ext}` with expanded object metadata (model, LoRAs, prompt, seed, steps).

@@ -58,6 +58,15 @@ class MinioManager:
             except Exception as exc:  # noqa: BLE001
                 raise FileNotFoundError(f"Object missing in MinIO: s3://{bucket}/{key}") from exc
 
+    def get_object_metadata(self, bucket: str, key: str) -> dict[str, str]:
+        try:
+            response = self.client.head_object(Bucket=bucket, Key=key)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.debug("Failed to retrieve metadata for s3://%s/%s: %s", bucket, key, exc)
+            return {}
+        metadata = response.get("Metadata") or {}
+        return {str(k).lower(): str(v) for k, v in metadata.items() if k}
+
 
 def compute_sha256(path: Path) -> str:
     digest = hashlib.sha256()

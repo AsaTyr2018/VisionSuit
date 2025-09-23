@@ -24,6 +24,10 @@ class ComfyUIConfig:
     timeout_seconds: int = 900
     poll_interval_seconds: float = 2.0
     client_id: str = "visionsuit-gpu-agent"
+    object_info_cache_seconds: float = 45.0
+    model_refresh_delay_seconds: float = 0.75
+    per_step_timeout_seconds: float = 6.0
+    img2img_timeout_multiplier: float = 1.5
 
 
 @dataclass
@@ -46,6 +50,8 @@ class CallbackConfig:
     base_url: Optional[str] = None
     verify_tls: bool = True
     timeout_seconds: int = 10
+    max_retries: int = 3
+    retry_backoff_seconds: float = 1.0
 
 
 @dataclass
@@ -149,6 +155,10 @@ def load_config(path: str | os.PathLike[str]) -> AgentConfig:
         timeout_seconds=int(comfy_section.get("timeout_seconds", 900)),
         poll_interval_seconds=float(comfy_section.get("poll_interval_seconds", 2.0)),
         client_id=str(comfy_section.get("client_id", "visionsuit-gpu-agent")),
+        object_info_cache_seconds=float(comfy_section.get("object_info_cache_seconds", 45.0)),
+        model_refresh_delay_seconds=float(comfy_section.get("model_refresh_delay_seconds", 0.75)),
+        per_step_timeout_seconds=float(comfy_section.get("per_step_timeout_seconds", 6.0)),
+        img2img_timeout_multiplier=float(comfy_section.get("img2img_timeout_multiplier", 1.5)),
     )
 
     paths_cfg = PathConfig(
@@ -168,6 +178,8 @@ def load_config(path: str | os.PathLike[str]) -> AgentConfig:
         base_url=_normalize_optional_url(payload.get("callbacks", {}).get("base_url")),
         verify_tls=bool(payload.get("callbacks", {}).get("verify_tls", True)),
         timeout_seconds=int(payload.get("callbacks", {}).get("timeout_seconds", 10)),
+        max_retries=int(payload.get("callbacks", {}).get("max_retries", 3)),
+        retry_backoff_seconds=float(payload.get("callbacks", {}).get("retry_backoff_seconds", 1.0)),
     )
 
     persistent_model_keys = list(payload.get("persistent_model_keys", []) or [])

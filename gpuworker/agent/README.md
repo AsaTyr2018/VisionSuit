@@ -6,9 +6,11 @@ The VisionSuit GPU Agent turns a ComfyUI render node into a managed worker that 
 
 - **Single-job enforcement** – The agent processes exactly one job at a time and immediately rejects additional submissions with HTTP 409 so VisionSIOt can preserve the queue discipline.
 - **Workflow templating** – Supports inline workflows, on-disk templates, or MinIO-hosted JSON and applies node overrides or parameter bindings defined in the dispatch envelope.
-- **Managed asset lifecycle** – Caches base checkpoints permanently, downloads job-scoped LoRAs or auxiliary models on demand, saves them using the filenames provided by the dispatch payload even when MinIO stores UUID object keys, and removes ephemeral assets once the render completes.
+- **Managed asset lifecycle** – Caches base checkpoints permanently, downloads job-scoped LoRAs or auxiliary models on demand, normalises filenames to the "pretty" names supplied in the dispatch or MinIO metadata, and removes ephemeral assets once the render completes. The agent maintains cache copies under `cache/` and exposes deterministic symlinks (`PrettyName__abcd.safetensors`) in the ComfyUI directories so dropdowns pick up fresh assets immediately.
 - **MinIO integration** – Pulls missing models from MinIO before execution and pushes rendered files back to user-specific prefixes with prompt metadata embedded as object metadata.
 - **Callback hooks** – Emits optional status, completion, and failure callbacks to VisionSIOt or VisionSuit so UIs can surface progress.
+- **Strict ComfyUI validation** – Resolves every checkpoint, VAE, CLIP, and LoRA name against the ComfyUI `/object_info` registry (with a short-lived cache) before submission. Invalid names produce a validation failure and skip the `/prompt` call entirely.
+- **Cooperative cancellation** – Dispatchers can call `POST /jobs/cancel` with the job's `cancelToken` to request an early exit. The poll loop terminates gracefully, frees the GPU slot, and emits a `cancelled` status/failure callback pair.
 
 ## Directory layout
 
@@ -73,11 +75,11 @@ The script performs a `git pull` from the directory that originally cloned Visio
 `config/config.example.yaml` documents every available option:
 
 - `minio.*` – Connection details for the MinIO/S3 endpoint that holds base models, LoRAs, and output buckets.
-- `comfyui.*` – REST endpoint configuration (either a direct `api_url` or discrete `scheme`/`host`/`port` values), timeout, polling cadence, and client identifier for ComfyUI.
+- `comfyui.*` – REST endpoint configuration (either a direct `api_url` or discrete `scheme`/`host`/`port` values), timeout, polling cadence, client identifier, asset refresh delay, and the per-step/img2img timeout tunables.
 - `paths.*` – Local filesystem paths for ComfyUI models, outputs, workflow cache, and temporary files.
 - `persistent_model_keys` – Keys that should never be deleted after download (typically base checkpoints).
 - `cleanup.*` – Toggle removal of temporary LoRAs or ad-hoc models after each job.
-- `callbacks.*` – Optional `base_url` override plus TLS verification and timeout for VisionSIOt callback URLs.
+- `callbacks.*` – Optional `base_url` override plus TLS verification, timeout, and retry policy for VisionSIOt callback URLs.
 - `workflow_defaults` – Additional values injected into the workflow parameter context when building prompts.
 
 Set `callbacks.base_url` when the backend publishes relative callback paths or runs behind a reverse proxy so the agent rewrites those hooks to an externally reachable host instead of the default `http://127.0.0.1`. The override now applies even when VisionSuit supplies loopback-only absolute URLs, ensuring completion and failure events land on the control plane regardless of how the backend reports its callback endpoints.
@@ -89,6 +91,7 @@ The agent exposes lightweight HTTP endpoints:
 - `GET /` – Health summary for platform probes. Returns `{ "status": "ok", "service": "VisionSuit GPU Agent", "busy": false }` when idle.
 - `GET /healthz` – Returns `{ "status": "ok", "busy": false }` when idle. `busy` becomes `true` while a job is running.
 - `POST /jobs` – Accepts a JSON payload that follows the dispatch envelope designed for VisionSIOt. When the agent is idle the endpoint returns HTTP 202 and starts the background job. If the agent is already running a job the endpoint returns HTTP 409.
+- `POST /jobs/cancel` – Accepts `{ "token": "<cancelToken>" }` to cancel the in-flight job associated with that token. Returns HTTP 404 when no running job matches.
 
 ### Dispatch envelope example
 
@@ -143,7 +146,7 @@ The agent exposes lightweight HTTP endpoints:
 
 - `workflowOverrides` can be supplied to patch nodes directly if a value is not tied to a named parameter.
 - Provide `workflow.bucket` when the workflow JSON lives in a different MinIO bucket than the base model entry.
-- After completion the agent uploads the generated files to `s3://generator-outputs/generated/<user>/<job>` and, if configured, sends the callback payload `{ "jobId": "...", "status": "completed", "artifacts": ["generated/..."] }`.
+- After completion the agent uploads the generated files to `s3://generator-outputs/comfy-outputs/<job>/<index>_<seed>.<ext>` and, if configured, sends the callback payload `{ "jobId": "...", "status": "completed", "artifacts": ["comfy-outputs/..."] }`. Missing files are logged and reported as warnings in the completion callback without aborting the job.
 
 ## Running manually
 

@@ -14,6 +14,10 @@ comfyui:
   timeout_seconds: 900
   poll_interval_seconds: 2
   client_id: "visionsuit-gpu-agent"
+  object_info_cache_seconds: 45
+  model_refresh_delay_seconds: 0.75
+  per_step_timeout_seconds: 6
+  img2img_timeout_multiplier: 1.5
 paths:
   base_models: "/opt/comfyui/models/checkpoints"
   loras: "/opt/comfyui/models/loras"
@@ -30,6 +34,8 @@ callbacks:
   # base_url: "https://visionsuit.example.com"
   verify_tls: true
   timeout_seconds: 10
+  max_retries: 3
+  retry_backoff_seconds: 1
 workflow_defaults:
   sampler: "dpmpp_2m_sde_gpu"
   scheduler: "karras"
