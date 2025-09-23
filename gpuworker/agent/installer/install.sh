@@ -17,6 +17,27 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   exit 1
 fi
 
+if command -v systemctl >/dev/null 2>&1; then
+  if systemctl list-unit-files | grep -E "^${SERVICE_NAME}[[:space:]]" >/dev/null 2>&1; then
+    echo "Stopping existing ${SERVICE_NAME} instance (if running)"
+    if systemctl is-active --quiet "${SERVICE_NAME}"; then
+      systemctl stop "${SERVICE_NAME}"
+    fi
+    echo "Disabling ${SERVICE_NAME}"
+    systemctl disable "${SERVICE_NAME}" >/dev/null 2>&1 || true
+  fi
+fi
+
+if [[ -f "${SYSTEMD_DIR}/${SERVICE_NAME}" ]]; then
+  echo "Removing existing systemd unit ${SYSTEMD_DIR}/${SERVICE_NAME}"
+  rm -f "${SYSTEMD_DIR}/${SERVICE_NAME}"
+fi
+
+if [[ -d "${AGENT_ROOT}" ]]; then
+  echo "Removing existing agent directory ${AGENT_ROOT}"
+  rm -rf "${AGENT_ROOT}"
+fi
+
 install -d -o root -g root "${AGENT_ROOT}" "${CONFIG_DIR}"
 install -d -o root -g root "${AGENT_ROOT}/workflows" "${AGENT_ROOT}/tmp"
 

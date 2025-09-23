@@ -1260,6 +1260,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         {history.map((request) => {
           const createdAt = new Date(request.createdAt);
           const normalizedStatus = request.status.toLowerCase();
+          const isFailureStatus = ['failed', 'error', 'cancelled'].includes(normalizedStatus);
+          const failureLabel = normalizedStatus === 'cancelled' ? 'Cleared' : 'Failure';
           const historyBaseModels =
             request.baseModels.length > 0
               ? request.baseModels
@@ -1334,9 +1336,11 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               ) : (
                 <p className="generator-history__loras-empty">No LoRA adapters</p>
               )}
-              {['failed', 'error'].includes(normalizedStatus) ? (
+              {isFailureStatus ? (
                 <p className="generator-history__failure">
-                  {request.errorReason ? `Failure: ${request.errorReason}` : 'Failure: reason not provided.'}
+                  {request.errorReason
+                    ? `${failureLabel}: ${request.errorReason}`
+                    : `${failureLabel}: reason not provided.`}
                 </p>
               ) : null}
               {request.artifacts.length > 0 ? (

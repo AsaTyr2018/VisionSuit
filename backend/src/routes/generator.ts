@@ -333,7 +333,7 @@ const computeQueueStats = async () => {
     held: counts['held'] ?? 0,
     running: getCount('running', 'uploading'),
     completed: counts['completed'] ?? 0,
-    failed: getCount('failed', 'error'),
+    failed: getCount('failed', 'error', 'cancelled'),
     statuses: counts,
   };
 };
@@ -869,6 +869,22 @@ generatorRouter.post('/queue/actions/retry', requireAuth, requireAdmin, async (r
     const viewer = req.user!;
     const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
     res.json({ ...response, redispatch: summary });
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/queue/actions/clear', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const statusesToClear = ['pending', 'queued', 'held', 'error'];
+    const result = await prisma.generatorRequest.updateMany({
+      where: { status: { in: statusesToClear } },
+      data: { status: 'cancelled', errorReason: 'Cleared by administrator.' },
+    });
+
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.json({ ...response, cleared: { removed: result.count } });
   } catch (error) {
     next(error);
   }

@@ -676,14 +676,18 @@ export const AdminPanel = ({
   }, [token, setStatus]);
 
   const runQueueAction = useCallback(
-    async (action: () => Promise<GeneratorQueueResponse>, successMessage: string) => {
+    async (
+      action: () => Promise<GeneratorQueueResponse>,
+      successMessage: string | ((response: GeneratorQueueResponse) => string),
+    ) => {
       setIsQueueActionRunning(true);
       try {
         const response = await action();
         setGeneratorQueue(response);
         setQueueRedispatch(response.redispatch ?? null);
         setQueueError(null);
-        setStatus({ type: 'success', message: successMessage });
+        const message = typeof successMessage === 'function' ? successMessage(response) : successMessage;
+        setStatus({ type: 'success', message });
         return response;
       } catch (error) {
         const message = error instanceof ApiError ? error.message : 'Queue operation failed.';
@@ -707,6 +711,19 @@ export const AdminPanel = ({
 
   const handleRetryQueue = useCallback(() => {
     void runQueueAction(() => api.retryGeneratorQueue(token), 'Retry dispatched for pending jobs.');
+  }, [runQueueAction, token]);
+
+  const handleClearQueue = useCallback(() => {
+    void runQueueAction(
+      () => api.clearGeneratorQueue(token),
+      (response) => {
+        const removed = response.cleared?.removed ?? 0;
+        if (removed === 0) {
+          return 'Queue already empty. No jobs required clearing.';
+        }
+        return removed === 1 ? 'Cleared 1 job from the queue.' : `Cleared ${removed} jobs from the queue.`;
+      },
+    );
   }, [runQueueAction, token]);
 
   const handleRefreshQueue = useCallback(() => {
@@ -3718,6 +3735,14 @@ export const AdminPanel = ({
                 disabled={queueBusy || isQueuePaused}
               >
                 Retry pending jobs
+              </button>
+              <button
+                type="button"
+                className="button button--danger"
+                onClick={handleClearQueue}
+                disabled={queueBusy}
+              >
+                Clear active queue
               </button>
               <button
                 type="button"

@@ -131,6 +131,8 @@ A remote ComfyUI render node can be prepared independently of the VisionSuit sta
 
 Alongside the ComfyUI runtime you can deploy the VisionSuit GPU agent to broker jobs from VisionSIOt. The agent lives in [`gpuworker/agent`](gpuworker/agent/README.md) and installs via `sudo ./gpuworker/agent/installer/install.sh`, which copies the FastAPI service to `/opt/visionsuit-gpu-agent`, provisions a Python virtual environment, and enables the `visionsuit-gpu-agent` systemd unit. Configure `/etc/visionsuit-gpu-agent/config.yaml` with MinIO credentials, bucket names, workflow defaults, and the ComfyUI API URL. VisionSIOt submits dispatch envelopes to `POST /jobs`; the agent enforces single-job execution, hydrates workflows, syncs missing models from MinIO, invokes ComfyUI, uploads outputs to the requested bucket, and notifies VisionSuit through the optional status/completion/failure callbacks.
 
+Re-running the installer now stops and disables any existing `visionsuit-gpu-agent` service, removes the previous systemd unit, and recreates `/opt/visionsuit-gpu-agent` from scratch before staging the updated release so upgrades land on a clean slate.
+
 #### VisionSuit ↔ GPU agent handshake
 
 VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Point `GENERATOR_NODE_URL` in `backend/.env` at the agent root (for example `http://gpu-node:8081`)—the service advertises `GET /` and `GET /healthz` so health checks stay green. Provide the workflow location and parameter bindings via:

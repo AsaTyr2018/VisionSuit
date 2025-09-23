@@ -369,6 +369,15 @@ const retryGeneratorQueue = (token: string) =>
     token,
   );
 
+const clearGeneratorQueue = (token: string) =>
+  request<GeneratorQueueResponse>(
+    '/api/generator/queue/actions/clear',
+    {
+      method: 'POST',
+    },
+    token,
+  );
+
 const blockGeneratorUser = (token: string, payload: { userId: string; reason?: string }) =>
   request<GeneratorQueueResponse>(
     '/api/generator/queue/blocks',
@@ -426,6 +435,7 @@ export const api = {
   pauseGeneratorQueue,
   resumeGeneratorQueue,
   retryGeneratorQueue,
+  clearGeneratorQueue,
   blockGeneratorUser,
   unblockGeneratorUser,
   createGeneratorRequest,
