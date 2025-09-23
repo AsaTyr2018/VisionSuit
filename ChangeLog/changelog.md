@@ -882,3 +882,9 @@
 - **General**: Ensured GPU-side failure reports can reach VisionSuit when the backend exposes callback endpoints on a non-local host.
 - **Technical Changes**: Added an optional `callbacks.base_url` setting, taught the agent to rewrite relative callback targets against it, updated the sample configuration, and expanded both READMEs with deployment guidance.
 - **Data Changes**: None; configuration schema extension only.
+
+
+## 166 – [Fix] ComfyUI workflow format diagnostics
+- **General**: Hardened GPU agent workflow submissions with upfront validation and clearer ComfyUI error messages so 400 responses highlight misformatted prompts instead of failing silently.
+- **Technical Changes**: Added API-format checks that detect legacy editor exports, enforced required node fields, and surfaced ComfyUI response bodies when `/prompt` rejects a payload. Documented the export requirements in the README for operators.
+- **Data Changes**: None; validation affects in-flight dispatch payloads only.

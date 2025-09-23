@@ -111,5 +111,38 @@ def build_workflow_payload(
     workflow = loader.load(job)
     apply_mutations(workflow, job.workflowOverrides)
     workflow = attach_parameters(workflow, job, resolved_parameters)
+    _validate_api_format(workflow)
     return workflow
+
+
+def _validate_api_format(workflow: Dict[str, Any]) -> None:
+    if not isinstance(workflow, dict):
+        raise ValueError("ComfyUI workflow payload must be a JSON object")
+
+    if "nodes" in workflow and isinstance(workflow["nodes"], list):
+        raise ValueError(
+            "ComfyUI workflow payload still uses the editor export layout. Export the graph via 'Save (API Format)' before dispatching it to the GPU agent."
+        )
+
+    candidate_nodes = {
+        key: value
+        for key, value in workflow.items()
+        if isinstance(key, str) and key.isdigit() and isinstance(value, dict)
+    }
+
+    if not candidate_nodes:
+        raise ValueError(
+            "ComfyUI workflow payload does not expose any node entries. Ensure the JSON was exported via 'Save (API Format)'."
+        )
+
+    missing_fields = [
+        key for key, node in candidate_nodes.items() if "class_type" not in node or "inputs" not in node
+    ]
+
+    if missing_fields:
+        joined = ", ".join(sorted(missing_fields))
+        raise ValueError(
+            "ComfyUI workflow nodes %s are missing 'class_type' or 'inputs' fields expected in the API format export."
+            % joined
+        )
 
