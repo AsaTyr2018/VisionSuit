@@ -138,8 +138,10 @@ Re-running the installer now stops and disables any existing `visionsuit-gpu-age
 VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Point `GENERATOR_NODE_URL` in `backend/.env` at the agent root (for example `http://gpu-node:8081`)—the service advertises `GET /` and `GET /healthz` so health checks stay green. Provide the workflow location and parameter bindings via:
 
 - `GENERATOR_WORKFLOW_ID`, `GENERATOR_WORKFLOW_BUCKET`, and `GENERATOR_WORKFLOW_MINIO_KEY` (or `GENERATOR_WORKFLOW_LOCAL_PATH` / `GENERATOR_WORKFLOW_INLINE`) to tell the agent which JSON graph to load.
+- A starter SDXL workflow ships at [`backend/generator-workflows/default.json`](backend/generator-workflows/default.json); when no custom `GENERATOR_WORKFLOW_LOCAL_PATH` is provided the backend uploads this template to MinIO automatically.
 - VisionSuit now auto-seeds the configured workflow into `GENERATOR_WORKFLOW_BUCKET` before every dispatch, so provide either a
   local template path or inline JSON when rolling out a new graph to avoid 404s on the GPU node.
+- Prompt, sampler, and resolution bindings are pre-wired for the bundled workflow—only override `GENERATOR_WORKFLOW_PARAMETERS` when publishing a custom node layout.
 - `GENERATOR_WORKFLOW_PARAMETERS` (JSON array) to map prompt/seed/CFG inputs onto workflow nodes and `GENERATOR_WORKFLOW_OVERRIDES` for fixed node tweaks.
 - `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
 - `GENERATOR_CALLBACK_BASE_URL` so the backend can publish reachable callback URLs for status, completion, and failure updates (defaults to `http://127.0.0.1:4000` when unset).

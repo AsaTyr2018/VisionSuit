@@ -25,3 +25,4 @@ callbacks:
   timeout_seconds: 10
 workflow_defaults:
   sampler: "dpmpp_2m_sde_gpu"
+  scheduler: "karras"

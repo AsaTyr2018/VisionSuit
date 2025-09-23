@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { config } from 'dotenv';
 
 import type { AgentWorkflowMutation, AgentWorkflowParameterBinding } from './lib/generator/agentClient';
@@ -216,6 +219,54 @@ const parseWorkflowOverrides = (value: string | undefined): AgentWorkflowMutatio
   return overrides;
 };
 
+const defaultWorkflowParameterBindings: AgentWorkflowParameterBinding[] = [
+  { parameter: 'base_model_path', node: 1, path: 'inputs.ckpt_name' },
+  { parameter: 'prompt', node: 2, path: 'inputs.text_g' },
+  { parameter: 'prompt', node: 2, path: 'inputs.text_l' },
+  { parameter: 'negative_prompt', node: 3, path: 'inputs.text_g' },
+  { parameter: 'negative_prompt', node: 3, path: 'inputs.text_l' },
+  { parameter: 'width', node: 4, path: 'inputs.width' },
+  { parameter: 'height', node: 4, path: 'inputs.height' },
+  { parameter: 'seed', node: 5, path: 'inputs.seed' },
+  { parameter: 'steps', node: 5, path: 'inputs.steps' },
+  { parameter: 'cfg_scale', node: 5, path: 'inputs.cfg' },
+  { parameter: 'sampler', node: 5, path: 'inputs.sampler_name' },
+  { parameter: 'scheduler', node: 5, path: 'inputs.scheduler' },
+];
+
+const resolveWorkflowTemplatePath = (): string | undefined => {
+  const explicitPath = process.env.GENERATOR_WORKFLOW_LOCAL_PATH;
+  if (explicitPath && explicitPath.trim().length > 0) {
+    return explicitPath.trim();
+  }
+
+  const candidates = [
+    path.resolve(process.cwd(), 'generator-workflows/default.json'),
+    path.resolve(process.cwd(), 'backend/generator-workflows/default.json'),
+    path.resolve(__dirname, '../generator-workflows/default.json'),
+    path.resolve(__dirname, '../../generator-workflows/default.json'),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed to inspect default workflow path "${candidate}": ${(error as Error).message}`);
+    }
+  }
+
+  return undefined;
+};
+
+const resolvedWorkflowLocalPath = resolveWorkflowTemplatePath();
+const parsedWorkflowParameterBindings = parseWorkflowParameterBindings(process.env.GENERATOR_WORKFLOW_PARAMETERS);
+const workflowParameterBindings =
+  parsedWorkflowParameterBindings.length > 0 ? parsedWorkflowParameterBindings : defaultWorkflowParameterBindings;
+const workflowOverrides = parseWorkflowOverrides(process.env.GENERATOR_WORKFLOW_OVERRIDES);
+
 const deriveMinioPublicUrl = () => {
   const explicitUrl = process.env.MINIO_PUBLIC_URL;
   if (explicitUrl && explicitUrl.trim().length > 0) {
@@ -285,10 +336,10 @@ export const appConfig = {
       version: process.env.GENERATOR_WORKFLOW_VERSION?.trim() || undefined,
       bucket: process.env.GENERATOR_WORKFLOW_BUCKET?.trim() || 'generator-workflows',
       minioKey: process.env.GENERATOR_WORKFLOW_MINIO_KEY?.trim() || 'default.json',
-      localPath: process.env.GENERATOR_WORKFLOW_LOCAL_PATH?.trim() || undefined,
+      localPath: resolvedWorkflowLocalPath ?? undefined,
       inline: parseJsonValue(process.env.GENERATOR_WORKFLOW_INLINE, 'GENERATOR_WORKFLOW_INLINE'),
-      parameters: parseWorkflowParameterBindings(process.env.GENERATOR_WORKFLOW_PARAMETERS),
-      overrides: parseWorkflowOverrides(process.env.GENERATOR_WORKFLOW_OVERRIDES),
+      parameters: workflowParameterBindings,
+      overrides: workflowOverrides,
     },
     output: {
       bucket: requireString(process.env.GENERATOR_OUTPUT_BUCKET, 'GENERATOR_OUTPUT_BUCKET', 'generator-outputs'),
