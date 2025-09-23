@@ -28,8 +28,8 @@ interface DispatchableGeneratorRequest {
   baseModel: {
     id: string;
     title: string;
-    storagePath: string;
-  };
+    storagePath: string | null;
+  } | null;
 }
 
 type StoredLoraSelection = {
@@ -47,6 +47,8 @@ type StoredBaseModelSelection = {
   slug: string | null;
   version: string | null;
   storagePath: string | null;
+  filename: string | null;
+  source: 'catalog' | 'configured';
 };
 
 export type DispatchStatus = 'queued' | 'busy' | 'skipped' | 'error';
@@ -162,6 +164,8 @@ const parseBaseModelSelections = (value: unknown): StoredBaseModelSelection[] =>
       slug: typeof record.slug === 'string' ? record.slug : null,
       version: typeof record.version === 'string' ? record.version : null,
       storagePath: typeof record.storagePath === 'string' ? record.storagePath : null,
+      filename: typeof record.filename === 'string' ? record.filename : null,
+      source: record.source === 'configured' ? 'configured' : 'catalog',
     });
   }
 
@@ -200,23 +204,34 @@ export const dispatchGeneratorRequest = async (
     return { status: 'skipped', message: 'Generator node URL not configured.' };
   }
 
-  const baseModelLocation = resolveStorageLocation(request.baseModel.storagePath);
-  if (!baseModelLocation.bucket || !baseModelLocation.objectName) {
+  const storedBaseModels = parseBaseModelSelections(request.baseModelSelections);
+  const normalizedBaseModels = [...storedBaseModels];
+  const primaryBaseModelRecord = request.baseModel;
+  if (primaryBaseModelRecord) {
+    if (!normalizedBaseModels.some((entry) => entry.id === primaryBaseModelRecord.id)) {
+      normalizedBaseModels.unshift({
+        id: primaryBaseModelRecord.id,
+        name: primaryBaseModelRecord.title,
+        type: null,
+        title: primaryBaseModelRecord.title,
+        slug: null,
+        version: null,
+        storagePath: primaryBaseModelRecord.storagePath ?? null,
+        filename: null,
+        source: 'catalog',
+      });
+    }
+  }
+
+  const primarySelection = normalizedBaseModels[0] ?? null;
+  const primaryStoragePath = request.baseModel?.storagePath ?? primarySelection?.storagePath ?? null;
+  if (!primaryStoragePath) {
     return { status: 'error', message: 'Base model is missing an accessible storage location.' };
   }
 
-  const storedBaseModels = parseBaseModelSelections(request.baseModelSelections);
-  const normalizedBaseModels = [...storedBaseModels];
-  if (!normalizedBaseModels.some((entry) => entry.id === request.baseModel.id)) {
-    normalizedBaseModels.unshift({
-      id: request.baseModel.id,
-      name: request.baseModel.title,
-      type: null,
-      title: request.baseModel.title,
-      slug: null,
-      version: null,
-      storagePath: request.baseModel.storagePath ?? null,
-    });
+  const baseModelLocation = resolveStorageLocation(primaryStoragePath);
+  if (!baseModelLocation.bucket || !baseModelLocation.objectName) {
+    return { status: 'error', message: 'Base model is missing an accessible storage location.' };
   }
 
   const baseModelIds = Array.from(new Set(normalizedBaseModels.map((entry) => entry.id)));
@@ -229,7 +244,9 @@ export const dispatchGeneratorRequest = async (
   }
 
   const baseModelStorage = new Map(baseModelAssets.map((entry) => [entry.id, entry.storagePath ?? null]));
-  baseModelStorage.set(request.baseModel.id, request.baseModel.storagePath);
+  if (request.baseModel) {
+    baseModelStorage.set(request.baseModel.id, request.baseModel.storagePath);
+  }
 
   const selections = parseLoraSelections(request.loraSelections);
   const loraIds = selections.map((entry) => entry.id);
@@ -261,11 +278,13 @@ export const dispatchGeneratorRequest = async (
       continue;
     }
 
+    const fallbackTitle = request.baseModel?.title ?? selection.title ?? selection.name ?? 'Base model';
+
     baseModelExtraPayload.push({
       id: selection.id,
-      name: selection.name ?? request.baseModel.title,
+      name: selection.name ?? fallbackTitle,
       type: selection.type ?? null,
-      title: selection.title ?? null,
+      title: selection.title ?? fallbackTitle,
       slug: selection.slug ?? null,
       version: selection.version ?? null,
       bucket: location.bucket,

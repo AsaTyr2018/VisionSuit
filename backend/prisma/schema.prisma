@@ -318,7 +318,7 @@ model GeneratorSettings {
 model GeneratorRequest {
   id             String                @id @default(cuid())
   userId         String
-  baseModelId    String
+  baseModelId    String?
   baseModelSelections Json?
   prompt         String
   negativePrompt String?
@@ -332,8 +332,8 @@ model GeneratorRequest {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id])
-  baseModel ModelAsset @relation(fields: [baseModelId], references: [id])
+  user      User        @relation(fields: [userId], references: [id])
+  baseModel ModelAsset? @relation(fields: [baseModelId], references: [id])
 }
 
 model ModerationLog {
