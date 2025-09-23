@@ -893,3 +893,8 @@
 - **General**: Ensured generator submissions reference ComfyUI checkpoints using the filename expected by the API.
 - **Technical Changes**: Adjusted the GPU agent workflow context so `base_model_path` resolves to the checkpoint filename while exposing the absolute path separately for diagnostics.
 - **Data Changes**: None.
+
+## 168 – [Fix] GPU callback host override
+- **General**: Restored generator completion updates when the GPU agent runs on a separate host by letting it retarget VisionSuit callbacks away from loopback addresses.
+- **Technical Changes**: Hardened callback base URL derivation to skip empty public-domain hints, always bundled callback paths in dispatch envelopes, taught the agent to rewrite absolute URLs against `callbacks.base_url`, and refreshed the README guidance to highlight the override.
+- **Data Changes**: None; configuration behavior only.

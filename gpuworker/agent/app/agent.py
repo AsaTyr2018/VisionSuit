@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
@@ -263,12 +264,32 @@ class GPUAgent:
         candidate = str(url or "").strip()
         if not candidate:
             raise ValueError("Callback URL cannot be empty")
-        if candidate.startswith("http://") or candidate.startswith("https://"):
-            return candidate
+
         base = (self.config.callbacks.base_url or "").strip()
+        if candidate.startswith("http://") or candidate.startswith("https://"):
+            if not base:
+                return candidate
+            parsed_base = urlparse(base)
+            if not parsed_base.scheme or not parsed_base.netloc:
+                return candidate
+            parsed_candidate = urlparse(candidate)
+            return urlunparse(
+                (
+                    parsed_base.scheme,
+                    parsed_base.netloc,
+                    parsed_candidate.path or "/",
+                    parsed_candidate.params,
+                    parsed_candidate.query,
+                    parsed_candidate.fragment,
+                )
+            )
+
         if not base:
-            return candidate
-        return f"{base.rstrip('/')}/{candidate.lstrip('/')}"
+            raise ValueError("Callback URL cannot be relative when no base URL configured")
+
+        normalized_base = f"{base.rstrip('/')}/"
+        normalized_candidate = candidate.lstrip("/")
+        return urljoin(normalized_base, normalized_candidate)
 
     async def _post_callback(self, url: str, payload: Dict[str, object]) -> None:
         try:
