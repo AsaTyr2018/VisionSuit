@@ -827,3 +827,8 @@
 - **General**: Restored GPU job acceptance by preventing idle agents from rejecting new dispatches with spurious conflicts.
 - **Technical Changes**: Replaced the zero-time `asyncio.wait_for` lock acquisition with an immediate lock check and acquisition to avoid TimeoutErrors when the worker is idle.
 - **Data Changes**: None.
+
+## 155 – [Fix] LoRA filename restoration (commit TBD)
+- **General**: Ensured GPU jobs load MinIO-hosted LoRAs by storing them under their dispatched filenames instead of opaque IDs.
+- **Technical Changes**: Added filename lookup logic sourced from job extras, renamed legacy cached assets, removed stale UUID downloads, and documented the lifecycle update.
+- **Data Changes**: None; filesystem layout only.

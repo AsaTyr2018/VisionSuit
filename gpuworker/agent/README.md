@@ -6,7 +6,7 @@ The VisionSuit GPU Agent turns a ComfyUI render node into a managed worker that 
 
 - **Single-job enforcement** – The agent processes exactly one job at a time and immediately rejects additional submissions with HTTP 409 so VisionSIOt can preserve the queue discipline.
 - **Workflow templating** – Supports inline workflows, on-disk templates, or MinIO-hosted JSON and applies node overrides or parameter bindings defined in the dispatch envelope.
-- **Managed asset lifecycle** – Caches base checkpoints permanently, downloads job-scoped LoRAs or auxiliary models on demand, and removes ephemeral assets once the render completes.
+- **Managed asset lifecycle** – Caches base checkpoints permanently, downloads job-scoped LoRAs or auxiliary models on demand, saves them using the filenames provided by the dispatch payload even when MinIO stores UUID object keys, and removes ephemeral assets once the render completes.
 - **MinIO integration** – Pulls missing models from MinIO before execution and pushes rendered files back to user-specific prefixes with prompt metadata embedded as object metadata.
 - **Callback hooks** – Emits optional status, completion, and failure callbacks to VisionSIOt or VisionSuit so UIs can surface progress.
 

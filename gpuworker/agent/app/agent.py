@@ -58,7 +58,7 @@ class GPUAgent:
             base_model_path, base_downloaded = self._ensure_base_model(job.baseModel)
             if base_downloaded:
                 downloaded_models.append(base_model_path)
-            lora_paths = self._ensure_loras(job.loras, downloaded_loras)
+            lora_paths = self._ensure_loras(job, downloaded_loras)
             resolved_params = self._build_parameter_context(job, base_model_path, lora_paths)
             workflow_payload = build_workflow_payload(self.workflow_loader, job, resolved_params)
             await self._emit_status(job, "queued")
@@ -85,17 +85,60 @@ class GPUAgent:
         self.minio.download_to_path(base_model.bucket, base_model.key, destination)
         return destination, True
 
-    def _ensure_loras(self, loras: List[AssetRef], tracked_downloads: List[Path]) -> List[Path]:
+    def _ensure_loras(self, job: DispatchEnvelope, tracked_downloads: List[Path]) -> List[Path]:
         resolved: List[Path] = []
-        for asset in loras:
-            destination = self.config.paths.loras / Path(asset.key).name
+        filename_lookup = self._build_lora_filename_lookup(job)
+        for asset in job.loras:
+            destination = self.config.paths.loras / self._resolve_lora_filename(asset, filename_lookup)
+            legacy_path = self.config.paths.loras / Path(asset.key).name
             if destination.exists():
                 LOGGER.info("LoRA %s already present", destination)
+            elif legacy_path.exists() and legacy_path != destination:
+                LOGGER.info("Renaming cached LoRA %s -> %s", legacy_path, destination)
+                legacy_path.rename(destination)
             else:
                 self.minio.download_to_path(asset.bucket, asset.key, destination)
                 tracked_downloads.append(destination)
+                if legacy_path.exists() and legacy_path != destination:
+                    LOGGER.debug("Removing stale cached LoRA %s", legacy_path)
+                    legacy_path.unlink(missing_ok=True)
             resolved.append(destination)
         return resolved
+
+    def _build_lora_filename_lookup(self, job: DispatchEnvelope) -> Dict[str, str]:
+        lookup: Dict[str, str] = {}
+        extra = job.parameters.extra or {}
+        lora_entries = extra.get("loras")
+        if not isinstance(lora_entries, list):
+            return lookup
+        for entry in lora_entries:
+            if not isinstance(entry, dict):
+                continue
+            filename = entry.get("filename")
+            if not isinstance(filename, str):
+                continue
+            sanitized = Path(filename).name
+            if not sanitized:
+                continue
+            key_value = entry.get("key")
+            if isinstance(key_value, str) and key_value:
+                lookup[key_value] = sanitized
+                lookup[Path(key_value).name] = sanitized
+            identifier = entry.get("id")
+            if isinstance(identifier, str) and identifier:
+                lookup[identifier] = sanitized
+            slug = entry.get("slug")
+            if isinstance(slug, str) and slug:
+                lookup[slug] = sanitized
+        return lookup
+
+    def _resolve_lora_filename(self, asset: AssetRef, lookup: Dict[str, str]) -> str:
+        key = asset.key
+        candidates = [key, Path(key).name]
+        for candidate in candidates:
+            if candidate in lookup:
+                return lookup[candidate]
+        return Path(key).name
 
     def _build_parameter_context(
         self,
