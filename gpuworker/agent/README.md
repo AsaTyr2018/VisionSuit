@@ -130,11 +130,11 @@ The agent exposes two HTTP endpoints:
 
 ## Running manually
 
-The daemon binds to port `8081` by default. To run it manually inside a shell (for example during development) point the configuration variable to a local YAML file and execute uvicorn:
+The daemon binds to port `8081` by default. To run it manually inside a shell (for example during development) change into the agent directory, point the configuration variable to a local YAML file, and execute uvicorn:
 
 ```bash
 VISION_SUITE_AGENT_CONFIG=./config/config.example.yaml \
-  uvicorn gpuworker.agent.main:app --host 0.0.0.0 --port 8081 --reload
+  uvicorn main:app --host 0.0.0.0 --port 8081 --reload
 ```
 
 ## Removal

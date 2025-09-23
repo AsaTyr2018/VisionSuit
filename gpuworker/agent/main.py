@@ -6,9 +6,9 @@ from typing import Any, Dict
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 
-from .app.agent import GPUAgent
-from .app.config import load_config
-from .app.models import DispatchEnvelope
+from app.agent import GPUAgent
+from app.config import load_config
+from app.models import DispatchEnvelope
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(name)s: %(message)s")
@@ -54,5 +54,5 @@ app = create_app()
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("gpuworker.agent.main:app", host="0.0.0.0", port=8081, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8081, reload=False)
 

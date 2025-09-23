@@ -9,7 +9,7 @@ User=visionsuit
 Group=visionsuit
 WorkingDirectory=/opt/visionsuit-gpu-agent
 Environment="VISION_SUITE_AGENT_CONFIG=/etc/visionsuit-gpu-agent/config.yaml"
-ExecStart=/opt/visionsuit-gpu-agent/venv/bin/uvicorn gpuworker.agent.main:app --host 0.0.0.0 --port 8081
+ExecStart=/opt/visionsuit-gpu-agent/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8081
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20

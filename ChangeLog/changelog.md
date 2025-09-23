@@ -777,3 +777,8 @@
 - **General**: Introduced a managed GPU agent package that executes VisionSIOt dispatches on the ComfyUI node and reports results back to VisionSuit.
 - **Technical Changes**: Added the FastAPI-based agent with workflow templating, MinIO sync, callback handling, installer, systemd unit, configuration sample, and refreshed documentation across the GPU worker and root README files.
 - **Data Changes**: None; runtime configuration only.
+
+## 034 – [Fix] GPU agent service import path
+- **General**: Restored the freshly installed GPU agent so the systemd service boots without module import failures.
+- **Technical Changes**: Switched the FastAPI entrypoint to absolute imports, updated the systemd unit to launch `uvicorn main:app`, and refreshed the README guidance for manual runs.
+- **Data Changes**: None.
