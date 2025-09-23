@@ -23,6 +23,8 @@ interface OnSiteGeneratorProps {
 
 type WizardStep = 1 | 2 | 3;
 
+type HistoryFilter = 'active' | 'inactive';
+
 type LoraSelection = {
   id: string;
   strength: number;
@@ -184,6 +186,10 @@ const normalizeStrength = (value: number) => {
   return Math.min(2, Math.max(-2, Number(value.toFixed(2))));
 };
 
+const INACTIVE_HISTORY_STATUSES = new Set(['failed', 'completed', 'error', 'cancelled']);
+const INACTIVE_HISTORY_LIMITED_STATUSES = new Set(['failed', 'completed']);
+const INACTIVE_HISTORY_LIMIT = 10;
+
 const mapHistoryLoRAs = (
   entries: GeneratorRequestLoRASelection[],
   modelLookup: Map<string, ModelAsset>,
@@ -216,6 +222,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [history, setHistory] = useState<GeneratorRequestSummary[]>([]);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('active');
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [queueSummary, setQueueSummary] = useState<GeneratorQueueResponse | null>(null);
@@ -227,6 +234,45 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [baseModelCatalog, setBaseModelCatalog] = useState<ModelAsset[]>([]);
   const [isBaseModelCatalogLoading, setIsBaseModelCatalogLoading] = useState(false);
   const [baseModelCatalogError, setBaseModelCatalogError] = useState<string | null>(null);
+
+  const sortedHistory = useMemo(
+    () =>
+      [...history].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [history],
+  );
+
+  const activeHistory = useMemo(
+    () =>
+      sortedHistory.filter((request) => {
+        const normalized = request.status.toLowerCase();
+        return !INACTIVE_HISTORY_STATUSES.has(normalized);
+      }),
+    [sortedHistory],
+  );
+
+  const inactiveHistory = useMemo(() => {
+    let limitedCount = 0;
+    return sortedHistory.filter((request) => {
+      const normalized = request.status.toLowerCase();
+      if (!INACTIVE_HISTORY_STATUSES.has(normalized)) {
+        return false;
+      }
+      if (INACTIVE_HISTORY_LIMITED_STATUSES.has(normalized)) {
+        if (limitedCount >= INACTIVE_HISTORY_LIMIT) {
+          return false;
+        }
+        limitedCount += 1;
+      }
+      return true;
+    });
+  }, [sortedHistory]);
+
+  const visibleHistory = useMemo(
+    () => (historyFilter === 'inactive' ? inactiveHistory : activeHistory),
+    [historyFilter, activeHistory, inactiveHistory],
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -1243,26 +1289,77 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     return filename || artifact.objectKey;
   };
 
-  const renderHistory = () => (
-    <section className="generator-history" aria-live="polite">
-      <header className="generator-history__header">
-        <h2>Recent requests</h2>
-        <button type="button" onClick={fetchHistory} disabled={isHistoryLoading}>
-          Refresh
-        </button>
-      </header>
-      {isHistoryLoading ? <p className="generator-history__status">Loading request history…</p> : null}
-      {historyError ? <p className="generator-history__error">{historyError}</p> : null}
-      {history.length === 0 && !isHistoryLoading && !historyError ? (
-        <p className="generator-history__empty">No generator activity yet. Submit your first request to populate the timeline.</p>
-      ) : null}
-      <ul className="generator-history__list">
-        {history.map((request) => {
-          const createdAt = new Date(request.createdAt);
-          const normalizedStatus = request.status.toLowerCase();
-          const isFailureStatus = ['failed', 'error', 'cancelled'].includes(normalizedStatus);
-          const failureLabel = normalizedStatus === 'cancelled' ? 'Cleared' : 'Failure';
-          const failureDetail = request.errorDetail ?? request.errorReason ?? null;
+  const renderHistory = () => {
+    const historyListId = 'generator-history-panel';
+    const tabDescriptors: { key: HistoryFilter; label: string; meta: string; count: number }[] = [
+      {
+        key: 'active',
+        label: 'Active',
+        meta: 'Pending · Running · Queued',
+        count: activeHistory.length,
+      },
+      {
+        key: 'inactive',
+        label: 'Inactive',
+        meta: 'Last 10 Completed · Failed',
+        count: inactiveHistory.length,
+      },
+    ];
+    const historyEmptyMessage =
+      historyFilter === 'inactive'
+        ? 'No completed or failed requests yet.'
+        : 'No active generator activity right now.';
+
+    return (
+      <section className="generator-history" aria-live="polite">
+        <header className="generator-history__header">
+          <h2>Recent requests</h2>
+          <button type="button" onClick={fetchHistory} disabled={isHistoryLoading}>
+            Refresh
+          </button>
+        </header>
+        <div className="generator-history__tabs" role="tablist" aria-label="Generator history filter">
+          {tabDescriptors.map((tab) => {
+            const isActive = historyFilter === tab.key;
+            const tabId = `generator-history-tab-${tab.key}`;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                id={tabId}
+                className={`generator-history__tab${isActive ? ' generator-history__tab--active' : ''}`}
+                onClick={() => setHistoryFilter(tab.key)}
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={historyListId}
+                tabIndex={isActive ? 0 : -1}
+              >
+                <span className="generator-history__tab-row">
+                  <span className="generator-history__tab-label">{tab.label}</span>
+                  <span className="generator-history__tab-count">{tab.count}</span>
+                </span>
+                <span className="generator-history__tab-meta">{tab.meta}</span>
+              </button>
+            );
+          })}
+        </div>
+        {isHistoryLoading ? <p className="generator-history__status">Loading request history…</p> : null}
+        {historyError ? <p className="generator-history__error">{historyError}</p> : null}
+        {visibleHistory.length === 0 && !isHistoryLoading && !historyError ? (
+          <p className="generator-history__empty">{historyEmptyMessage}</p>
+        ) : null}
+        <ul
+          className="generator-history__list"
+          id={historyListId}
+          role="tabpanel"
+          aria-labelledby={`generator-history-tab-${historyFilter}`}
+        >
+          {visibleHistory.map((request) => {
+            const createdAt = new Date(request.createdAt);
+            const normalizedStatus = request.status.toLowerCase();
+            const isFailureStatus = ['failed', 'error', 'cancelled'].includes(normalizedStatus);
+            const failureLabel = normalizedStatus === 'cancelled' ? 'Cleared' : 'Failure';
+            const failureDetail = request.errorDetail ?? request.errorReason ?? null;
           const historyBaseModels =
             request.baseModels.length > 0
               ? request.baseModels
@@ -1379,9 +1476,10 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
             </li>
           );
         })}
-      </ul>
-    </section>
-  );
+        </ul>
+      </section>
+    );
+  };
 
   return (
     <section className="generator">
