@@ -1156,6 +1156,12 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     return <div className="generator-step generator-step--review">{renderReviewStep()}</div>;
   };
 
+  const renderArtifactLabel = (artifact: GeneratorRequestSummary['artifacts'][number]) => {
+    const segments = artifact.objectKey.split('/');
+    const filename = segments[segments.length - 1] ?? artifact.objectKey;
+    return filename || artifact.objectKey;
+  };
+
   const renderHistory = () => (
     <section className="generator-history" aria-live="polite">
       <header className="generator-history__header">
@@ -1172,6 +1178,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       <ul className="generator-history__list">
         {history.map((request) => {
           const createdAt = new Date(request.createdAt);
+          const normalizedStatus = request.status.toLowerCase();
           const historyBaseModels =
             request.baseModels.length > 0
               ? request.baseModels
@@ -1246,6 +1253,42 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               ) : (
                 <p className="generator-history__loras-empty">No LoRA adapters</p>
               )}
+              {['failed', 'error'].includes(normalizedStatus) ? (
+                <p className="generator-history__failure">
+                  {request.errorReason ? `Failure: ${request.errorReason}` : 'Failure: reason not provided.'}
+                </p>
+              ) : null}
+              {request.artifacts.length > 0 ? (
+                <div className="generator-history__artifacts">
+                  <h4>Generated artifacts</h4>
+                  <ul className="generator-history__artifacts-list">
+                    {request.artifacts.map((artifact) => {
+                      const label = renderArtifactLabel(artifact);
+                      return (
+                        <li key={artifact.id} className="generator-history__artifacts-item">
+                          {artifact.url ? (
+                            <a
+                              href={artifact.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="generator-history__artifact-link"
+                            >
+                              <img src={artifact.url} alt={label} loading="lazy" />
+                            </a>
+                          ) : (
+                            <div className="generator-history__artifact-link generator-history__artifact-link--placeholder">
+                              <span>{label}</span>
+                            </div>
+                          )}
+                          <span className="generator-history__artifact-name">{label}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : normalizedStatus === 'completed' ? (
+                <p className="generator-history__artifacts-empty">No artifacts attached to this job yet.</p>
+              ) : null}
             </li>
           );
         })}

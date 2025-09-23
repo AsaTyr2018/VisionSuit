@@ -132,9 +132,19 @@ export interface GeneratorRequestLoRASelection {
   slug?: string | null;
 }
 
+export interface GeneratorRequestArtifactSummary {
+  id: string;
+  bucket: string;
+  objectKey: string;
+  storagePath: string;
+  url?: string | null;
+  createdAt: string;
+}
+
 export interface GeneratorRequestSummary {
   id: string;
   status: string;
+  errorReason?: string | null;
   prompt: string;
   negativePrompt?: string | null;
   seed?: string | null;
@@ -144,6 +154,7 @@ export interface GeneratorRequestSummary {
   height: number;
   loras: GeneratorRequestLoRASelection[];
   baseModels: GeneratorRequestBaseModelSelection[];
+  artifacts: GeneratorRequestArtifactSummary[];
   baseModel: {
     id: string;
     title: string;
@@ -158,6 +169,10 @@ export interface GeneratorRequestSummary {
     id: string;
     displayName: string;
     role: UserRole;
+  };
+  output: {
+    bucket: string;
+    prefix: string | null;
   };
   createdAt: string;
   updatedAt: string;

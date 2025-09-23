@@ -138,8 +138,9 @@ VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Poin
 - `GENERATOR_WORKFLOW_ID`, `GENERATOR_WORKFLOW_BUCKET`, and `GENERATOR_WORKFLOW_MINIO_KEY` (or `GENERATOR_WORKFLOW_LOCAL_PATH` / `GENERATOR_WORKFLOW_INLINE`) to tell the agent which JSON graph to load.
 - `GENERATOR_WORKFLOW_PARAMETERS` (JSON array) to map prompt/seed/CFG inputs onto workflow nodes and `GENERATOR_WORKFLOW_OVERRIDES` for fixed node tweaks.
 - `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
+- `GENERATOR_CALLBACK_BASE_URL` so the backend can publish reachable callback URLs for status, completion, and failure updates (defaults to `http://127.0.0.1:4000` when unset).
 
-Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base models, LoRA adapters, and prompt metadata. The GPU agent receives the full base-model roster alongside the primary checkpoint so it can stage or audit every curated option up front. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately.
+Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base models, LoRA adapters, and prompt metadata. The GPU agent receives the full base-model roster alongside the primary checkpoint so it can stage or audit every curated option up front. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately. When the agent executes the job it now posts back to `/api/generator/requests/:id/callbacks/status` as phases progress, `/completion` once artifacts land in MinIO, and `/failure` if the run aborts—VisionSuit records those transitions, stores returned object keys, and surfaces finished renders directly in the On-Site Generator history.
 
 ## Development Workflow
 
