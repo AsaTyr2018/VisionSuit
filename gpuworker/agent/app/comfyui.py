@@ -21,7 +21,18 @@ class ComfyUIClient:
         payload = {"prompt": workflow, "client_id": self.config.comfyui.client_id}
         LOGGER.info("Submitting workflow to ComfyUI")
         response = await self._client.post(f"{self._base_url}/prompt", json=payload)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:  # noqa: PERF203
+            body = exc.response.text
+            LOGGER.error(
+                "ComfyUI rejected workflow submission (status %s): %s",
+                exc.response.status_code,
+                body,
+            )
+            raise RuntimeError(
+                f"ComfyUI rejected workflow submission ({exc.response.status_code}): {body}"
+            ) from exc
         data = response.json()
         prompt_id = data.get("prompt_id") or data.get("id")
         if not prompt_id:
