@@ -867,3 +867,8 @@
 - **General**: Ensured stuck generator jobs now flip to error while giving administrators a dedicated log of GPU failure diagnostics.
 - **Technical Changes**: Taught the GPU agent to emit error status callbacks with normalized reasons, tightened backend failure handling and masking for non-admins, exposed an `/api/generator/errors` endpoint plus admin UI log with refreshed styles, and extended the API client/types to surface detailed failure entries.
 - **Data Changes**: None; leverages existing `GeneratorRequest` records.
+
+## 163 – [Addition] GPU agent git-driven updater
+- **General**: Added a maintenance script so operators can refresh deployed GPU agents directly from the repository clone.
+- **Technical Changes**: Introduced `installer/update.sh` to pull the latest sources from the home-directory git checkout, resynchronise them into `/opt/visionsuit-gpu-agent`, upgrade the virtual environment dependencies, reapply service ownership, refresh the systemd unit, and restart the daemon. Documented the new workflow in the GPU agent README.
+- **Data Changes**: None; updates only touch code and Python dependencies in the agent runtime.
