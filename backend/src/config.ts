@@ -73,6 +73,40 @@ const minioHost = process.env.MINIO_ENDPOINT ?? '127.0.0.1';
 const minioPort = toNumber(process.env.MINIO_PORT, 9000);
 const minioUseSSL = toBoolean(process.env.MINIO_USE_SSL, false);
 
+const deriveSiteTitle = () => {
+  const rawValue = process.env.SITE_TITLE;
+  if (rawValue && rawValue.trim().length > 0) {
+    return rawValue.trim();
+  }
+
+  const frontendTitle = process.env.VITE_SITE_TITLE;
+  if (frontendTitle && frontendTitle.trim().length > 0) {
+    return frontendTitle.trim();
+  }
+
+  return 'VisionSuit';
+};
+
+const toSanitizedString = (value: string | undefined, fallback = '') => {
+  if (!value) {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+};
+
+const toOptionalString = (value: string | undefined) => {
+  if (!value) {
+    return '';
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : '';
+};
+
+const generatorNodeUrl = toOptionalString(process.env.GENERATOR_NODE_URL);
+
 const deriveMinioPublicUrl = () => {
   const explicitUrl = process.env.MINIO_PUBLIC_URL;
   if (explicitUrl && explicitUrl.trim().length > 0) {
@@ -88,6 +122,17 @@ export const appConfig = {
   host: process.env.HOST ?? '0.0.0.0',
   port: toNumber(process.env.PORT, 4000),
   databaseUrl: process.env.DATABASE_URL ?? 'file:./dev.db',
+  platform: {
+    siteTitle: deriveSiteTitle(),
+    allowRegistration: toBoolean(process.env.ALLOW_REGISTRATION, true),
+    maintenanceMode: toBoolean(process.env.MAINTENANCE_MODE, false),
+    domain: toOptionalString(process.env.PUBLIC_DOMAIN),
+  },
+  network: {
+    backendHost: toSanitizedString(process.env.HOST, '0.0.0.0'),
+    frontendHost: toSanitizedString(process.env.FRONTEND_HOST, '0.0.0.0'),
+    generatorNodeUrl,
+  },
   auth: {
     jwtSecret: requireString(
       process.env.AUTH_JWT_SECRET,

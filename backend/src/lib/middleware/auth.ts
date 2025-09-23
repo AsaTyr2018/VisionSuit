@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 import { prisma } from '../prisma';
 import { toAuthUser, verifyAccessToken } from '../auth';
+import { appConfig } from '../../config';
 
 const extractTokenFromQuery = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -75,6 +76,11 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
 
     if (!user || !user.isActive) {
       res.status(401).json({ message: 'Benutzerkonto nicht verfügbar oder deaktiviert.' });
+      return;
+    }
+
+    if (appConfig.platform.maintenanceMode && user.role !== 'ADMIN') {
+      res.status(503).json({ message: 'Maintenance mode restricts access to administrators only.' });
       return;
     }
 

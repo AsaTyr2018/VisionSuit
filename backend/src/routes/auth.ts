@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { createAccessToken, hashPassword, toAuthUser, verifyPassword } from '../lib/auth';
 import { requireAuth } from '../lib/middleware/auth';
+import { appConfig } from '../config';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -53,6 +54,11 @@ authRouter.post('/login', async (req, res, next) => {
       return;
     }
 
+    if (appConfig.platform.maintenanceMode && user.role !== 'ADMIN') {
+      res.status(503).json({ message: 'The platform is in maintenance mode. Only administrators can sign in.' });
+      return;
+    }
+
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
@@ -76,6 +82,16 @@ authRouter.post('/login', async (req, res, next) => {
 
 authRouter.post('/register', async (req, res, next) => {
   try {
+    if (!appConfig.platform.allowRegistration) {
+      res.status(403).json({ message: 'Self-service registration is currently disabled.' });
+      return;
+    }
+
+    if (appConfig.platform.maintenanceMode) {
+      res.status(503).json({ message: 'Maintenance mode is active. Registration will reopen later.' });
+      return;
+    }
+
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ message: 'Registrierungsdaten sind ungültig.', errors: parsed.error.flatten() });

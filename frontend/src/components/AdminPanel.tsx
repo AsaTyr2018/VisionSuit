@@ -17,6 +17,7 @@ import type {
   RankingSettings,
   AdultSafetyKeyword,
   User,
+  AdminSettings,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
 import { ImageAssetEditDialog } from './ImageAssetEditDialog';
@@ -109,6 +110,7 @@ interface AdminPanelProps {
 }
 
 type AdminTab =
+  | 'settings'
   | 'users'
   | 'models'
   | 'images'
@@ -349,6 +351,12 @@ export const AdminPanel = ({
   const [isCreateUserDialogOpen, setIsCreateUserDialogOpen] = useState(false);
   const [userDialogInitialRole, setUserDialogInitialRole] = useState<User['role']>('CURATOR');
   const [roleSummary, setRoleSummary] = useState<User['role'] | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<AdminSettings | null>(null);
+  const [initialSettings, setInitialSettings] = useState<AdminSettings | null>(null);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'connections'>('general');
+  const [isSettingsLoading, setIsSettingsLoading] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [adultKeywords, setAdultKeywords] = useState<AdultSafetyKeyword[]>([]);
   const [isAdultKeywordsLoading, setIsAdultKeywordsLoading] = useState(false);
   const [adultKeywordError, setAdultKeywordError] = useState<string | null>(null);
@@ -550,6 +558,46 @@ export const AdminPanel = ({
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
   useEffect(() => {
+    if (!token) {
+      setSettingsDraft(null);
+      setInitialSettings(null);
+      setSettingsError(null);
+      return;
+    }
+
+    let isMounted = true;
+    setIsSettingsLoading(true);
+    setSettingsError(null);
+
+    api
+      .getAdminSettings(token)
+      .then((settings) => {
+        if (!isMounted) {
+          return;
+        }
+        setSettingsDraft(settings);
+        setInitialSettings(settings);
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof ApiError ? error.message : 'Failed to load platform settings.';
+        setSettingsError(message);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsSettingsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
     if (rankingSettings) {
       setWeightDraft({
         modelWeight: rankingSettings.modelWeight.toString(),
@@ -602,6 +650,75 @@ export const AdminPanel = ({
   }, [activeTab, fetchModerationQueue]);
 
   const resetStatus = () => setStatus(null);
+
+  const updateGeneralSetting = <K extends keyof AdminSettings['general']>(
+    key: K,
+    value: AdminSettings['general'][K],
+  ) => {
+    setSettingsDraft((previous) =>
+      previous
+        ? {
+            ...previous,
+            general: {
+              ...previous.general,
+              [key]: value,
+            },
+          }
+        : previous,
+    );
+  };
+
+  const updateConnectionSetting = <K extends keyof AdminSettings['connections']>(
+    key: K,
+    value: AdminSettings['connections'][K],
+  ) => {
+    setSettingsDraft((previous) =>
+      previous
+        ? {
+            ...previous,
+            connections: {
+              ...previous.connections,
+              [key]: value,
+            },
+          }
+        : previous,
+    );
+  };
+
+  const handleSaveSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !settingsDraft) {
+      return;
+    }
+
+    setIsSavingSettings(true);
+    setStatus(null);
+    setSettingsError(null);
+
+    const connectionChanged =
+      initialSettings !== null &&
+      (initialSettings.connections.backendHost !== settingsDraft.connections.backendHost ||
+        initialSettings.connections.frontendHost !== settingsDraft.connections.frontendHost ||
+        initialSettings.connections.minioEndpoint !== settingsDraft.connections.minioEndpoint ||
+        initialSettings.connections.generatorNode !== settingsDraft.connections.generatorNode);
+
+    try {
+      const updated = await api.updateAdminSettings(token, settingsDraft);
+      setSettingsDraft(updated);
+      setInitialSettings(updated);
+      setStatus({
+        type: 'success',
+        message: connectionChanged
+          ? 'Settings saved. Restart the backend, frontend, and GPU worker to apply connection changes.'
+          : 'Settings saved successfully.',
+      });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to update settings.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const loadAdultKeywords = useCallback(async () => {
     if (!token) {
@@ -1707,6 +1824,7 @@ export const AdminPanel = ({
         <nav className="admin__tabs" aria-label="Administration Tabs">
           {(
             [
+              { id: 'settings', label: 'Settings' },
               { id: 'users', label: 'User' },
               { id: 'models', label: 'Models' },
               { id: 'images', label: 'Images' },
@@ -1738,7 +1856,160 @@ export const AdminPanel = ({
         ) : null}
       </header>
 
-      {activeTab === 'users' ? (
+      {activeTab === 'settings' ? (
+        <div className="admin__panel">
+          <section className="admin__section admin__section--settings">
+            <div className="admin__section-header admin__section-header--split">
+              <div>
+                <h3>Platform settings</h3>
+                <p className="admin__section-description">
+                  Configure branding, public access, and service endpoints. Restart services after updating connection values.
+                </p>
+              </div>
+              <div className="admin-settings__tabs" role="tablist" aria-label="Settings categories">
+                {([
+                  { id: 'general', label: 'General' },
+                  { id: 'connections', label: 'Connections' },
+                ] as { id: 'general' | 'connections'; label: string }[]).map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className={`admin-settings__tab${
+                      activeSettingsTab === entry.id ? ' admin-settings__tab--active' : ''
+                    }`}
+                    onClick={() => setActiveSettingsTab(entry.id)}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {isSettingsLoading ? (
+              <p className="admin__loading">Loading settings…</p>
+            ) : settingsDraft ? (
+              <form className="admin__form" onSubmit={handleSaveSettings}>
+                {activeSettingsTab === 'general' ? (
+                  <>
+                    <div className="admin__form-grid">
+                      <label>
+                        <span>Site title</span>
+                        <input
+                          type="text"
+                          value={settingsDraft.general.siteTitle}
+                          onChange={(event) =>
+                            updateGeneralSetting('siteTitle', event.currentTarget.value)
+                          }
+                          placeholder="VisionSuit"
+                          disabled={isSavingSettings}
+                        />
+                      </label>
+                    </div>
+                    <div className="admin-settings__toggles">
+                      <label className="admin__checkbox">
+                        <input
+                          type="checkbox"
+                          checked={settingsDraft.general.allowRegistration}
+                          onChange={(event) =>
+                            updateGeneralSetting('allowRegistration', event.currentTarget.checked)
+                          }
+                          disabled={isSavingSettings}
+                        />
+                        <span>Allow self-service registration</span>
+                      </label>
+                      <label className="admin__checkbox">
+                        <input
+                          type="checkbox"
+                          checked={settingsDraft.general.maintenanceMode}
+                          onChange={(event) =>
+                            updateGeneralSetting('maintenanceMode', event.currentTarget.checked)
+                          }
+                          disabled={isSavingSettings}
+                        />
+                        <span>Enable maintenance mode (admins only)</span>
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <div className="admin__form-grid admin-settings__grid">
+                    <label>
+                      <span>Backend host/IP</span>
+                      <input
+                        type="text"
+                        value={settingsDraft.connections.backendHost}
+                        onChange={(event) =>
+                          updateConnectionSetting('backendHost', event.currentTarget.value)
+                        }
+                        placeholder="127.0.0.1"
+                        disabled={isSavingSettings}
+                      />
+                    </label>
+                    <label>
+                      <span>Frontend host/IP</span>
+                      <input
+                        type="text"
+                        value={settingsDraft.connections.frontendHost}
+                        onChange={(event) =>
+                          updateConnectionSetting('frontendHost', event.currentTarget.value)
+                        }
+                        placeholder="127.0.0.1"
+                        disabled={isSavingSettings}
+                      />
+                    </label>
+                    <label>
+                      <span>MinIO endpoint</span>
+                      <input
+                        type="text"
+                        value={settingsDraft.connections.minioEndpoint}
+                        onChange={(event) =>
+                          updateConnectionSetting('minioEndpoint', event.currentTarget.value)
+                        }
+                        placeholder="127.0.0.1"
+                        disabled={isSavingSettings}
+                      />
+                    </label>
+                    <label>
+                      <span>GPU node address</span>
+                      <input
+                        type="text"
+                        value={settingsDraft.connections.generatorNode}
+                        onChange={(event) =>
+                          updateConnectionSetting('generatorNode', event.currentTarget.value)
+                        }
+                        placeholder="192.168.1.50:8188"
+                        disabled={isSavingSettings}
+                      />
+                    </label>
+                    <label>
+                      <span>Public domain</span>
+                      <input
+                        type="text"
+                        value={settingsDraft.connections.publicDomain}
+                        onChange={(event) =>
+                          updateConnectionSetting('publicDomain', event.currentTarget.value)
+                        }
+                        placeholder="example.com"
+                        disabled={isSavingSettings}
+                      />
+                    </label>
+                  </div>
+                )}
+                <div className="admin__form-actions">
+                  <button type="submit" className="button button--primary" disabled={isSavingSettings}>
+                    {isSavingSettings ? 'Saving…' : 'Save settings'}
+                  </button>
+                </div>
+                <p className="admin__footnote">
+                  Restart the backend, frontend, and GPU worker after changing connection values so new endpoints apply.
+                </p>
+              </form>
+            ) : settingsError ? (
+              <p className="admin__empty">{settingsError}</p>
+            ) : (
+              <p className="admin__empty">Settings are not available right now.</p>
+            )}
+          </section>
+        </div>
+      ) : activeTab === 'users' ? (
         <div className="admin__panel">
           <section className="admin__section admin__section--onboarding">
             <div className="admin__section-intro">

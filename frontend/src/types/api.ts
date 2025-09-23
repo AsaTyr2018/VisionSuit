@@ -354,7 +354,41 @@ export interface ServiceStatusResponse {
   services: {
     backend: ServiceStatusDetails;
     minio: ServiceStatusDetails;
+    gpu: ServiceStatusDetails;
   };
+}
+
+export interface PlatformConfig {
+  siteTitle: string;
+  allowRegistration: boolean;
+  maintenanceMode: boolean;
+}
+
+export interface PlatformConfigResponse {
+  platform: PlatformConfig;
+}
+
+export interface AdminSettingsGeneral {
+  siteTitle: string;
+  allowRegistration: boolean;
+  maintenanceMode: boolean;
+}
+
+export interface AdminSettingsConnections {
+  backendHost: string;
+  frontendHost: string;
+  minioEndpoint: string;
+  generatorNode: string;
+  publicDomain: string;
+}
+
+export interface AdminSettings {
+  general: AdminSettingsGeneral;
+  connections: AdminSettingsConnections;
+}
+
+export interface AdminSettingsResponse {
+  settings: AdminSettings;
 }
 
 export interface AuthResponse {

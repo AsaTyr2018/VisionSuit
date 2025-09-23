@@ -15,6 +15,7 @@ import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
 import { isAuditPlaceholderForViewer } from './lib/moderation';
+import { defaultSiteTitle } from './config';
 import type {
   Gallery,
   GeneratorSettings,
@@ -25,11 +26,12 @@ import type {
   Tag,
   User,
   UserProfile as UserProfileData,
+  PlatformConfig,
 } from './types/api';
 
 type ViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin' | 'profile';
 type PrimaryViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin';
-type ServiceStatusKey = 'frontend' | 'backend' | 'minio';
+type ServiceStatusKey = 'frontend' | 'backend' | 'minio' | 'gpu';
 type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
 
 interface ServiceIndicator {
@@ -78,6 +80,7 @@ const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
   frontend: 'UI',
   backend: 'API',
   minio: 'S3',
+  gpu: 'GPU',
 };
 
 const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) => {
@@ -134,6 +137,7 @@ const createInitialStatus = (): Record<ServiceStatusKey, ServiceIndicator> => ({
   frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
   backend: { label: 'Backend', status: 'unknown', message: 'Status check in progress…' },
   minio: { label: 'MinIO', status: 'unknown', message: 'Status check in progress…' },
+  gpu: { label: 'GPU node', status: 'unknown', message: 'Status check in progress…' },
 });
 
 export const App = () => {
@@ -152,6 +156,11 @@ export const App = () => {
   const [isAssetUploadOpen, setIsAssetUploadOpen] = useState(false);
   const [isGalleryUploadOpen, setIsGalleryUploadOpen] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [platformConfig, setPlatformConfig] = useState<PlatformConfig>({
+    siteTitle: defaultSiteTitle,
+    allowRegistration: true,
+    maintenanceMode: false,
+  });
   const [serviceStatus, setServiceStatus] = useState<Record<ServiceStatusKey, ServiceIndicator>>(createInitialStatus);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -224,6 +233,11 @@ export const App = () => {
           status: status.services.minio.status ?? 'online',
           message: status.services.minio.message ?? 'Storage available.',
         },
+        gpu: {
+          label: 'GPU node',
+          status: status.services.gpu.status ?? 'offline',
+          message: status.services.gpu.message ?? 'GPU node status unknown.',
+        },
       });
     } catch (error) {
       console.error('Service status fetch failed', error);
@@ -231,6 +245,7 @@ export const App = () => {
         frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
         backend: { label: 'Backend', status: 'offline', message: 'Backend unavailable.' },
         minio: { label: 'MinIO', status: 'offline', message: 'Storage unavailable.' },
+        gpu: { label: 'GPU node', status: 'offline', message: 'GPU node unavailable.' },
       });
     }
   }, []);
@@ -290,6 +305,37 @@ export const App = () => {
 
     fetchServiceStatus().catch((statusError) => console.error('Failed to refresh service status', statusError));
   }, [fetchServiceStatus, token, authUser?.role]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    api
+      .getPlatformConfig()
+      .then((config) => {
+        if (isActive) {
+          setPlatformConfig(config);
+        }
+      })
+      .catch((error) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Failed to load platform config', error);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    document.title = platformConfig.siteTitle;
+  }, [platformConfig.siteTitle]);
+
+  useEffect(() => {
+    if ((!platformConfig.allowRegistration || platformConfig.maintenanceMode) && isRegisterOpen) {
+      setIsRegisterOpen(false);
+    }
+  }, [isRegisterOpen, platformConfig.allowRegistration, platformConfig.maintenanceMode]);
 
   useEffect(() => {
     refreshData().catch((error) => console.error('Unexpected fetch error', error));
@@ -1091,7 +1137,7 @@ export const App = () => {
       <div className="layout">
         <aside className="sidebar">
           <div className="sidebar__brand">
-            <span className="sidebar__logo">VisionSuit</span>
+            <span className="sidebar__logo">{platformConfig.siteTitle}</span>
             <span className="sidebar__tagline">AI Asset Control</span>
           </div>
           <nav className="sidebar__nav" aria-label="Main navigation">
@@ -1142,17 +1188,38 @@ export const App = () => {
                 >
                   Sign in
                 </button>
-                <button
-                  type="button"
-                  className="sidebar__auth-button"
-                  onClick={() => {
-                    setIsRegisterOpen(true);
-                    setRegisterError(null);
-                  }}
-                  disabled={isLoggingIn || isRegistering}
-                >
-                  Create account
-                </button>
+                {platformConfig.allowRegistration && !platformConfig.maintenanceMode ? (
+                  <button
+                    type="button"
+                    className="sidebar__auth-button"
+                    onClick={() => {
+                      if (!platformConfig.allowRegistration || platformConfig.maintenanceMode) {
+                        setToast({
+                          type: 'error',
+                          message: platformConfig.maintenanceMode
+                            ? 'Maintenance mode is active. Only administrators can sign in.'
+                            : 'Registration is currently disabled by administrators.',
+                        });
+                        return;
+                      }
+                      setIsRegisterOpen(true);
+                      setRegisterError(null);
+                    }}
+                    disabled={isLoggingIn || isRegistering}
+                  >
+                    Create account
+                  </button>
+                ) : (
+                  <p
+                    className={`sidebar__auth-note${
+                      platformConfig.maintenanceMode ? ' sidebar__auth-note--warning' : ''
+                    }`}
+                  >
+                    {platformConfig.maintenanceMode
+                      ? 'Maintenance mode active. Only administrators can sign in.'
+                      : 'Registration is currently disabled.'}
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -1160,7 +1227,7 @@ export const App = () => {
           <div className="sidebar__status" aria-label="Service Status">
             <h2>Service Status</h2>
             <ul className="sidebar__status-list">
-              {(['frontend', 'backend', 'minio'] as ServiceStatusKey[]).map((key) => {
+              {(['frontend', 'backend', 'minio', 'gpu'] as ServiceStatusKey[]).map((key) => {
                 const entry = serviceStatus[key];
                 return (
                   <li key={key} className={`sidebar__status-item sidebar__status-item--${entry.status}`}>

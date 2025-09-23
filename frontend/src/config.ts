@@ -28,8 +28,19 @@ const resolveGeneratorBaseModelBucket = () => {
   return trimmed.length > 0 ? trimmed : 'comfyui-models';
 };
 
+const resolveSiteTitle = () => {
+  const rawValue = import.meta.env.VITE_SITE_TITLE;
+  if (!rawValue) {
+    return 'VisionSuit';
+  }
+
+  const trimmed = rawValue.trim();
+  return trimmed.length > 0 ? trimmed : 'VisionSuit';
+};
+
 export const apiBaseUrl = resolveApiBase();
 export const generatorBaseModelBucket = resolveGeneratorBaseModelBucket();
+export const defaultSiteTitle = resolveSiteTitle();
 
 export const buildApiUrl = (path: string) => {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
