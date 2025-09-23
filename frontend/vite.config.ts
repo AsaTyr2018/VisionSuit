@@ -176,8 +176,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const proxy = resolveApiProxy(env)
 
+  const host = env.FRONTEND_HOST ?? process.env.FRONTEND_HOST ?? '0.0.0.0'
+
   const serverConfig: UserConfig['server'] = {
-    host: '0.0.0.0',
+    host,
     port: parsePort(env.FRONTEND_PORT ?? process.env.FRONTEND_PORT),
     ...(allowedHosts.length > 0 ? { allowedHosts } : {}),
     ...(proxy ? { proxy } : {}),

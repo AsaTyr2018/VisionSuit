@@ -13,6 +13,9 @@ import type {
   ModelAsset,
   RankTier,
   RankingSettings,
+  AdminSettings,
+  AdminSettingsResponse,
+  PlatformConfigResponse,
   ServiceStatusResponse,
   UserProfile,
   UserProfileRank,
@@ -145,6 +148,22 @@ const parseError = async (response: Response): Promise<never> => {
   const errorText = await response.text().catch(() => '');
   throw new ApiError(errorText || `Upload request failed: ${response.status}`);
 };
+
+const getPlatformConfig = () =>
+  request<PlatformConfigResponse>('/api/meta/config').then((response) => response.platform);
+
+const getAdminSettings = (token: string) =>
+  request<AdminSettingsResponse>('/api/settings', {}, token).then((response) => response.settings);
+
+const updateAdminSettings = (token: string, payload: AdminSettings) =>
+  request<AdminSettingsResponse>(
+    '/api/settings',
+    {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
+    token,
+  ).then((response) => response.settings);
 
 const postUploadDraft = async (payload: CreateUploadDraftPayload, token: string) => {
   const formData = new FormData();
@@ -338,6 +357,7 @@ const unlikeImageAsset = (token: string, imageId: string) =>
   );
 
 export const api = {
+  getPlatformConfig,
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: (token?: string) => request<ModelAsset[]>('/api/assets/models', {}, token),
   getGalleries: (token?: string) => request<Gallery[]>('/api/galleries', {}, token),
@@ -354,6 +374,8 @@ export const api = {
   getGeneratorBaseModels,
   createGeneratorRequest,
   getGeneratorRequests,
+  getAdminSettings,
+  updateAdminSettings,
   getModelComments: (modelId: string, token?: string | null) =>
     request<{ comments: AssetComment[] }>(`/api/assets/models/${modelId}/comments`, {}, token ?? undefined).then(
       (response) => response.comments,

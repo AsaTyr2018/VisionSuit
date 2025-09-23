@@ -767,3 +767,8 @@
 - **General**: Ensured NSFW governance reacts to admin keywords and preview prompts so adult assets are consistently flagged and hidden from guests.
 - **Technical Changes**: Extended the adult detector to evaluate multiple metadata sources, captured LoRA preview EXIF data during uploads and versioning, recalculated model flags when versions are added or removed, refreshed keyword-driven batch recalculations, and documented the stricter behaviour in the README.
 - **Data Changes**: Newly uploaded or versioned models now persist parsed preview metadata inside their version JSON; existing records are reevaluated without schema changes.
+
+## 148 – [Addition] Administration settings and GPU health probes
+- **General**: Added a Settings tab under Administration so operators can rename the site, toggle registration or maintenance mode, and update service endpoints while surfacing GPU worker status alongside other service beacons.
+- **Technical Changes**: Introduced a backend settings service that reads and writes the frontend/backend `.env` files, exposed secured admin routes plus a public platform config endpoint, translated service status messaging, extended health checks with GPU node probing, wired new React state for platform config, rendered tabbed settings forms, refreshed service badges, and updated styling, README guidance, and API helpers accordingly.
+- **Data Changes**: None.
