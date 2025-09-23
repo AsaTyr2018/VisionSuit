@@ -336,10 +336,36 @@ const createGeneratorRequest = (token: string, payload: CreateGeneratorRequestPa
     token,
   ).then((response) => response.request);
 
-const getGeneratorRequests = (token: string, scope: 'mine' | 'all' = 'mine') => {
-  const path = scope === 'all' ? '/api/generator/requests?scope=all' : '/api/generator/requests';
+const getGeneratorRequests = (
+  token: string,
+  scope: 'mine' | 'all' = 'mine',
+  options?: { statuses?: string[] },
+) => {
+  const params = new URLSearchParams();
+  if (scope === 'all') {
+    params.set('scope', 'all');
+  }
+
+  const normalizedStatuses = (options?.statuses ?? [])
+    .map((status) => status.trim())
+    .filter((status) => status.length > 0);
+  if (normalizedStatuses.length > 0) {
+    params.set('status', normalizedStatuses.join(','));
+  }
+
+  const query = params.toString();
+  const path = `/api/generator/requests${query ? `?${query}` : ''}`;
   return request<{ requests: GeneratorRequestSummary[] }>(path, {}, token).then((response) => response.requests);
 };
+
+const cancelGeneratorRequest = (token: string, requestId: string) =>
+  request<{ request: GeneratorRequestSummary }>(
+    `/api/generator/requests/${requestId}/actions/cancel`,
+    {
+      method: 'POST',
+    },
+    token,
+  ).then((response) => response.request);
 
 const getGeneratorQueue = (token: string) => request<GeneratorQueueResponse>('/api/generator/queue', {}, token);
 
@@ -449,6 +475,7 @@ export const api = {
   unblockGeneratorUser,
   createGeneratorRequest,
   getGeneratorRequests,
+  cancelGeneratorRequest,
   getAdminSettings,
   updateAdminSettings,
   getModelComments: (modelId: string, token?: string | null) =>

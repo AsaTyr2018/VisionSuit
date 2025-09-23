@@ -9,6 +9,7 @@ import type {
   GeneratorAccessMode,
   GeneratorBaseModelConfig,
   GeneratorFailureLogResponse,
+  GeneratorRequestSummary,
   GeneratorQueueResponse,
   GeneratorSettings,
   ImageAsset,
@@ -146,6 +147,20 @@ const normalizeGeneratorBaseModel = (entry: GeneratorBaseModelConfig): Generator
   name: entry.name.trim(),
   filename: entry.filename.trim(),
 });
+
+const summarizePrompt = (prompt: string, limit = 160) => {
+  const normalized = prompt.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+
+  const safeLimit = Math.max(1, limit - 1);
+  return `${normalized.slice(0, safeLimit)}…`;
+};
 
 const matchText = (value: string | null | undefined, query: string) => {
   if (!query) {
@@ -462,6 +477,10 @@ export const AdminPanel = ({
   const [generatorErrorLogTotal, setGeneratorErrorLogTotal] = useState(0);
   const [isGeneratorErrorLogLoading, setIsGeneratorErrorLogLoading] = useState(false);
   const [generatorErrorLogError, setGeneratorErrorLogError] = useState<string | null>(null);
+  const [activeGeneratorRequests, setActiveGeneratorRequests] = useState<GeneratorRequestSummary[]>([]);
+  const [isActiveGeneratorRequestsLoading, setIsActiveGeneratorRequestsLoading] = useState(false);
+  const [activeGeneratorRequestsError, setActiveGeneratorRequestsError] = useState<string | null>(null);
+  const [activeGeneratorActionId, setActiveGeneratorActionId] = useState<string | null>(null);
   const [blockUserId, setBlockUserId] = useState('');
   const [blockReason, setBlockReason] = useState('');
   const flaggedModelCount = moderationQueue?.models.length ?? 0;
@@ -697,6 +716,21 @@ export const AdminPanel = ({
     }
   }, [token]);
 
+  const fetchActiveGeneratorRequests = useCallback(async () => {
+    setIsActiveGeneratorRequestsLoading(true);
+    setActiveGeneratorRequestsError(null);
+    try {
+      const requests = await api.getGeneratorRequests(token, 'all', { statuses: ['running', 'uploading'] });
+      setActiveGeneratorRequests(requests);
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to load active generator jobs.';
+      setActiveGeneratorRequestsError(message);
+    } finally {
+      setIsActiveGeneratorRequestsLoading(false);
+    }
+  }, [token]);
+
   const runQueueAction = useCallback(
     async (
       action: () => Promise<GeneratorQueueResponse>,
@@ -710,6 +744,7 @@ export const AdminPanel = ({
         setQueueError(null);
         const message = typeof successMessage === 'function' ? successMessage(response) : successMessage;
         setStatus({ type: 'success', message });
+        void fetchActiveGeneratorRequests();
         void fetchGeneratorErrorLog();
         return response;
       } catch (error) {
@@ -721,7 +756,7 @@ export const AdminPanel = ({
         setIsQueueActionRunning(false);
       }
     },
-    [fetchGeneratorErrorLog, setStatus],
+    [fetchActiveGeneratorRequests, fetchGeneratorErrorLog, setStatus],
   );
 
   const handlePauseQueue = useCallback(() => {
@@ -752,11 +787,39 @@ export const AdminPanel = ({
   const handleRefreshQueue = useCallback(() => {
     void fetchGeneratorQueue();
     void fetchGeneratorErrorLog();
-  }, [fetchGeneratorErrorLog, fetchGeneratorQueue]);
+    void fetchActiveGeneratorRequests();
+  }, [fetchActiveGeneratorRequests, fetchGeneratorErrorLog, fetchGeneratorQueue]);
 
   const handleRefreshErrorLog = useCallback(() => {
     void fetchGeneratorErrorLog();
   }, [fetchGeneratorErrorLog]);
+
+  const handleRefreshActiveGeneratorRequests = useCallback(() => {
+    void fetchActiveGeneratorRequests();
+  }, [fetchActiveGeneratorRequests]);
+
+  const handleCancelActiveGeneratorRequest = useCallback(
+    async (requestId: string) => {
+      setActiveGeneratorActionId(requestId);
+      try {
+        const cancelled = await api.cancelGeneratorRequest(token, requestId);
+        setStatus({ type: 'success', message: 'Generator job cancelled.' });
+        setActiveGeneratorRequests((entries) =>
+          entries.filter((entry) => entry.id !== cancelled.id),
+        );
+        setActiveGeneratorRequestsError(null);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'Failed to cancel generator job.';
+        setStatus({ type: 'error', message });
+        setActiveGeneratorRequestsError(message);
+      } finally {
+        setActiveGeneratorActionId(null);
+        void fetchActiveGeneratorRequests();
+        void fetchGeneratorQueue();
+      }
+    },
+    [fetchActiveGeneratorRequests, fetchGeneratorQueue, setStatus, token],
+  );
 
   const handleBlockUserSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -838,8 +901,9 @@ export const AdminPanel = ({
     if (activeTab === 'generator') {
       void fetchGeneratorQueue();
       void fetchGeneratorErrorLog();
+      void fetchActiveGeneratorRequests();
     }
-  }, [activeTab, fetchGeneratorErrorLog, fetchGeneratorQueue]);
+  }, [activeTab, fetchActiveGeneratorRequests, fetchGeneratorErrorLog, fetchGeneratorQueue]);
 
   const updateGeneralSetting = <K extends keyof AdminSettings['general']>(
     key: K,
@@ -3782,6 +3846,97 @@ export const AdminPanel = ({
                 Refresh status
               </button>
             </div>
+            <section className="generator-queue__active" aria-live="polite">
+              <div className="generator-queue__active-header">
+                <h4>Active jobs</h4>
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={handleRefreshActiveGeneratorRequests}
+                  disabled={isActiveGeneratorRequestsLoading}
+                >
+                  {isActiveGeneratorRequestsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+              {activeGeneratorRequestsError ? (
+                <p className="generator-queue__error">{activeGeneratorRequestsError}</p>
+              ) : null}
+              {isActiveGeneratorRequestsLoading &&
+              activeGeneratorRequests.length === 0 &&
+              !activeGeneratorRequestsError ? (
+                <p className="generator-queue__status-message">Loading active jobs…</p>
+              ) : null}
+              {!isActiveGeneratorRequestsLoading &&
+              activeGeneratorRequests.length === 0 &&
+              !activeGeneratorRequestsError ? (
+                <p className="generator-queue__empty">No jobs are currently running.</p>
+              ) : null}
+              {activeGeneratorRequests.length > 0 ? (
+                <ul className="generator-queue__active-list">
+                  {activeGeneratorRequests.map((request) => {
+                    const jobBaseModels =
+                      request.baseModels.length > 0
+                        ? request.baseModels
+                        : [
+                            {
+                              id: request.baseModel.id,
+                              name: request.baseModel.title,
+                              type: null,
+                              title: request.baseModel.title,
+                              slug: request.baseModel.slug,
+                              version: request.baseModel.version,
+                              filename: null,
+                            },
+                          ];
+                    const baseModelSummary = jobBaseModels
+                      .map((entry) => entry.name)
+                      .filter((value): value is string => Boolean(value))
+                      .join(', ');
+                    const createdAt = new Date(request.createdAt);
+                    const statusLabel = request.status.replace(/_/g, ' ');
+                    const promptPreview = summarizePrompt(request.prompt);
+                    const isCancelling = activeGeneratorActionId === request.id;
+                    return (
+                      <li key={request.id} className="generator-queue__active-item">
+                        <div className="generator-queue__active-body">
+                          <div className="generator-queue__active-title">
+                            <span
+                              className={`generator-history__status-tag generator-history__status-tag--${request.status}`}
+                            >
+                              {statusLabel}
+                            </span>
+                            <strong>{jobBaseModels[0]?.name ?? request.baseModel.title}</strong>
+                          </div>
+                          <p className="generator-queue__active-meta">
+                            Requested by <strong>{request.owner.displayName}</strong> ·{' '}
+                            <span>{createdAt.toLocaleString()}</span>
+                          </p>
+                          <p className="generator-queue__active-meta">
+                            Dimensions {request.width} × {request.height}
+                            {baseModelSummary ? ` • ${baseModelSummary}` : ''}
+                          </p>
+                          {promptPreview ? (
+                            <p className="generator-queue__active-prompt" title={request.prompt}>
+                              {promptPreview}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="generator-queue__active-actions">
+                          <button
+                            type="button"
+                            className="button button--danger"
+                            onClick={() => handleCancelActiveGeneratorRequest(request.id)}
+                            disabled={isCancelling}
+                          >
+                            {isCancelling ? 'Cancelling…' : 'Cancel job'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </section>
             <form className="generator-queue__block-form" onSubmit={handleBlockUserSubmit}>
               <div className="generator-queue__block-fields">
                 <label>
