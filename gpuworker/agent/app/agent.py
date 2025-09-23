@@ -152,7 +152,8 @@ class GPUAgent:
             "seed": job.parameters.seed,
             "cfg_scale": job.parameters.cfgScale,
             "steps": job.parameters.steps,
-            "base_model_path": str(base_model_path),
+            "base_model_path": base_model_path.name,
+            "base_model_full_path": str(base_model_path),
             "loras": [str(path) for path in lora_paths],
         }
         if job.parameters.resolution:

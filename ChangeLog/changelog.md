@@ -888,3 +888,8 @@
 - **General**: Hardened GPU agent workflow submissions with upfront validation and clearer ComfyUI error messages so 400 responses highlight misformatted prompts instead of failing silently.
 - **Technical Changes**: Added API-format checks that detect legacy editor exports, enforced required node fields, and surfaced ComfyUI response bodies when `/prompt` rejects a payload. Documented the export requirements in the README for operators.
 - **Data Changes**: None; validation affects in-flight dispatch payloads only.
+
+## 167 – [Fix] ComfyUI checkpoint payload normalization
+- **General**: Ensured generator submissions reference ComfyUI checkpoints using the filename expected by the API.
+- **Technical Changes**: Adjusted the GPU agent workflow context so `base_model_path` resolves to the checkpoint filename while exposing the absolute path separately for diagnostics.
+- **Data Changes**: None.
