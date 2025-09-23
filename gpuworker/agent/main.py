@@ -27,6 +27,15 @@ def create_app() -> FastAPI:
         busy = agent.is_busy()
         return {"status": "ok", "busy": busy}
 
+    @app.get("/")
+    async def root() -> Dict[str, Any]:
+        busy = agent.is_busy()
+        return {
+            "status": "ok",
+            "service": "VisionSuit GPU Agent",
+            "busy": busy,
+        }
+
     @app.post("/jobs", status_code=202)
     async def submit_job(job: DispatchEnvelope, background_tasks: BackgroundTasks) -> Dict[str, Any]:
         if not await agent.try_reserve_job():

@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
 import { resolveStorageLocation } from '../lib/storage';
+import { dispatchGeneratorRequest } from '../lib/generator/dispatcher';
 
 const generatorRouter = Router();
 
@@ -126,7 +127,7 @@ const registerAssetKeys = (
 
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: {
-    user: { select: { id: true; displayName: true; role: true } };
+    user: { select: { id: true; displayName: true; email: true; role: true } };
     baseModel: {
       include: {
         tags: { include: { tag: true } };
@@ -495,7 +496,7 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
         loraSelections: loraDetails,
       },
       include: {
-        user: { select: { id: true, displayName: true, role: true } },
+        user: { select: { id: true, displayName: true, email: true, role: true } },
         baseModel: {
           include: {
             tags: { include: { tag: true } },
@@ -504,7 +505,55 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
       },
     });
 
-    res.status(201).json({ request: mapGeneratorRequest(created as HydratedGeneratorRequest) });
+    try {
+      const dispatchResult = await dispatchGeneratorRequest(created as HydratedGeneratorRequest);
+
+      if (dispatchResult.status === 'queued') {
+        await prisma.generatorRequest.update({
+          where: { id: created.id },
+          data: { status: 'queued' },
+        });
+      } else if (dispatchResult.status === 'busy') {
+        await prisma.generatorRequest.update({
+          where: { id: created.id },
+          data: { status: 'pending' },
+        });
+        if (dispatchResult.message) {
+          // eslint-disable-next-line no-console
+          console.warn(`Generator agent busy: ${dispatchResult.message}`);
+        }
+      } else if (dispatchResult.status === 'error') {
+        await prisma.generatorRequest.update({
+          where: { id: created.id },
+          data: { status: 'error' },
+        });
+        if (dispatchResult.message) {
+          // eslint-disable-next-line no-console
+          console.error(`Generator agent rejected request ${created.id}: ${dispatchResult.message}`);
+        }
+      }
+    } catch (dispatchError) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to dispatch generator request', dispatchError);
+      await prisma.generatorRequest.update({
+        where: { id: created.id },
+        data: { status: 'error' },
+      });
+    }
+
+    const refreshed = await prisma.generatorRequest.findUnique({
+      where: { id: created.id },
+      include: {
+        user: { select: { id: true, displayName: true, email: true, role: true } },
+        baseModel: {
+          include: {
+            tags: { include: { tag: true } },
+          },
+        },
+      },
+    });
+
+    res.status(201).json({ request: mapGeneratorRequest(refreshed as HydratedGeneratorRequest) });
   } catch (error) {
     next(error);
   }
@@ -525,7 +574,7 @@ generatorRouter.get('/requests', requireAuth, async (req, res, next) => {
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        user: { select: { id: true, displayName: true, role: true } },
+        user: { select: { id: true, displayName: true, email: true, role: true } },
         baseModel: {
           include: {
             tags: { include: { tag: true } },

@@ -131,6 +131,16 @@ A remote ComfyUI render node can be prepared independently of the VisionSuit sta
 
 Alongside the ComfyUI runtime you can deploy the VisionSuit GPU agent to broker jobs from VisionSIOt. The agent lives in [`gpuworker/agent`](gpuworker/agent/README.md) and installs via `sudo ./gpuworker/agent/installer/install.sh`, which copies the FastAPI service to `/opt/visionsuit-gpu-agent`, provisions a Python virtual environment, and enables the `visionsuit-gpu-agent` systemd unit. Configure `/etc/visionsuit-gpu-agent/config.yaml` with MinIO credentials, bucket names, workflow defaults, and the ComfyUI API URL. VisionSIOt submits dispatch envelopes to `POST /jobs`; the agent enforces single-job execution, hydrates workflows, syncs missing models from MinIO, invokes ComfyUI, uploads outputs to the requested bucket, and notifies VisionSuit through the optional status/completion/failure callbacks.
 
+#### VisionSuit ↔ GPU agent handshake
+
+VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Point `GENERATOR_NODE_URL` in `backend/.env` at the agent root (for example `http://gpu-node:8081`)—the service advertises `GET /` and `GET /healthz` so health checks stay green. Provide the workflow location and parameter bindings via:
+
+- `GENERATOR_WORKFLOW_ID`, `GENERATOR_WORKFLOW_BUCKET`, and `GENERATOR_WORKFLOW_MINIO_KEY` (or `GENERATOR_WORKFLOW_LOCAL_PATH` / `GENERATOR_WORKFLOW_INLINE`) to tell the agent which JSON graph to load.
+- `GENERATOR_WORKFLOW_PARAMETERS` (JSON array) to map prompt/seed/CFG inputs onto workflow nodes and `GENERATOR_WORKFLOW_OVERRIDES` for fixed node tweaks.
+- `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
+
+Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base model, LoRA adapters, and prompt metadata. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately.
+
 ## Development Workflow
 
 ### Unified dev starter

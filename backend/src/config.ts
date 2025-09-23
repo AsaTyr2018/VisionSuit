@@ -1,5 +1,7 @@
 import { config } from 'dotenv';
 
+import type { AgentWorkflowMutation, AgentWorkflowParameterBinding } from './lib/generator/agentClient';
+
 const dotenvPath = process.env.DOTENV_CONFIG_PATH;
 
 if (dotenvPath && dotenvPath.length > 0) {
@@ -107,6 +109,73 @@ const toOptionalString = (value: string | undefined) => {
 
 const generatorNodeUrl = toOptionalString(process.env.GENERATOR_NODE_URL);
 
+const parseJsonValue = (value: string | undefined, label: string): unknown | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(`Failed to parse ${label} JSON payload.`, error);
+    return undefined;
+  }
+};
+
+const parseWorkflowParameterBindings = (value: string | undefined): AgentWorkflowParameterBinding[] => {
+  const parsed = parseJsonValue(value, 'GENERATOR_WORKFLOW_PARAMETERS');
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  const bindings: AgentWorkflowParameterBinding[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const parameter = typeof record.parameter === 'string' ? record.parameter.trim() : '';
+    const node = typeof record.node === 'number' ? record.node : Number.NaN;
+    const pathValue = typeof record.path === 'string' ? record.path.trim() : '';
+
+    if (!parameter || Number.isNaN(node) || !pathValue) {
+      continue;
+    }
+
+    bindings.push({ parameter, node, path: pathValue });
+  }
+
+  return bindings;
+};
+
+const parseWorkflowOverrides = (value: string | undefined): AgentWorkflowMutation[] => {
+  const parsed = parseJsonValue(value, 'GENERATOR_WORKFLOW_OVERRIDES');
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  const overrides: AgentWorkflowMutation[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const node = typeof record.node === 'number' ? record.node : Number.NaN;
+    const pathValue = typeof record.path === 'string' ? record.path.trim() : '';
+
+    if (Number.isNaN(node) || !pathValue || !('value' in record)) {
+      continue;
+    }
+
+    overrides.push({ node, path: pathValue, value: (record as { value: unknown }).value });
+  }
+
+  return overrides;
+};
+
 const deriveMinioPublicUrl = () => {
   const explicitUrl = process.env.MINIO_PUBLIC_URL;
   if (explicitUrl && explicitUrl.trim().length > 0) {
@@ -171,5 +240,22 @@ export const appConfig = {
       process.env.GENERATOR_BASE_MODEL_MANIFEST?.trim() && process.env.GENERATOR_BASE_MODEL_MANIFEST.trim().length > 0
         ? process.env.GENERATOR_BASE_MODEL_MANIFEST.trim()
         : 'minio-model-manifest.json',
+    workflow: {
+      id: requireString(process.env.GENERATOR_WORKFLOW_ID, 'GENERATOR_WORKFLOW_ID', 'default'),
+      version: process.env.GENERATOR_WORKFLOW_VERSION?.trim() || undefined,
+      bucket: process.env.GENERATOR_WORKFLOW_BUCKET?.trim() || 'generator-workflows',
+      minioKey: process.env.GENERATOR_WORKFLOW_MINIO_KEY?.trim() || 'default.json',
+      localPath: process.env.GENERATOR_WORKFLOW_LOCAL_PATH?.trim() || undefined,
+      inline: parseJsonValue(process.env.GENERATOR_WORKFLOW_INLINE, 'GENERATOR_WORKFLOW_INLINE'),
+      parameters: parseWorkflowParameterBindings(process.env.GENERATOR_WORKFLOW_PARAMETERS),
+      overrides: parseWorkflowOverrides(process.env.GENERATOR_WORKFLOW_OVERRIDES),
+    },
+    output: {
+      bucket: requireString(process.env.GENERATOR_OUTPUT_BUCKET, 'GENERATOR_OUTPUT_BUCKET', 'generator-outputs'),
+      prefixTemplate:
+        process.env.GENERATOR_OUTPUT_PREFIX?.trim() && process.env.GENERATOR_OUTPUT_PREFIX.trim().length > 0
+          ? process.env.GENERATOR_OUTPUT_PREFIX.trim()
+          : 'generated/{userId}/{jobId}',
+    },
   },
 };
