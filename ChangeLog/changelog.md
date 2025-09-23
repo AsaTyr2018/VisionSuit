@@ -948,3 +948,8 @@
 - **General**: Kept the on-site generator focused on live work by separating active jobs from historical runs and trimming archived completions.
 - **Technical Changes**: Added queue history sub-tabs with tablist semantics, filtered the data model so completed and failed entries cap at the ten most recent, refreshed the generator history styles to accommodate the new controls, and documented the UX in the README.
 - **Data Changes**: None.
+
+## 178 – [Fix] On-Site generator single-base targeting
+- **General**: Ensured the On-Site Generator only queues one curated base checkpoint per request and trimmed the LoRA gallery to twenty visible adapters while catalog searches still span every stored entry.
+- **Technical Changes**: Replaced the base-model checkbox matrix with a radio-driven roster that preserves defaults/reset behaviour, tightened submission guards around the lone selection, sliced the LoRA list to the first twenty matches with a refinement hint, and refreshed the README to explain the focused picker.
+- **Data Changes**: None.
