@@ -807,3 +807,8 @@
 - **General**: Ensured the On-Site Generator trusts administrator-defined base models even when no catalog asset exists, so GPU-resident checkpoints remain selectable without extra syncing.
 - **Technical Changes**: Made generator requests tolerate missing `ModelAsset` links, derive storage paths from Administration → Generator settings, updated dispatch fallbacks, exposed the new availability in the API response, refreshed the React wizard to accept configuration-backed entries, and documented the behavior in the README.
 - **Data Changes**: Added a Prisma migration that allows `GeneratorRequest.baseModelId` to be null while preserving existing records.
+
+## 151 – [Fix] Generator base model guard (commit TBD)
+- **General**: Stopped the On-Site Generator from crashing when a configured base model lacks catalog metadata.
+- **Technical Changes**: Filtered base model asset identifiers before computing the LoRA exclusion set so null assets no longer trigger runtime errors.
+- **Data Changes**: None.
