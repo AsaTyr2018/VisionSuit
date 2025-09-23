@@ -128,12 +128,18 @@ const sanitizeUrl = (value: string, fallbackProtocol: 'http' | 'https' = 'http')
 const deriveGeneratorCallbackBaseUrl = () => {
   const explicit = process.env.GENERATOR_CALLBACK_BASE_URL;
   if (explicit && explicit.trim().length > 0) {
-    return sanitizeUrl(explicit);
+    const normalizedExplicit = sanitizeUrl(explicit);
+    if (normalizedExplicit) {
+      return normalizedExplicit;
+    }
   }
 
   const publicDomain = process.env.PUBLIC_DOMAIN;
   if (publicDomain && publicDomain.trim().length > 0) {
-    return sanitizeUrl(publicDomain, 'https');
+    const normalizedDomain = sanitizeUrl(publicDomain, 'https');
+    if (normalizedDomain) {
+      return normalizedDomain;
+    }
   }
 
   const hostCandidate =

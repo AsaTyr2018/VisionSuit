@@ -80,7 +80,7 @@ The script performs a `git pull` from the directory that originally cloned Visio
 - `callbacks.*` – Optional `base_url` override plus TLS verification and timeout for VisionSIOt callback URLs.
 - `workflow_defaults` – Additional values injected into the workflow parameter context when building prompts.
 
-Set `callbacks.base_url` when the backend publishes relative callback paths or runs behind a reverse proxy so the agent rewrites those hooks to an externally reachable host instead of the default `http://127.0.0.1`.
+Set `callbacks.base_url` when the backend publishes relative callback paths or runs behind a reverse proxy so the agent rewrites those hooks to an externally reachable host instead of the default `http://127.0.0.1`. The override now applies even when VisionSuit supplies loopback-only absolute URLs, ensuring completion and failure events land on the control plane regardless of how the backend reports its callback endpoints.
 
 ## API contract
 

@@ -450,13 +450,16 @@ export const dispatchGeneratorRequest = async (
   };
 
   const callbackBase = appConfig.generator.callbacks.baseUrl.replace(/\/$/, '');
-  if (callbackBase) {
-    envelope.callbacks = {
-      status: `${callbackBase}/api/generator/requests/${request.id}/callbacks/status`,
-      completion: `${callbackBase}/api/generator/requests/${request.id}/callbacks/completion`,
-      failure: `${callbackBase}/api/generator/requests/${request.id}/callbacks/failure`,
-    };
-  }
+  const buildCallbackPath = (suffix: 'status' | 'completion' | 'failure') =>
+    `/api/generator/requests/${request.id}/callbacks/${suffix}`;
+  const buildCallbackUrl = (suffix: 'status' | 'completion' | 'failure') =>
+    callbackBase ? `${callbackBase}${buildCallbackPath(suffix)}` : buildCallbackPath(suffix);
+
+  envelope.callbacks = {
+    status: buildCallbackUrl('status'),
+    completion: buildCallbackUrl('completion'),
+    failure: buildCallbackUrl('failure'),
+  };
 
   if (request.negativePrompt !== undefined) {
     envelope.parameters.negativePrompt = request.negativePrompt;
