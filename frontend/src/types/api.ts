@@ -96,10 +96,14 @@ export interface GeneratorBaseModelConfig {
   filename: string;
 }
 
+export type GeneratorBaseModelSource = 'catalog' | 'configured';
+
 export interface GeneratorBaseModelOption extends GeneratorBaseModelConfig {
   id: string;
   asset: ModelAsset | null;
   isMissing: boolean;
+  storagePath?: string | null;
+  source?: GeneratorBaseModelSource;
 }
 
 export interface GeneratorRequestBaseModelSelection {
@@ -109,6 +113,8 @@ export interface GeneratorRequestBaseModelSelection {
   title?: string | null;
   slug?: string | null;
   version?: string | null;
+  filename?: string | null;
+  source?: GeneratorBaseModelSource;
 }
 
 export interface GeneratorSettings {

@@ -7,7 +7,9 @@ import type {
   GeneratorRequestLoRASelection,
   GeneratorRequestSummary,
   GeneratorBaseModelOption,
+  GeneratorBaseModelSource,
   ModelAsset,
+  Tag,
   User,
 } from '../types/api';
 
@@ -23,6 +25,22 @@ type WizardStep = 1 | 2 | 3;
 type LoraSelection = {
   id: string;
   strength: number;
+};
+
+type PreparedBaseModelOption = GeneratorBaseModelOption & {
+  hasStorage: boolean;
+  resolved: {
+    id: string;
+    title: string;
+    slug: string | null;
+    version: string | null;
+    ownerName: string | null;
+    previewImage: string | null;
+    previewImageBucket: string | null;
+    previewImageObject: string | null;
+    tags: Tag[];
+    source: GeneratorBaseModelSource;
+  };
 };
 
 const dimensionPresets = [
@@ -301,7 +319,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     return lookup;
   }, [baseModelCatalog]);
 
-  const resolvedBaseModels = useMemo(
+  const resolvedBaseModels = useMemo<PreparedBaseModelOption[]>(
     () =>
       baseModels.map((entry) => {
         const existingAsset = entry.asset ? baseModelCatalogById.get(entry.asset.id) ?? entry.asset : null;
@@ -322,17 +340,46 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
           }
         }
 
+        const normalizedSource = entry.source ?? (asset ? 'catalog' : 'configured');
+        const hasStorage = Boolean(entry.storagePath && entry.storagePath.trim().length > 0);
+
         return {
           ...entry,
+          source: normalizedSource as GeneratorBaseModelSource,
           asset: asset ?? null,
-          isMissing: !asset,
+          hasStorage,
+          isMissing: asset ? false : !hasStorage,
+          resolved: asset
+            ? {
+                id: asset.id,
+                title: asset.title,
+                slug: asset.slug ?? null,
+                version: asset.version ?? null,
+                ownerName: asset.owner.displayName,
+                previewImage: asset.previewImage ?? null,
+                previewImageBucket: asset.previewImageBucket ?? null,
+                previewImageObject: asset.previewImageObject ?? null,
+                tags: asset.tags,
+                source: 'catalog' as GeneratorBaseModelSource,
+              }
+            : {
+                id: entry.id,
+                title: entry.name,
+                slug: entry.id,
+                version: normalizedSource === 'configured' ? 'configured' : null,
+                ownerName: null,
+                previewImage: null,
+                previewImageBucket: null,
+                previewImageObject: null,
+                tags: [],
+                source: normalizedSource as GeneratorBaseModelSource,
+              },
         };
       }),
     [baseModels, baseModelCatalogById, baseModelCatalogLookup],
   );
   const selectableBaseModels = useMemo(
-    () =>
-      resolvedBaseModels.filter((entry): entry is GeneratorBaseModelOption & { asset: ModelAsset } => Boolean(entry.asset)),
+    () => resolvedBaseModels.filter((entry) => Boolean(entry.asset) || entry.hasStorage),
     [resolvedBaseModels],
   );
   const hasMissingBaseModels = useMemo(
@@ -365,20 +412,20 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     }
 
     setSelectedBaseModelIds((current) => {
-      const valid = current.filter((id) => selectableBaseModels.some((entry) => entry.asset.id === id));
+      const valid = current.filter((id) => selectableBaseModels.some((entry) => entry.id === id));
       if (valid.length > 0) {
         return valid;
       }
 
-      return selectableBaseModels.map((entry) => entry.asset.id);
+      return selectableBaseModels.map((entry) => entry.id);
     });
   }, [selectableBaseModels]);
 
   const selectedBaseModels = useMemo(() => {
-    const lookup = new Map(selectableBaseModels.map((entry) => [entry.asset.id, entry]));
+    const lookup = new Map(selectableBaseModels.map((entry) => [entry.id, entry]));
     return selectedBaseModelIds
       .map((id) => lookup.get(id) ?? null)
-      .filter((entry): entry is (GeneratorBaseModelOption & { asset: ModelAsset }) => Boolean(entry));
+      .filter((entry): entry is typeof selectableBaseModels[number] => Boolean(entry));
   }, [selectedBaseModelIds, selectableBaseModels]);
 
   const primaryBaseModel = selectedBaseModels[0] ?? null;
@@ -391,7 +438,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         }
 
         const next = [...current, id];
-        const order = new Map(selectableBaseModels.map((entry, index) => [entry.asset.id, index]));
+        const order = new Map(selectableBaseModels.map((entry, index) => [entry.id, index]));
         return next.sort(
           (a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER),
         );
@@ -557,7 +604,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     setWidth(1024);
     setHeight(1024);
     setLoraSelections([]);
-    setSelectedBaseModelIds(selectableBaseModels.map((entry) => entry.asset.id));
+    setSelectedBaseModelIds(selectableBaseModels.map((entry) => entry.id));
     setWizardError(null);
     setSubmitError(null);
     goToStep(1);
@@ -580,9 +627,14 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       setSubmitError(null);
       const payload = {
         baseModels: selectedBaseModels.map((entry) => ({
-          id: entry.asset.id,
+          id: entry.resolved.id,
           name: entry.name,
           type: entry.type,
+          title: entry.resolved.title,
+          slug: entry.resolved.slug ?? undefined,
+          version: entry.resolved.version ?? undefined,
+          filename: entry.filename,
+          source: entry.source,
         })),
         prompt: prompt.trim(),
         negativePrompt: negativePrompt.trim() ? negativePrompt.trim() : undefined,
@@ -672,11 +724,12 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         {selectableBaseModels.length > 0 ? (
           <div className="generator-base-matrix__grid">
             {selectableBaseModels.map((entry) => {
-              const selected = selectedBaseModelIds.includes(entry.asset.id);
-              const versionLabel = entry.asset.version ?? '—';
+              const selected = selectedBaseModelIds.includes(entry.id);
+              const versionLabel = entry.resolved.version ?? '—';
+              const catalogTitle = entry.asset ? entry.asset.title : entry.name;
               return (
                 <label
-                  key={entry.asset.id}
+                  key={entry.id}
                   className={`generator-base-matrix__card${selected ? ' generator-base-matrix__card--active' : ''}`}
                 >
                   <span className="generator-base-matrix__checkbox">
@@ -684,14 +737,14 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                       type="checkbox"
                       name="generator-base-models"
                       checked={selected}
-                      onChange={() => handleToggleBaseModel(entry.asset.id)}
+                      onChange={() => handleToggleBaseModel(entry.id)}
                       aria-label={`Toggle ${entry.name}`}
                     />
                   </span>
                   <span className="generator-base-matrix__details">
                     <span className="generator-base-matrix__name">{entry.name}</span>
                     <span className="generator-base-matrix__type">{entry.type}</span>
-                    <span className="generator-base-matrix__meta">{entry.asset.title}</span>
+                    <span className="generator-base-matrix__meta">{catalogTitle}</span>
                     <span className="generator-base-matrix__version">Version {versionLabel}</span>
                   </span>
                 </label>
@@ -747,11 +800,15 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     }
 
     const previewUrl = resolveCachedStorageUrl(
-      primaryBaseModel.asset.previewImage,
-      primaryBaseModel.asset.previewImageBucket,
-      primaryBaseModel.asset.previewImageObject,
+      primaryBaseModel.resolved.previewImage,
+      primaryBaseModel.resolved.previewImageBucket,
+      primaryBaseModel.resolved.previewImageObject,
     );
     const additionalBaseModels = selectedBaseModels.slice(1);
+    const ownerLabel = primaryBaseModel.asset
+      ? primaryBaseModel.asset.owner.displayName
+      : primaryBaseModel.resolved.ownerName ?? 'Configured base model';
+    const resolvedTags = primaryBaseModel.asset ? primaryBaseModel.asset.tags : primaryBaseModel.resolved.tags;
 
     return (
       <div className="generator-preview">
@@ -772,36 +829,36 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
             </div>
             <div>
               <dt>Version</dt>
-              <dd>{primaryBaseModel.asset.version}</dd>
+              <dd>{primaryBaseModel.resolved.version ?? '—'}</dd>
             </div>
             <div>
               <dt>Catalog title</dt>
-              <dd>{primaryBaseModel.asset.title}</dd>
+              <dd>{primaryBaseModel.asset ? primaryBaseModel.asset.title : primaryBaseModel.name}</dd>
             </div>
             <div>
               <dt>Owner</dt>
-              <dd>{primaryBaseModel.asset.owner.displayName}</dd>
+              <dd>{ownerLabel}</dd>
             </div>
           </dl>
           {additionalBaseModels.length > 0 ? (
             <ul className="generator-preview__selection-list">
               {additionalBaseModels.map((entry) => (
-                <li key={entry.asset.id}>
+                <li key={entry.id}>
                   <span>{entry.name}</span>
                   <small>
-                    {entry.type} · {entry.asset.version}
+                    {entry.type} · {entry.resolved.version ?? '—'}
                   </small>
                 </li>
               ))}
             </ul>
           ) : null}
-          {primaryBaseModel.asset.tags.length > 0 ? (
+          {resolvedTags.length > 0 ? (
             <ul className="generator-preview__tags">
-              {primaryBaseModel.asset.tags.slice(0, 6).map((tag) => (
+              {resolvedTags.slice(0, 6).map((tag) => (
                 <li key={tag.id}>{tag.label}</li>
               ))}
-              {primaryBaseModel.asset.tags.length > 6 ? (
-                <li className="generator-preview__tags-more">+{primaryBaseModel.asset.tags.length - 6}</li>
+              {resolvedTags.length > 6 ? (
+                <li className="generator-preview__tags-more">+{resolvedTags.length - 6}</li>
               ) : null}
             </ul>
           ) : null}
@@ -1022,10 +1079,10 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               {selectedBaseModels.length > 0 ? (
                 <ul className="generator-review__base-models">
                   {selectedBaseModels.map((entry) => (
-                    <li key={entry.asset.id}>
+                    <li key={entry.id}>
                       <span>{entry.name}</span>
                       <small>
-                        {entry.type} · {entry.asset.version}
+                        {entry.type} · {entry.resolved.version ?? '—'}
                       </small>
                     </li>
                   ))}

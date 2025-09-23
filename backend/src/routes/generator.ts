@@ -23,6 +23,8 @@ type GeneratorBaseModelConfig = z.infer<typeof generatorBaseModelConfigSchema>;
 
 const generatorBaseModelSettingsSchema = z.array(generatorBaseModelConfigSchema).max(32).default([]);
 
+const CONFIGURED_BASE_MODEL_PREFIX = 'config-';
+
 const normalizeGeneratorBaseModelSource = (value: unknown): unknown => {
   if (value === null || value === undefined) {
     return [];
@@ -133,6 +135,8 @@ type StoredBaseModelSelection = {
   slug: string | null;
   version: string | null;
   storagePath: string | null;
+  filename: string | null;
+  source: 'catalog' | 'configured';
 };
 
 const parseStoredBaseModelSelections = (value: unknown): StoredBaseModelSelection[] => {
@@ -177,11 +181,45 @@ const parseStoredBaseModelSelections = (value: unknown): StoredBaseModelSelectio
       slug: typeof record.slug === 'string' ? record.slug : null,
       version: typeof record.version === 'string' ? record.version : null,
       storagePath: typeof record.storagePath === 'string' ? record.storagePath : null,
+      filename: typeof record.filename === 'string' ? record.filename : null,
+      source: record.source === 'configured' ? 'configured' : 'catalog',
     });
   }
 
   return selections;
 };
+
+type EnumeratedBaseModelConfig = GeneratorBaseModelConfig & {
+  id: string;
+  storagePath: string | null;
+};
+
+const normalizeConfiguredBucket = (bucketValue: string | null | undefined): string => {
+  const value = bucketValue?.trim() ?? '';
+  if (!value) {
+    return '';
+  }
+
+  return value.replace(/^s3:\/\//i, '').replace(/\/+$/, '');
+};
+
+const configuredBucket = normalizeConfiguredBucket(appConfig.generator.baseModelBucket);
+
+const buildConfiguredBaseModelStoragePath = (filename: string): string | null => {
+  const normalizedKey = filename.trim().replace(/^\/+/, '');
+  if (!configuredBucket || !normalizedKey) {
+    return null;
+  }
+
+  return `s3://${configuredBucket}/${normalizedKey}`;
+};
+
+const enumerateConfiguredBaseModels = (entries: GeneratorBaseModelConfig[]): EnumeratedBaseModelConfig[] =>
+  entries.map((entry, index) => ({
+    ...entry,
+    id: `${CONFIGURED_BASE_MODEL_PREFIX}${index}`,
+    storagePath: buildConfiguredBaseModelStoragePath(entry.filename),
+  }));
 
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: {
@@ -238,28 +276,44 @@ const ensureSettings = async () => {
 };
 
 const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
-  const basePreview = resolveStorageLocation(request.baseModel.previewImage);
   const storedSelections = parseStoredBaseModelSelections(request.baseModelSelections);
+  const primarySelection = storedSelections[0] ?? null;
+  const baseModelRecord = request.baseModel ?? null;
+  const basePreview = baseModelRecord
+    ? resolveStorageLocation(baseModelRecord.previewImage)
+    : { bucket: null, objectName: null, url: null };
+
+  const inferredTitle =
+    baseModelRecord?.title ?? primarySelection?.title ?? primarySelection?.name ?? 'Base model';
+  const inferredSlug = baseModelRecord?.slug ?? primarySelection?.slug ?? primarySelection?.id ?? '';
+  const inferredVersion = baseModelRecord?.version ?? primarySelection?.version ?? null;
+
   const baseModels = (storedSelections.length > 0
     ? storedSelections
-    : [
-        {
-          id: request.baseModel.id,
-          name: request.baseModel.title,
-          type: null,
-          title: request.baseModel.title,
-          slug: request.baseModel.slug,
-          version: request.baseModel.version,
-          storagePath: request.baseModel.storagePath ?? null,
-        },
-      ]
+    : baseModelRecord
+        ? [
+            {
+              id: baseModelRecord.id,
+              name: baseModelRecord.title,
+              type: null,
+              title: baseModelRecord.title,
+              slug: baseModelRecord.slug,
+              version: baseModelRecord.version,
+              storagePath: baseModelRecord.storagePath ?? null,
+              filename: null,
+              source: 'catalog' as const,
+            },
+          ]
+        : []
   ).map((entry) => ({
     id: entry.id,
-    name: entry.name ?? request.baseModel.title,
+    name: entry.name ?? inferredTitle,
     type: entry.type,
-    title: entry.title,
+    title: entry.title ?? entry.name ?? inferredTitle,
     slug: entry.slug,
     version: entry.version,
+    filename: entry.filename ?? null,
+    source: entry.source,
   }));
 
   return {
@@ -280,18 +334,20 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
     createdAt: request.createdAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
     baseModel: {
-      id: request.baseModel.id,
-      title: request.baseModel.title,
-      slug: request.baseModel.slug,
-      version: request.baseModel.version,
-      previewImage: basePreview.url ?? request.baseModel.previewImage ?? null,
+      id: baseModelRecord?.id ?? primarySelection?.id ?? 'configured-base-model',
+      title: inferredTitle,
+      slug: inferredSlug,
+      version: inferredVersion ?? 'configured',
+      previewImage: basePreview.url ?? baseModelRecord?.previewImage ?? null,
       previewImageBucket: basePreview.bucket,
       previewImageObject: basePreview.objectName,
-      tags: request.baseModel.tags.map(({ tag }) => ({
-        id: tag.id,
-        label: tag.label,
-        category: tag.category,
-      })),
+      tags: baseModelRecord
+        ? baseModelRecord.tags.map(({ tag }) => ({
+            id: tag.id,
+            label: tag.label,
+            category: tag.category,
+          }))
+        : [],
     },
     owner: {
       id: request.user.id,
@@ -398,13 +454,16 @@ generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
   try {
     const settings = await ensureSettings();
     const configured = parseGeneratorBaseModels(extractSettingsBaseModels(settings));
+    const enumeratedConfigured = enumerateConfiguredBaseModels(configured);
 
-    if (configured.length === 0) {
+    if (enumeratedConfigured.length === 0) {
       res.json([]);
       return;
     }
 
-    const filenames = Array.from(new Set(configured.map((entry) => entry.filename))).filter((entry) => entry.length > 0);
+    const filenames = Array.from(new Set(enumeratedConfigured.map((entry) => entry.filename))).filter(
+      (entry) => entry.length > 0,
+    );
 
     let assets: HydratedModelAsset[] = [];
     if (filenames.length > 0) {
@@ -447,15 +506,19 @@ generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
       });
     });
 
-    const payload = configured.map((entry, index) => {
+    const payload = enumeratedConfigured.map((entry) => {
       const asset = assetLookup.get(entry.filename) ?? null;
+      const storagePath = asset?.storagePath ?? entry.storagePath ?? null;
+      const isConfigured = !asset;
       return {
-        id: asset?.id ?? `config-${index}`,
+        id: asset?.id ?? entry.id,
         type: entry.type,
         name: entry.name,
         filename: entry.filename,
         asset,
-        isMissing: !asset,
+        isMissing: storagePath ? false : isConfigured,
+        storagePath,
+        source: isConfigured ? 'configured' : 'catalog',
       };
     });
 
@@ -525,6 +588,12 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
     }
 
     const viewer = req.user!;
+    const settings = await ensureSettings();
+    const configuredEntries = enumerateConfiguredBaseModels(
+      parseGeneratorBaseModels(extractSettingsBaseModels(settings)),
+    );
+    const configuredById = new Map(configuredEntries.map((entry) => [entry.id, entry]));
+
     const baseModelIds = parsed.data.baseModels.map((entry) => entry.id);
 
     const baseModelRecords = await prisma.modelAsset.findMany({
@@ -545,33 +614,61 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
 
     for (const selection of parsed.data.baseModels) {
       const record = baseModelsById.get(selection.id);
-      if (!record) {
+      if (record) {
+        if (!record.isPublic && viewer.role !== 'ADMIN' && record.ownerId !== viewer.id) {
+          res.status(403).json({ message: 'No permission to use one or more base models.' });
+          return;
+        }
+
+        const normalizedName = selection.name.trim();
+        const displayName = normalizedName.length > 0 ? normalizedName : record.title ?? 'Base model';
+
+        orderedBaseModels.push({
+          id: record.id,
+          name: displayName,
+          type: selection.type,
+          title: record.title ?? null,
+          slug: record.slug ?? null,
+          version: record.version ?? null,
+          storagePath: record.storagePath ?? null,
+          filename: null,
+          source: 'catalog',
+        });
+        continue;
+      }
+
+      const configured = configuredById.get(selection.id);
+      if (!configured) {
         res.status(404).json({ message: `Base model ${selection.id} not found.` });
         return;
       }
 
-      if (!record.isPublic && viewer.role !== 'ADMIN' && record.ownerId !== viewer.id) {
-        res.status(403).json({ message: 'No permission to use one or more base models.' });
-        return;
-      }
-
       const normalizedName = selection.name.trim();
-      const displayName = normalizedName.length > 0 ? normalizedName : record.title ?? 'Base model';
+      const displayName = normalizedName.length > 0 ? normalizedName : configured.name;
 
       orderedBaseModels.push({
-        id: record.id,
+        id: configured.id,
         name: displayName,
-        type: selection.type,
-        title: record.title ?? null,
-        slug: record.slug ?? null,
-        version: record.version ?? null,
-        storagePath: record.storagePath ?? null,
+        type: selection.type ?? configured.type,
+        title: configured.name,
+        slug: null,
+        version: null,
+        storagePath: configured.storagePath,
+        filename: configured.filename,
+        source: 'configured',
       });
     }
 
     const primaryBaseModel = orderedBaseModels[0];
     if (!primaryBaseModel) {
       res.status(400).json({ message: 'Select at least one base model.' });
+      return;
+    }
+
+    const primaryRecord = baseModelsById.get(primaryBaseModel.id) ?? null;
+    const primaryStoragePath = primaryRecord?.storagePath ?? primaryBaseModel.storagePath ?? null;
+    if (!primaryStoragePath) {
+      res.status(400).json({ message: 'Selected base model is missing a storage location.' });
       return;
     }
 
@@ -610,7 +707,7 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
     const created = await prisma.generatorRequest.create({
       data: {
         userId: viewer.id,
-        baseModelId: primaryBaseModel.id,
+        baseModelId: primaryRecord?.id ?? null,
         baseModelSelections: orderedBaseModels as unknown as Prisma.JsonArray,
         prompt: parsed.data.prompt,
         negativePrompt: parsed.data.negativePrompt ?? null,

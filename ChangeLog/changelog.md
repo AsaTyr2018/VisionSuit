@@ -802,3 +802,8 @@
 - **General**: Restored the generator wizard’s base-model picker so curators can toggle curated checkpoints via an accessible checkbox matrix before dispatching jobs.
 - **Technical Changes**: Replaced the button-based cards with labelled checkboxes, refreshed the styling to accommodate the new control layout, and noted the checkbox matrix in the README for up-to-date operator guidance.
 - **Data Changes**: None.
+
+## 150 – [Fix] Generator honors configured base models
+- **General**: Ensured the On-Site Generator trusts administrator-defined base models even when no catalog asset exists, so GPU-resident checkpoints remain selectable without extra syncing.
+- **Technical Changes**: Made generator requests tolerate missing `ModelAsset` links, derive storage paths from Administration → Generator settings, updated dispatch fallbacks, exposed the new availability in the API response, refreshed the React wizard to accept configuration-backed entries, and documented the behavior in the README.
+- **Data Changes**: Added a Prisma migration that allows `GeneratorRequest.baseModelId` to be null while preserving existing records.
