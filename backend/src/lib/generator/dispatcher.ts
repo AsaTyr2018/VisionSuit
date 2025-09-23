@@ -19,6 +19,7 @@ interface DispatchableGeneratorRequest {
   width: number;
   height: number;
   loraSelections: unknown;
+  baseModelSelections: unknown;
   user: {
     id: string;
     displayName: string | null;
@@ -36,6 +37,16 @@ type StoredLoraSelection = {
   strength: number | null;
   title: string | null;
   slug: string | null;
+};
+
+type StoredBaseModelSelection = {
+  id: string;
+  name: string | null;
+  type: string | null;
+  title: string | null;
+  slug: string | null;
+  version: string | null;
+  storagePath: string | null;
 };
 
 export type DispatchStatus = 'queued' | 'busy' | 'skipped' | 'error';
@@ -113,6 +124,50 @@ const parseLoraSelections = (value: unknown): StoredLoraSelection[] => {
   return selections;
 };
 
+const parseBaseModelSelections = (value: unknown): StoredBaseModelSelection[] => {
+  if (!value) {
+    return [];
+  }
+
+  const raw = typeof value === 'string' ? (() => {
+    try {
+      return JSON.parse(value) as unknown;
+    } catch (error) {
+      console.warn('Failed to parse base model selections JSON string.', error);
+      return [];
+    }
+  })() : value;
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const selections: StoredBaseModelSelection[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id : null;
+    if (!id) {
+      continue;
+    }
+
+    selections.push({
+      id,
+      name: typeof record.name === 'string' ? record.name : null,
+      type: typeof record.type === 'string' ? record.type : null,
+      title: typeof record.title === 'string' ? record.title : null,
+      slug: typeof record.slug === 'string' ? record.slug : null,
+      version: typeof record.version === 'string' ? record.version : null,
+      storagePath: typeof record.storagePath === 'string' ? record.storagePath : null,
+    });
+  }
+
+  return selections;
+};
+
 const buildOutputPrefix = (request: DispatchableGeneratorRequest): string => {
   const template = appConfig.generator.output.prefixTemplate || 'generated/{userId}/{jobId}';
   return template.replace(/\{userId\}/g, request.user.id).replace(/\{jobId\}/g, request.id);
@@ -150,6 +205,32 @@ export const dispatchGeneratorRequest = async (
     return { status: 'error', message: 'Base model is missing an accessible storage location.' };
   }
 
+  const storedBaseModels = parseBaseModelSelections(request.baseModelSelections);
+  const normalizedBaseModels = [...storedBaseModels];
+  if (!normalizedBaseModels.some((entry) => entry.id === request.baseModel.id)) {
+    normalizedBaseModels.unshift({
+      id: request.baseModel.id,
+      name: request.baseModel.title,
+      type: null,
+      title: request.baseModel.title,
+      slug: null,
+      version: null,
+      storagePath: request.baseModel.storagePath ?? null,
+    });
+  }
+
+  const baseModelIds = Array.from(new Set(normalizedBaseModels.map((entry) => entry.id)));
+  let baseModelAssets: Array<{ id: string; storagePath: string | null }> = [];
+  if (baseModelIds.length > 0) {
+    baseModelAssets = await prisma.modelAsset.findMany({
+      where: { id: { in: baseModelIds } },
+      select: { id: true, storagePath: true },
+    });
+  }
+
+  const baseModelStorage = new Map(baseModelAssets.map((entry) => [entry.id, entry.storagePath ?? null]));
+  baseModelStorage.set(request.baseModel.id, request.baseModel.storagePath);
+
   const selections = parseLoraSelections(request.loraSelections);
   const loraIds = selections.map((entry) => entry.id);
 
@@ -163,7 +244,35 @@ export const dispatchGeneratorRequest = async (
 
   const lorasForAgent: AgentDispatchEnvelope['loras'] = [];
   const loraExtraPayload: Array<Record<string, unknown>> = [];
+  const baseModelExtraPayload: Array<Record<string, unknown>> = [];
   const missingLoras: string[] = [];
+  const missingBaseModels: string[] = [];
+
+  for (const selection of normalizedBaseModels) {
+    const storagePath = selection.storagePath ?? baseModelStorage.get(selection.id) ?? null;
+    if (!storagePath) {
+      missingBaseModels.push(selection.id);
+      continue;
+    }
+
+    const location = resolveStorageLocation(storagePath);
+    if (!location.bucket || !location.objectName) {
+      missingBaseModels.push(selection.id);
+      continue;
+    }
+
+    baseModelExtraPayload.push({
+      id: selection.id,
+      name: selection.name ?? request.baseModel.title,
+      type: selection.type ?? null,
+      title: selection.title ?? null,
+      slug: selection.slug ?? null,
+      version: selection.version ?? null,
+      bucket: location.bucket,
+      key: location.objectName,
+      filename: path.basename(location.objectName),
+    });
+  }
 
   for (const selection of selections) {
     const asset = loraAssets.find((entry) => entry.id === selection.id);
@@ -198,6 +307,11 @@ export const dispatchGeneratorRequest = async (
   if (missingLoras.length > 0) {
     // eslint-disable-next-line no-console
     console.warn('Generator request is missing LoRA assets:', missingLoras.join(', '));
+  }
+
+  if (missingBaseModels.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn('Generator request is missing base model assets:', missingBaseModels.join(', '));
   }
 
   const envelope: AgentDispatchEnvelope = {
@@ -245,10 +359,11 @@ export const dispatchGeneratorRequest = async (
     envelope.parameters.steps = request.steps;
   }
 
-  if (loraExtraPayload.length > 0) {
+  if (baseModelExtraPayload.length > 0 || loraExtraPayload.length > 0) {
     envelope.parameters.extra = {
       ...(envelope.parameters.extra ?? {}),
-      loras: loraExtraPayload,
+      ...(baseModelExtraPayload.length > 0 ? { baseModels: baseModelExtraPayload } : {}),
+      ...(loraExtraPayload.length > 0 ? { loras: loraExtraPayload } : {}),
     };
   }
 

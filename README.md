@@ -13,7 +13,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - **Self-service account management** – Sidebar account settings let curators update their display name, bio, and password, now proxy uploaded avatars (PNG/JPG/WebP ≤ 5 MB) through the API, and automatically reroute legacy MinIO avatar links so external domains never surface `127.0.0.1` references.
 - **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
 - **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
-- **On-Site Generator hub** – Role-aware wizard that mirrors the admin-curated base-model labels from Administration → Generator, lists the matching database checkpoints, lets curators compose prompts, mix LoRAs, tap trigger suggestions straight into the prompt box, pick dimensions, and enqueue generation jobs while preserving per-user history.
+- **On-Site Generator hub** – Role-aware wizard that mirrors the admin-curated base-model labels from Administration → Generator, exposes them in a checkbox matrix, lists the matching database checkpoints, lets curators compose prompts, mix LoRAs, tap trigger suggestions straight into the prompt box, pick dimensions, and enqueue generation jobs while preserving per-user history.
 - **Curator spotlight profiles** – Dedicated profile view with avatars, rank progression, bios, and live listings of every model and collection uploaded by the curator, reachable from any curator name across the interface.
 - **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, in-place editing for curators/admins, an integrated flow for uploading new revisions including preview handling, and admin tooling to promote or retire revisions.
 - **Governed storage pipeline** – Direct MinIO ingestion with automatic tagging, secure download proxying via the backend, audit trails, and guardrails for file size (≤ 2 GB) and batch limits (≤ 12 files).
@@ -139,7 +139,7 @@ VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Poin
 - `GENERATOR_WORKFLOW_PARAMETERS` (JSON array) to map prompt/seed/CFG inputs onto workflow nodes and `GENERATOR_WORKFLOW_OVERRIDES` for fixed node tweaks.
 - `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
 
-Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base model, LoRA adapters, and prompt metadata. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately.
+Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base models, LoRA adapters, and prompt metadata. The GPU agent receives the full base-model roster alongside the primary checkpoint so it can stage or audit every curated option up front. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately.
 
 ## Development Workflow
 

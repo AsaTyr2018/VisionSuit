@@ -125,6 +125,64 @@ const registerAssetKeys = (
   }
 };
 
+type StoredBaseModelSelection = {
+  id: string;
+  name: string | null;
+  type: string | null;
+  title: string | null;
+  slug: string | null;
+  version: string | null;
+  storagePath: string | null;
+};
+
+const parseStoredBaseModelSelections = (value: unknown): StoredBaseModelSelection[] => {
+  if (!value) {
+    return [];
+  }
+
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch (error) {
+            console.warn('Failed to parse baseModelSelections JSON string.', error);
+            return [];
+          }
+        })()
+      : value;
+
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const selections: StoredBaseModelSelection[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+
+    const record = entry as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id : null;
+    if (!id) {
+      continue;
+    }
+
+    selections.push({
+      id,
+      name: typeof record.name === 'string' ? record.name : null,
+      type: typeof record.type === 'string' ? record.type : null,
+      title: typeof record.title === 'string' ? record.title : null,
+      slug: typeof record.slug === 'string' ? record.slug : null,
+      version: typeof record.version === 'string' ? record.version : null,
+      storagePath: typeof record.storagePath === 'string' ? record.storagePath : null,
+    });
+  }
+
+  return selections;
+};
+
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
   include: {
     user: { select: { id: true; displayName: true; email: true; role: true } };
@@ -181,6 +239,28 @@ const ensureSettings = async () => {
 
 const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
   const basePreview = resolveStorageLocation(request.baseModel.previewImage);
+  const storedSelections = parseStoredBaseModelSelections(request.baseModelSelections);
+  const baseModels = (storedSelections.length > 0
+    ? storedSelections
+    : [
+        {
+          id: request.baseModel.id,
+          name: request.baseModel.title,
+          type: null,
+          title: request.baseModel.title,
+          slug: request.baseModel.slug,
+          version: request.baseModel.version,
+          storagePath: request.baseModel.storagePath ?? null,
+        },
+      ]
+  ).map((entry) => ({
+    id: entry.id,
+    name: entry.name ?? request.baseModel.title,
+    type: entry.type,
+    title: entry.title,
+    slug: entry.slug,
+    version: entry.version,
+  }));
 
   return {
     id: request.id,
@@ -196,6 +276,7 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
       Array.isArray(request.loraSelections) && request.loraSelections
         ? (request.loraSelections as Array<{ id: string; strength?: number; title?: string | null; slug?: string | null }>)
         : [],
+    baseModels,
     createdAt: request.createdAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
     baseModel: {
@@ -285,7 +366,16 @@ generatorRouter.get('/base-models/catalog', requireAuth, async (_req, res, next)
 });
 
 const generatorRequestSchema = z.object({
-  baseModelId: z.string().min(1, 'Base model is required.'),
+  baseModels: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1, 'Base model id required.'),
+        name: z.string().trim().min(1, 'Base model name required.'),
+        type: generatorBaseModelTypeSchema,
+      }),
+    )
+    .min(1, 'Select at least one base model.')
+    .max(32),
   loras: z
     .array(
       z.object({
@@ -434,19 +524,54 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
       return;
     }
 
-    const baseModel = await prisma.modelAsset.findUnique({
-      where: { id: parsed.data.baseModelId },
-      select: { id: true, isPublic: true, ownerId: true, title: true },
+    const viewer = req.user!;
+    const baseModelIds = parsed.data.baseModels.map((entry) => entry.id);
+
+    const baseModelRecords = await prisma.modelAsset.findMany({
+      where: { id: { in: baseModelIds } },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        version: true,
+        isPublic: true,
+        ownerId: true,
+        storagePath: true,
+      },
     });
 
-    if (!baseModel) {
-      res.status(404).json({ message: 'Base model not found.' });
-      return;
+    const baseModelsById = new Map(baseModelRecords.map((entry) => [entry.id, entry]));
+    const orderedBaseModels: StoredBaseModelSelection[] = [];
+
+    for (const selection of parsed.data.baseModels) {
+      const record = baseModelsById.get(selection.id);
+      if (!record) {
+        res.status(404).json({ message: `Base model ${selection.id} not found.` });
+        return;
+      }
+
+      if (!record.isPublic && viewer.role !== 'ADMIN' && record.ownerId !== viewer.id) {
+        res.status(403).json({ message: 'No permission to use one or more base models.' });
+        return;
+      }
+
+      const normalizedName = selection.name.trim();
+      const displayName = normalizedName.length > 0 ? normalizedName : record.title ?? 'Base model';
+
+      orderedBaseModels.push({
+        id: record.id,
+        name: displayName,
+        type: selection.type,
+        title: record.title ?? null,
+        slug: record.slug ?? null,
+        version: record.version ?? null,
+        storagePath: record.storagePath ?? null,
+      });
     }
 
-    const viewer = req.user!;
-    if (!baseModel.isPublic && viewer.role !== 'ADMIN' && baseModel.ownerId !== viewer.id) {
-      res.status(403).json({ message: 'No permission to use this base model.' });
+    const primaryBaseModel = orderedBaseModels[0];
+    if (!primaryBaseModel) {
+      res.status(400).json({ message: 'Select at least one base model.' });
       return;
     }
 
@@ -485,7 +610,8 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
     const created = await prisma.generatorRequest.create({
       data: {
         userId: viewer.id,
-        baseModelId: baseModel.id,
+        baseModelId: primaryBaseModel.id,
+        baseModelSelections: orderedBaseModels as unknown as Prisma.JsonArray,
         prompt: parsed.data.prompt,
         negativePrompt: parsed.data.negativePrompt ?? null,
         seed: parsed.data.seed ?? null,

@@ -183,7 +183,7 @@ const mapHistoryLoRAs = (
 
 export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSiteGeneratorProps) => {
   const [step, setStep] = useState<WizardStep>(1);
-  const [selectedBaseModelId, setSelectedBaseModelId] = useState<string>('');
+  const [selectedBaseModelIds, setSelectedBaseModelIds] = useState<string[]>([]);
   const [loraSelections, setLoraSelections] = useState<LoraSelection[]>([]);
   const [loraQuery, setLoraQuery] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -345,32 +345,59 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
 
   const loraOptions = useMemo(() => {
     const baseModelIds = new Set(selectableBaseModels.map((entry) => entry.asset.id));
+    const selectedIds = new Set(selectedBaseModelIds);
     const candidates = models.filter((asset) => isLikelyLora(asset) && !baseModelIds.has(asset.id));
     if (candidates.length > 0) {
       return candidates.sort((a, b) => a.title.localeCompare(b.title));
     }
 
     return models
-      .filter((asset) => asset.id !== selectedBaseModelId && !baseModelIds.has(asset.id))
+      .filter((asset) => !selectedIds.has(asset.id) && !baseModelIds.has(asset.id))
       .sort((a, b) => a.title.localeCompare(b.title));
-  }, [models, selectedBaseModelId, selectableBaseModels]);
+  }, [models, selectableBaseModels, selectedBaseModelIds]);
 
   const loraLookup = useMemo(() => new Map(models.map((asset) => [asset.id, asset])), [models]);
 
   useEffect(() => {
     if (selectableBaseModels.length === 0) {
-      setSelectedBaseModelId('');
+      setSelectedBaseModelIds([]);
       return;
     }
 
-    if (!selectedBaseModelId || !selectableBaseModels.some((entry) => entry.asset.id === selectedBaseModelId)) {
-      setSelectedBaseModelId(selectableBaseModels[0].asset.id);
-    }
-  }, [selectableBaseModels, selectedBaseModelId]);
+    setSelectedBaseModelIds((current) => {
+      const valid = current.filter((id) => selectableBaseModels.some((entry) => entry.asset.id === id));
+      if (valid.length > 0) {
+        return valid;
+      }
 
-  const selectedBaseModel = useMemo(
-    () => selectableBaseModels.find((entry) => entry.asset.id === selectedBaseModelId) ?? null,
-    [selectableBaseModels, selectedBaseModelId],
+      return selectableBaseModels.map((entry) => entry.asset.id);
+    });
+  }, [selectableBaseModels]);
+
+  const selectedBaseModels = useMemo(() => {
+    const lookup = new Map(selectableBaseModels.map((entry) => [entry.asset.id, entry]));
+    return selectedBaseModelIds
+      .map((id) => lookup.get(id) ?? null)
+      .filter((entry): entry is (GeneratorBaseModelOption & { asset: ModelAsset }) => Boolean(entry));
+  }, [selectedBaseModelIds, selectableBaseModels]);
+
+  const primaryBaseModel = selectedBaseModels[0] ?? null;
+
+  const handleToggleBaseModel = useCallback(
+    (id: string) => {
+      setSelectedBaseModelIds((current) => {
+        if (current.includes(id)) {
+          return current.filter((entry) => entry !== id);
+        }
+
+        const next = [...current, id];
+        const order = new Map(selectableBaseModels.map((entry, index) => [entry.asset.id, index]));
+        return next.sort(
+          (a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER),
+        );
+      });
+    },
+    [selectableBaseModels],
   );
 
   const filteredLoras = useMemo(() => {
@@ -504,8 +531,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
 
   const handleNext = useCallback(() => {
     if (step === 1) {
-      if (!selectedBaseModelId) {
-        setWizardError('Please select a base model before continuing.');
+      if (selectedBaseModelIds.length === 0) {
+        setWizardError('Please select at least one base model before continuing.');
         return;
       }
       goToStep(2);
@@ -519,7 +546,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       }
       goToStep(3);
     }
-  }, [goToStep, prompt, selectedBaseModelId, step]);
+  }, [goToStep, prompt, selectedBaseModelIds, step]);
 
   const resetWizard = useCallback(() => {
     setPrompt('');
@@ -530,14 +557,15 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     setWidth(1024);
     setHeight(1024);
     setLoraSelections([]);
+    setSelectedBaseModelIds(selectableBaseModels.map((entry) => entry.asset.id));
     setWizardError(null);
     setSubmitError(null);
     goToStep(1);
-  }, [goToStep]);
+  }, [goToStep, selectableBaseModels]);
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedBaseModelId) {
-      setSubmitError('Select a base model before submitting the request.');
+    if (selectedBaseModelIds.length === 0) {
+      setSubmitError('Select at least one base model before submitting the request.');
       goToStep(1);
       return;
     }
@@ -551,7 +579,11 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       setIsSubmitting(true);
       setSubmitError(null);
       const payload = {
-        baseModelId: selectedBaseModelId,
+        baseModels: selectedBaseModels.map((entry) => ({
+          id: entry.asset.id,
+          name: entry.name,
+          type: entry.type,
+        })),
         prompt: prompt.trim(),
         negativePrompt: negativePrompt.trim() ? negativePrompt.trim() : undefined,
         seed: seed.trim() ? seed.trim() : undefined,
@@ -577,7 +609,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       setIsSubmitting(false);
     }
   }, [
-    selectedBaseModelId,
+    selectedBaseModelIds,
+    selectedBaseModels,
     prompt,
     negativePrompt,
     seed,
@@ -613,6 +646,73 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     </ol>
   );
 
+  const renderBaseModelMatrix = () => {
+    const missingEntries = resolvedBaseModels.filter((entry) => entry.isMissing);
+
+    return (
+      <section className="generator-base-matrix">
+        <header className="generator-base-matrix__header">
+          <div>
+            <h3>Base models</h3>
+            <p>Select one or more curated checkpoints to bundle with your render request.</p>
+          </div>
+          <p className="generator-base-matrix__count">{selectedBaseModelIds.length} selected</p>
+        </header>
+        {isBaseModelDataLoading ? (
+          <p className="generator-base-matrix__status">Loading base model definitions…</p>
+        ) : null}
+        {combinedBaseModelError ? (
+          <p className="generator-base-matrix__error">{combinedBaseModelError}</p>
+        ) : null}
+        {!isBaseModelDataLoading && selectableBaseModels.length === 0 && !combinedBaseModelError ? (
+          <p className="generator-base-matrix__empty">
+            No base models configured. Ask an administrator to add entries under Administration → Generator.
+          </p>
+        ) : null}
+        {selectableBaseModels.length > 0 ? (
+          <div className="generator-base-matrix__grid">
+            {selectableBaseModels.map((entry) => {
+              const selected = selectedBaseModelIds.includes(entry.asset.id);
+              const versionLabel = entry.asset.version ?? '—';
+              return (
+                <label
+                  key={entry.asset.id}
+                  className={`generator-base-matrix__card${selected ? ' generator-base-matrix__card--active' : ''}`}
+                >
+                  <span className="generator-base-matrix__checkbox">
+                    <input
+                      type="checkbox"
+                      name="generator-base-models"
+                      checked={selected}
+                      onChange={() => handleToggleBaseModel(entry.asset.id)}
+                      aria-label={`Toggle ${entry.name}`}
+                    />
+                  </span>
+                  <span className="generator-base-matrix__details">
+                    <span className="generator-base-matrix__name">{entry.name}</span>
+                    <span className="generator-base-matrix__type">{entry.type}</span>
+                    <span className="generator-base-matrix__meta">{entry.asset.title}</span>
+                    <span className="generator-base-matrix__version">Version {versionLabel}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+        {missingEntries.length > 0 ? (
+          <div className="generator-base-matrix__missing">
+            <p>Some configured base models could not be located. Verify these filenames in Administration → Generator:</p>
+            <ul>
+              {missingEntries.map((entry) => (
+                <li key={entry.filename}>{entry.name}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+    );
+  };
+
   const renderBaseModelPreview = () => {
     if (isBaseModelDataLoading) {
       return (
@@ -630,7 +730,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       );
     }
 
-    if (!selectedBaseModel) {
+    if (!primaryBaseModel) {
       if (selectableBaseModels.length === 0) {
         return (
           <div className="generator-preview generator-preview--empty">
@@ -641,51 +741,67 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
 
       return (
         <div className="generator-preview generator-preview--empty">
-          <p>Select a base model to display its metadata and cover art.</p>
+          <p>Select at least one base model to display its metadata and cover art.</p>
         </div>
       );
     }
 
     const previewUrl = resolveCachedStorageUrl(
-      selectedBaseModel.asset.previewImage,
-      selectedBaseModel.asset.previewImageBucket,
-      selectedBaseModel.asset.previewImageObject,
+      primaryBaseModel.asset.previewImage,
+      primaryBaseModel.asset.previewImageBucket,
+      primaryBaseModel.asset.previewImageObject,
     );
+    const additionalBaseModels = selectedBaseModels.slice(1);
 
     return (
       <div className="generator-preview">
         {previewUrl ? <img src={previewUrl} alt="Base model preview" /> : <div className="generator-preview__fallback">No preview</div>}
         <div className="generator-preview__details">
-          <h3>{selectedBaseModel.name}</h3>
+          <h3>{primaryBaseModel.name}</h3>
+          <p className="generator-preview__selection-count">
+            {selectedBaseModels.length} base {selectedBaseModels.length === 1 ? 'model' : 'models'} selected
+          </p>
           <dl>
             <div>
               <dt>Configured label</dt>
-              <dd>{selectedBaseModel.name}</dd>
+              <dd>{primaryBaseModel.name}</dd>
             </div>
             <div>
               <dt>Type</dt>
-              <dd>{selectedBaseModel.type}</dd>
+              <dd>{primaryBaseModel.type}</dd>
             </div>
             <div>
               <dt>Version</dt>
-              <dd>{selectedBaseModel.asset.version}</dd>
+              <dd>{primaryBaseModel.asset.version}</dd>
             </div>
             <div>
               <dt>Catalog title</dt>
-              <dd>{selectedBaseModel.asset.title}</dd>
+              <dd>{primaryBaseModel.asset.title}</dd>
             </div>
             <div>
               <dt>Owner</dt>
-              <dd>{selectedBaseModel.asset.owner.displayName}</dd>
+              <dd>{primaryBaseModel.asset.owner.displayName}</dd>
             </div>
           </dl>
-          {selectedBaseModel.asset.tags.length > 0 ? (
+          {additionalBaseModels.length > 0 ? (
+            <ul className="generator-preview__selection-list">
+              {additionalBaseModels.map((entry) => (
+                <li key={entry.asset.id}>
+                  <span>{entry.name}</span>
+                  <small>
+                    {entry.type} · {entry.asset.version}
+                  </small>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {primaryBaseModel.asset.tags.length > 0 ? (
             <ul className="generator-preview__tags">
-              {selectedBaseModel.asset.tags.slice(0, 6).map((tag) => (
+              {primaryBaseModel.asset.tags.slice(0, 6).map((tag) => (
                 <li key={tag.id}>{tag.label}</li>
               ))}
-              {selectedBaseModel.asset.tags.length > 6 ? (
-                <li className="generator-preview__tags-more">+{selectedBaseModel.asset.tags.length - 6}</li>
+              {primaryBaseModel.asset.tags.length > 6 ? (
+                <li className="generator-preview__tags-more">+{primaryBaseModel.asset.tags.length - 6}</li>
               ) : null}
             </ul>
           ) : null}
@@ -901,8 +1017,23 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         <h3>Summary</h3>
         <dl>
           <div>
-            <dt>Base model</dt>
-            <dd>{selectedBaseModel ? selectedBaseModel.name : 'Not selected'}</dd>
+            <dt>Base models</dt>
+            <dd>
+              {selectedBaseModels.length > 0 ? (
+                <ul className="generator-review__base-models">
+                  {selectedBaseModels.map((entry) => (
+                    <li key={entry.asset.id}>
+                      <span>{entry.name}</span>
+                      <small>
+                        {entry.type} · {entry.asset.version}
+                      </small>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                'Not selected'
+              )}
+            </dd>
           </div>
           <div>
             <dt>Prompt</dt>
@@ -942,7 +1073,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
             ))}
           </ul>
         ) : (
-          <p>No LoRA adapters selected. The render will use only the base model.</p>
+          <p>No LoRA adapters selected. The render will use only the selected base models.</p>
         )}
       </section>
     </div>
@@ -952,38 +1083,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     if (step === 1) {
       return (
         <div className="generator-step generator-step--assets">
-          <div className="generator-field">
-            <label htmlFor="generator-base-model">Base model</label>
-            <select
-              id="generator-base-model"
-              value={selectedBaseModelId}
-              onChange={(event) => setSelectedBaseModelId(event.target.value)}
-              disabled={isBaseModelDataLoading || selectableBaseModels.length === 0}
-            >
-              {selectableBaseModels.length === 0 ? (
-                <option value="">
-                  {isBaseModelDataLoading ? 'Loading base models…' : 'No base models available'}
-                </option>
-              ) : null}
-              {selectableBaseModels.map((entry) => (
-                <option key={entry.asset.id} value={entry.asset.id}>
-                  {entry.name} — {entry.type}
-                </option>
-              ))}
-            </select>
-            {isBaseModelDataLoading ? (
-              <p className="generator-field__status">Loading base model definitions…</p>
-            ) : null}
-            {combinedBaseModelError ? <p className="generator-field__error">{combinedBaseModelError}</p> : null}
-            {!isBaseModelDataLoading && hasMissingBaseModels && !combinedBaseModelError ? (
-              <p className="generator-field__status">Some configured base models could not be located. Check the filenames in Administration → Generator.</p>
-            ) : null}
-            {!isBaseModelDataLoading && selectableBaseModels.length === 0 && !combinedBaseModelError ? (
-              <p className="generator-field__empty">
-                No base models configured. Ask an administrator to add entries under Administration → Generator.
-              </p>
-            ) : null}
-          </div>
+          {renderBaseModelMatrix()}
           {renderBaseModelPreview()}
           {renderLoraSelection()}
         </div>
@@ -1013,10 +1113,22 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
       <ul className="generator-history__list">
         {history.map((request) => {
           const createdAt = new Date(request.createdAt);
+          const historyBaseModels =
+            request.baseModels.length > 0
+              ? request.baseModels
+              : [
+                  {
+                    id: request.baseModel.id,
+                    name: request.baseModel.title,
+                    type: null,
+                    version: request.baseModel.version,
+                  },
+                ];
+          const primaryHistoryBaseModel = historyBaseModels[0];
           return (
             <li key={request.id} className="generator-history__item">
               <header>
-                <h3>{request.baseModel.title}</h3>
+                <h3>{primaryHistoryBaseModel?.name ?? request.baseModel.title}</h3>
                 <span className={`generator-history__status-tag generator-history__status-tag--${request.status}`}>
                   {request.status.replace(/_/g, ' ')}
                 </span>
@@ -1026,6 +1138,24 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               ) : null}
               <p className="generator-history__timestamp">{createdAt.toLocaleString()}</p>
               <dl>
+                <div>
+                  <dt>Base models</dt>
+                  <dd>
+                    <ul className="generator-history__base-models">
+                      {historyBaseModels.map((entry) => {
+                        const meta = [entry.type ?? null, entry.version ?? null]
+                          .filter((value): value is string => Boolean(value))
+                          .join(' · ');
+                        return (
+                          <li key={entry.id}>
+                            <span>{entry.name}</span>
+                            {meta ? <small>{meta}</small> : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </dd>
+                </div>
                 <div>
                   <dt>Prompt</dt>
                   <dd>{request.prompt}</dd>
