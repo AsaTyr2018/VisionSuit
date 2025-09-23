@@ -782,3 +782,8 @@
 - **General**: Restored the freshly installed GPU agent so the systemd service boots without module import failures.
 - **Technical Changes**: Switched the FastAPI entrypoint to absolute imports, updated the systemd unit to launch `uvicorn main:app`, and refreshed the README guidance for manual runs.
 - **Data Changes**: None.
+
+## 035 – [Addition] GPU agent integration bridge
+- **General**: Wired VisionSuit's on-site generator to the GPU agent so dispatches share a consistent envelope and health probes target the new service.
+- **Technical Changes**: Added a root health endpoint to the FastAPI agent, introduced a TypeScript agent client and dispatcher, updated generator routes to submit jobs and manage busy/error states, refreshed admin health checks, expanded configuration/env parsing for workflows and output buckets, and documented the handshake in the README.
+- **Data Changes**: None.

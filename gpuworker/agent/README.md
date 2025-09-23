@@ -68,8 +68,9 @@ The installer performs the following steps:
 
 ## API contract
 
-The agent exposes two HTTP endpoints:
+The agent exposes lightweight HTTP endpoints:
 
+- `GET /` – Health summary for platform probes. Returns `{ "status": "ok", "service": "VisionSuit GPU Agent", "busy": false }` when idle.
 - `GET /healthz` – Returns `{ "status": "ok", "busy": false }` when idle. `busy` becomes `true` while a job is running.
 - `POST /jobs` – Accepts a JSON payload that follows the dispatch envelope designed for VisionSIOt. When the agent is idle the endpoint returns HTTP 202 and starts the background job. If the agent is already running a job the endpoint returns HTTP 409.
 
