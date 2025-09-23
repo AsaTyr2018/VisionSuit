@@ -938,3 +938,8 @@
 - **General**: Prevented concurrent GPU jobs from colliding by enforcing a single global dispatch slot while giving every member a personal queue dashboard and token-aware artifact links that open without manual authentication headers.
 - **Technical Changes**: Added queue-state locking with `activeRequestId`/`lockedAt`, centralized dispatch in a serialized `processGeneratorQueue`, scoped queue stats per user with global metrics for admins, refreshed admin/frontend displays to respect the new payload shape, and appended access tokens to generator artifact URLs. The README now highlights the serialized queue and automatic proxy authorization.
 - **Data Changes**: Introduced nullable `activeRequestId` and `lockedAt` columns on `GeneratorQueueState` to track the in-flight job and lock acquisition timestamp.
+
+## 176 – [Addition] Generator admin layout segmentation
+- **General**: Organized the generator administration console into focused sections so queue operations, error telemetry, and access controls stay easy to scan.
+- **Technical Changes**: Added a segmented sub-navigation with dedicated queue, failure log, and access panels, reset the active sub-tab when leaving the generator view, refreshed copy, styled the new controls, and updated the README to explain the streamlined workflow.
+- **Data Changes**: None.
