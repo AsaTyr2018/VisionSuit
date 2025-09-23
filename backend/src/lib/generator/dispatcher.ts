@@ -361,6 +361,15 @@ export const dispatchGeneratorRequest = async (
     workflowParameters: [...appConfig.generator.workflow.parameters],
   };
 
+  const callbackBase = appConfig.generator.callbacks.baseUrl.replace(/\/$/, '');
+  if (callbackBase) {
+    envelope.callbacks = {
+      status: `${callbackBase}/api/generator/requests/${request.id}/callbacks/status`,
+      completion: `${callbackBase}/api/generator/requests/${request.id}/callbacks/completion`,
+      failure: `${callbackBase}/api/generator/requests/${request.id}/callbacks/failure`,
+    };
+  }
+
   if (request.negativePrompt !== undefined) {
     envelope.parameters.negativePrompt = request.negativePrompt;
   }

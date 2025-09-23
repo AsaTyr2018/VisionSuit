@@ -109,6 +109,46 @@ const toOptionalString = (value: string | undefined) => {
 
 const generatorNodeUrl = toOptionalString(process.env.GENERATOR_NODE_URL);
 
+const sanitizeUrl = (value: string, fallbackProtocol: 'http' | 'https' = 'http') => {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `${fallbackProtocol}://${trimmed}`;
+};
+
+const deriveGeneratorCallbackBaseUrl = () => {
+  const explicit = process.env.GENERATOR_CALLBACK_BASE_URL;
+  if (explicit && explicit.trim().length > 0) {
+    return sanitizeUrl(explicit);
+  }
+
+  const publicDomain = process.env.PUBLIC_DOMAIN;
+  if (publicDomain && publicDomain.trim().length > 0) {
+    return sanitizeUrl(publicDomain, 'https');
+  }
+
+  const hostCandidate =
+    process.env.BACKEND_PUBLIC_HOST?.trim() ||
+    process.env.PUBLIC_HOST?.trim() ||
+    process.env.HOST?.trim() ||
+    '127.0.0.1';
+
+  const normalizedHost = hostCandidate === '0.0.0.0' ? '127.0.0.1' : hostCandidate;
+  if (/^https?:\/\//i.test(normalizedHost)) {
+    return normalizedHost.replace(/\/+$/, '');
+  }
+
+  const hasPort = normalizedHost.includes(':');
+  const port = toNumber(process.env.PORT, 4000);
+  return hasPort ? `http://${normalizedHost.replace(/\/+$/, '')}` : `http://${normalizedHost.replace(/\/+$/, '')}:${port}`;
+};
+
 const parseJsonValue = (value: string | undefined, label: string): unknown | undefined => {
   if (!value) {
     return undefined;
@@ -256,6 +296,9 @@ export const appConfig = {
         process.env.GENERATOR_OUTPUT_PREFIX?.trim() && process.env.GENERATOR_OUTPUT_PREFIX.trim().length > 0
           ? process.env.GENERATOR_OUTPUT_PREFIX.trim()
           : 'generated/{userId}/{jobId}',
+    },
+    callbacks: {
+      baseUrl: deriveGeneratorCallbackBaseUrl(),
     },
   },
 };

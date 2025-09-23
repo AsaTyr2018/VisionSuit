@@ -812,3 +812,8 @@
 - **General**: Stopped the On-Site Generator from crashing when a configured base model lacks catalog metadata.
 - **Technical Changes**: Filtered base model asset identifiers before computing the LoRA exclusion set so null assets no longer trigger runtime errors.
 - **Data Changes**: None.
+
+## 152 – [Addition] Generator callback pipeline
+- **General**: Enabled VisionSuit to receive live GPU agent status updates, capture generated artifacts, and surface finished renders directly in the On-Site Generator history.
+- **Technical Changes**: Added configurable callback base URLs, new generator callback endpoints, Prisma-backed artifact persistence, refreshed mapper logic, and front-end history enhancements with artifact galleries and failure messaging.
+- **Data Changes**: Introduced the `GeneratorArtifact` table and new `GeneratorRequest` columns for callback state (`errorReason`, `outputBucket`, `outputPrefix`).

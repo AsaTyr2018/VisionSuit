@@ -221,15 +221,18 @@ const enumerateConfiguredBaseModels = (entries: GeneratorBaseModelConfig[]): Enu
     storagePath: buildConfiguredBaseModelStoragePath(entry.filename),
   }));
 
+const generatorRequestInclude = {
+  user: { select: { id: true, displayName: true, email: true, role: true } },
+  baseModel: {
+    include: {
+      tags: { include: { tag: true } },
+    },
+  },
+  artifacts: true,
+} as const;
+
 type HydratedGeneratorRequest = Prisma.GeneratorRequestGetPayload<{
-  include: {
-    user: { select: { id: true; displayName: true; email: true; role: true } };
-    baseModel: {
-      include: {
-        tags: { include: { tag: true } };
-      };
-    };
-  };
+  include: typeof generatorRequestInclude;
 }>;
 
 const sanitizeGeneratorSettingsBaseModels = async () => {
@@ -319,6 +322,7 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
   return {
     id: request.id,
     status: request.status,
+    errorReason: request.errorReason ?? null,
     prompt: request.prompt,
     negativePrompt: request.negativePrompt,
     seed: request.seed,
@@ -353,6 +357,24 @@ const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
       id: request.user.id,
       displayName: request.user.displayName,
       role: request.user.role,
+    },
+    artifacts: request.artifacts
+      .slice()
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((artifact) => {
+        const location = resolveStorageLocation(artifact.storagePath);
+        return {
+          id: artifact.id,
+          bucket: artifact.bucket,
+          objectKey: artifact.objectKey,
+          storagePath: artifact.storagePath,
+          url: location.url,
+          createdAt: artifact.createdAt.toISOString(),
+        };
+      }),
+    output: {
+      bucket: request.outputBucket ?? appConfig.generator.output.bucket,
+      prefix: request.outputPrefix ?? null,
     },
   };
 };
@@ -448,6 +470,24 @@ const generatorRequestSchema = z.object({
   steps: z.coerce.number().int().min(1).max(200).optional(),
   width: z.coerce.number().int().min(256).max(2048),
   height: z.coerce.number().int().min(256).max(2048),
+});
+
+const generatorStatusCallbackSchema = z.object({
+  jobId: z.string().min(1),
+  status: z.enum(['queued', 'running', 'uploading']),
+  extra: z.record(z.string(), z.unknown()).optional(),
+});
+
+const generatorCompletionCallbackSchema = z.object({
+  jobId: z.string().min(1),
+  status: z.literal('completed'),
+  artifacts: z.array(z.string().min(1)).default([]),
+});
+
+const generatorFailureCallbackSchema = z.object({
+  jobId: z.string().min(1),
+  status: z.enum(['failed', 'error']).default('failed'),
+  reason: z.string().optional(),
 });
 
 generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
@@ -718,13 +758,19 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
         height: parsed.data.height,
         loraSelections: loraDetails,
       },
-      include: {
-        user: { select: { id: true, displayName: true, email: true, role: true } },
-        baseModel: {
-          include: {
-            tags: { include: { tag: true } },
-          },
-        },
+      include: generatorRequestInclude,
+    });
+
+    const outputPrefixTemplate = appConfig.generator.output.prefixTemplate || 'generated/{userId}/{jobId}';
+    const outputPrefix = outputPrefixTemplate
+      .replace(/\{userId\}/g, created.user.id)
+      .replace(/\{jobId\}/g, created.id);
+
+    await prisma.generatorRequest.update({
+      where: { id: created.id },
+      data: {
+        outputBucket: appConfig.generator.output.bucket,
+        outputPrefix,
       },
     });
 
@@ -766,18 +812,133 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
 
     const refreshed = await prisma.generatorRequest.findUnique({
       where: { id: created.id },
-      include: {
-        user: { select: { id: true, displayName: true, email: true, role: true } },
-        baseModel: {
-          include: {
-            tags: { include: { tag: true } },
-          },
-        },
-      },
+      include: generatorRequestInclude,
     });
 
     res.status(201).json({ request: mapGeneratorRequest(refreshed as HydratedGeneratorRequest) });
   } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) => {
+  try {
+    const parsed = generatorStatusCallbackSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid status callback payload.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const jobId = req.params.id;
+    if (!jobId || parsed.data.jobId !== jobId) {
+      res.status(400).json({ message: 'Status callback job ID mismatch.' });
+      return;
+    }
+
+    const updated = await prisma.generatorRequest.update({
+      where: { id: jobId },
+      data: { status: parsed.data.status, errorReason: null },
+      include: generatorRequestInclude,
+    });
+
+    res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      res.status(404).json({ message: 'Generator request not found for status update.' });
+      return;
+    }
+
+    next(error);
+  }
+});
+
+generatorRouter.post('/requests/:id/callbacks/completion', async (req, res, next) => {
+  try {
+    const parsed = generatorCompletionCallbackSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid completion callback payload.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const jobId = req.params.id;
+    if (!jobId || parsed.data.jobId !== jobId) {
+      res.status(400).json({ message: 'Completion callback job ID mismatch.' });
+      return;
+    }
+
+    const requestRecord = await prisma.generatorRequest.findUnique({
+      where: { id: jobId },
+      select: { id: true, outputBucket: true },
+    });
+
+    if (!requestRecord) {
+      res.status(404).json({ message: 'Generator request not found for completion callback.' });
+      return;
+    }
+
+    const bucket = requestRecord.outputBucket ?? appConfig.generator.output.bucket;
+    const uniqueKeys = Array.from(new Set(parsed.data.artifacts));
+
+    await prisma.$transaction(async (tx) => {
+      await tx.generatorArtifact.deleteMany({ where: { requestId: jobId } });
+
+      if (uniqueKeys.length > 0) {
+        await tx.generatorArtifact.createMany({
+          data: uniqueKeys.map((objectKey) => ({
+            requestId: jobId,
+            bucket,
+            objectKey,
+            storagePath: `s3://${bucket}/${objectKey.replace(/^\/+/, '')}`,
+          })),
+        });
+      }
+
+      await tx.generatorRequest.update({
+        where: { id: jobId },
+        data: { status: 'completed', errorReason: null },
+      });
+    });
+
+    const updated = await prisma.generatorRequest.findUnique({
+      where: { id: jobId },
+      include: generatorRequestInclude,
+    });
+
+    res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/requests/:id/callbacks/failure', async (req, res, next) => {
+  try {
+    const parsed = generatorFailureCallbackSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid failure callback payload.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const jobId = req.params.id;
+    if (!jobId || parsed.data.jobId !== jobId) {
+      res.status(400).json({ message: 'Failure callback job ID mismatch.' });
+      return;
+    }
+
+    const reason = parsed.data.reason?.trim() ?? null;
+
+    const updated = await prisma.generatorRequest.update({
+      where: { id: jobId },
+      data: { status: parsed.data.status, errorReason: reason },
+      include: generatorRequestInclude,
+    });
+
+    res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+      res.status(404).json({ message: 'Generator request not found for failure callback.' });
+      return;
+    }
+
     next(error);
   }
 });
@@ -796,14 +957,7 @@ generatorRouter.get('/requests', requireAuth, async (req, res, next) => {
     const requests = await prisma.generatorRequest.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: {
-        user: { select: { id: true, displayName: true, email: true, role: true } },
-        baseModel: {
-          include: {
-            tags: { include: { tag: true } },
-          },
-        },
-      },
+      include: generatorRequestInclude,
     });
 
     res.json({ requests: requests.map((request) => mapGeneratorRequest(request as HydratedGeneratorRequest)) });
