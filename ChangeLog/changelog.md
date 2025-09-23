@@ -918,3 +918,8 @@
 - **General**: Brought the GPU agent heartbeat, success, and failure callbacks in line with the generator control-plane schema so VisionSuit receives live progress, timing, and artifact metadata straight from ComfyUI runs.
 - **Technical Changes**: Added runtime tracking for prompt IDs and heartbeat counters, mapped status events onto the new state machine, enriched success payloads with artifact manifests and generation parameters, normalized failure/cancel responses with reason codes and activity snapshots, and attached idempotency keys plus S3 URLs when uploading outputs.
 - **Data Changes**: None; S3 object locations are unchanged while callbacks now carry additional descriptive fields.
+
+## 172 – [Fix] GPU agent ComfyUI status normalization
+- **General**: Prevented GPU renders from stalling after ComfyUI reported successful completions using `status_str` payloads.
+- **Technical Changes**: Normalized ComfyUI history polling to read `status_str`, raw string values, and `completed` flags so `success`/`completed` runs exit promptly while `error` states still raise failures.
+- **Data Changes**: None; status polling only interprets existing history metadata.
