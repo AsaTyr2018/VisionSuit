@@ -93,7 +93,20 @@ class ComfyUIClient:
                 await asyncio.sleep(poll_interval)
                 continue
 
-            status = (history.get("status") or {}).get("status")
+            status_payload = history.get("status") if isinstance(history, dict) else None
+            status = None
+            completed = False
+            if isinstance(status_payload, dict):
+                raw_status = status_payload.get("status") or status_payload.get("status_str")
+                if raw_status is not None:
+                    status = str(raw_status).strip().lower()
+                completed = bool(status_payload.get("completed"))
+            elif isinstance(status_payload, str):
+                status = status_payload.strip().lower()
+
+            if completed and not status:
+                status = "success"
+
             if status in {"completed", "success"}:
                 LOGGER.info("ComfyUI job %s completed", prompt_id)
                 return history
