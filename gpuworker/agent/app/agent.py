@@ -27,6 +27,23 @@ class GPUAgent:
     def is_busy(self) -> bool:
         return self._lock.locked()
 
+    async def try_reserve_job(self) -> bool:
+        """Attempt to reserve the execution lock without waiting."""
+
+        try:
+            await asyncio.wait_for(self._lock.acquire(), timeout=0)
+        except asyncio.TimeoutError:
+            return False
+        return True
+
+    async def run_reserved_job(self, job: DispatchEnvelope) -> Dict[str, List[str]]:
+        """Execute a job after :meth:`try_reserve_job` succeeds."""
+
+        try:
+            return await self._execute(job)
+        finally:
+            self._lock.release()
+
     async def handle_job(self, job: DispatchEnvelope) -> Dict[str, List[str]]:
         async with self._lock:
             return await self._execute(job)

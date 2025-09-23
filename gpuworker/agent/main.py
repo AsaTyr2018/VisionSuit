@@ -29,12 +29,12 @@ def create_app() -> FastAPI:
 
     @app.post("/jobs", status_code=202)
     async def submit_job(job: DispatchEnvelope, background_tasks: BackgroundTasks) -> Dict[str, Any]:
-        if agent.is_busy():
+        if not await agent.try_reserve_job():
             raise HTTPException(status_code=409, detail="Agent is currently processing a job")
 
         async def run_job() -> None:
             try:
-                await agent.handle_job(job)
+                await agent.run_reserved_job(job)
             except Exception:  # noqa: BLE001
                 LOGGER.exception("Job %s crashed", job.jobId)
 
