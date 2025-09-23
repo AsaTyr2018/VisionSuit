@@ -208,7 +208,7 @@ const mapHistoryLoRAs = (
 
 export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSiteGeneratorProps) => {
   const [step, setStep] = useState<WizardStep>(1);
-  const [selectedBaseModelIds, setSelectedBaseModelIds] = useState<string[]>([]);
+  const [selectedBaseModelId, setSelectedBaseModelId] = useState<string | null>(null);
   const [loraSelections, setLoraSelections] = useState<LoraSelection[]>([]);
   const [loraQuery, setLoraQuery] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -234,6 +234,11 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [baseModelCatalog, setBaseModelCatalog] = useState<ModelAsset[]>([]);
   const [isBaseModelCatalogLoading, setIsBaseModelCatalogLoading] = useState(false);
   const [baseModelCatalogError, setBaseModelCatalogError] = useState<string | null>(null);
+
+  const selectedBaseModelIds = useMemo(
+    () => (selectedBaseModelId ? [selectedBaseModelId] : []),
+    [selectedBaseModelId],
+  );
 
   const sortedHistory = useMemo(
     () =>
@@ -459,45 +464,34 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
 
   useEffect(() => {
     if (selectableBaseModels.length === 0) {
-      setSelectedBaseModelIds([]);
+      setSelectedBaseModelId(null);
       return;
     }
 
-    setSelectedBaseModelIds((current) => {
-      const valid = current.filter((id) => selectableBaseModels.some((entry) => entry.id === id));
-      if (valid.length > 0) {
-        return valid;
+    setSelectedBaseModelId((current) => {
+      if (current && selectableBaseModels.some((entry) => entry.id === current)) {
+        return current;
       }
 
-      return selectableBaseModels.map((entry) => entry.id);
+      return selectableBaseModels[0]?.id ?? null;
     });
   }, [selectableBaseModels]);
 
   const selectedBaseModels = useMemo(() => {
+    if (!selectedBaseModelId) {
+      return [];
+    }
+
     const lookup = new Map(selectableBaseModels.map((entry) => [entry.id, entry]));
-    return selectedBaseModelIds
-      .map((id) => lookup.get(id) ?? null)
-      .filter((entry): entry is typeof selectableBaseModels[number] => Boolean(entry));
-  }, [selectedBaseModelIds, selectableBaseModels]);
+    const match = lookup.get(selectedBaseModelId);
+    return match ? [match] : [];
+  }, [selectedBaseModelId, selectableBaseModels]);
 
   const primaryBaseModel = selectedBaseModels[0] ?? null;
 
-  const handleToggleBaseModel = useCallback(
-    (id: string) => {
-      setSelectedBaseModelIds((current) => {
-        if (current.includes(id)) {
-          return current.filter((entry) => entry !== id);
-        }
-
-        const next = [...current, id];
-        const order = new Map(selectableBaseModels.map((entry, index) => [entry.id, index]));
-        return next.sort(
-          (a, b) => (order.get(a) ?? Number.MAX_SAFE_INTEGER) - (order.get(b) ?? Number.MAX_SAFE_INTEGER),
-        );
-      });
-    },
-    [selectableBaseModels],
-  );
+  const handleToggleBaseModel = useCallback((id: string) => {
+    setSelectedBaseModelId(id);
+  }, []);
 
   const filteredLoras = useMemo(() => {
     if (!loraQuery.trim()) {
@@ -506,6 +500,9 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     const query = loraQuery.trim().toLowerCase();
     return loraOptions.filter((asset) => asset.title.toLowerCase().includes(query));
   }, [loraOptions, loraQuery]);
+
+  const visibleLoras = useMemo(() => filteredLoras.slice(0, 20), [filteredLoras]);
+  const hasMoreFilteredLoras = filteredLoras.length > visibleLoras.length;
 
   const selectedLorAsDetailed = useMemo(() => {
     return loraSelections
@@ -678,7 +675,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     setWidth(1024);
     setHeight(1024);
     setLoraSelections([]);
-    setSelectedBaseModelIds(selectableBaseModels.map((entry) => entry.id));
+    setSelectedBaseModelId(selectableBaseModels[0]?.id ?? null);
     setWizardError(null);
     setSubmitError(null);
     goToStep(1);
@@ -835,9 +832,11 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         <header className="generator-base-matrix__header">
           <div>
             <h3>Base models</h3>
-            <p>Select one or more curated checkpoints to bundle with your render request.</p>
+            <p>Select a curated checkpoint to pair with your render request.</p>
           </div>
-          <p className="generator-base-matrix__count">{selectedBaseModelIds.length} selected</p>
+          <p className="generator-base-matrix__count">
+            {selectedBaseModelId ? '1 selected' : 'None selected'}
+          </p>
         </header>
         {isBaseModelDataLoading ? (
           <p className="generator-base-matrix__status">Loading base model definitions…</p>
@@ -863,11 +862,12 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                 >
                   <span className="generator-base-matrix__checkbox">
                     <input
-                      type="checkbox"
+                      type="radio"
                       name="generator-base-models"
+                      value={entry.id}
                       checked={selected}
                       onChange={() => handleToggleBaseModel(entry.id)}
-                      aria-label={`Toggle ${entry.name}`}
+                      aria-label={`Select ${entry.name}`}
                     />
                   </span>
                   <span className="generator-base-matrix__details">
@@ -1021,7 +1021,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         />
       </div>
       <div className="generator-lora__grid">
-        {filteredLoras.map((asset) => {
+        {visibleLoras.map((asset) => {
           const selected = isLoraSelected(asset.id);
           return (
             <article
@@ -1060,8 +1060,11 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
             </article>
           );
         })}
-        {filteredLoras.length === 0 ? <p className="generator-lora__empty">No LoRAs match the current filter.</p> : null}
+        {visibleLoras.length === 0 ? <p className="generator-lora__empty">No LoRAs match the current filter.</p> : null}
       </div>
+      {hasMoreFilteredLoras ? (
+        <p className="generator-lora__hint">Showing the first 20 adapters. Refine your search to explore more results.</p>
+      ) : null}
     </div>
   );
 
