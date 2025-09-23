@@ -391,7 +391,9 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const combinedBaseModelError = baseModelError ?? baseModelCatalogError;
 
   const loraOptions = useMemo(() => {
-    const baseModelIds = new Set(selectableBaseModels.map((entry) => entry.asset.id));
+    const baseModelIds = new Set(
+      selectableBaseModels.flatMap((entry) => (entry.asset ? [entry.asset.id] : [])),
+    );
     const selectedIds = new Set(selectedBaseModelIds);
     const candidates = models.filter((asset) => isLikelyLora(asset) && !baseModelIds.has(asset.id));
     if (candidates.length > 0) {
