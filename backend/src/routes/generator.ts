@@ -1,13 +1,15 @@
 import { Prisma, GeneratorAccessMode } from '@prisma/client';
 import type { GeneratorQueueState } from '@prisma/client';
 import { Router } from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 
 import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
-import { resolveStorageLocation } from '../lib/storage';
+import { resolveStorageLocation, storageClient } from '../lib/storage';
 import { dispatchGeneratorRequest } from '../lib/generator/dispatcher';
 
 const generatorRouter = Router();
@@ -585,12 +587,16 @@ const mapGeneratorRequest = (
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((artifact) => {
         const location = resolveStorageLocation(artifact.storagePath);
+        const proxiedUrl =
+          artifact.bucket && artifact.objectKey
+            ? `/api/generator/requests/${request.id}/artifacts/${artifact.id}`
+            : null;
         return {
           id: artifact.id,
           bucket: artifact.bucket,
           objectKey: artifact.objectKey,
           storagePath: artifact.storagePath,
-          url: location.url,
+          url: proxiedUrl ?? location.url,
           createdAt: artifact.createdAt.toISOString(),
         };
       }),
@@ -1919,5 +1925,115 @@ generatorRouter.get('/requests', requireAuth, async (req, res, next) => {
     next(error);
   }
 });
+
+const encodeFilename = (value: string) => `"${value.replace(/"/g, '\"')}"`;
+const encodeFilenameStar = (value: string) => `UTF-8''${encodeURIComponent(value)}`;
+
+const streamGeneratorArtifact = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requestId = req.params.id?.trim();
+    const artifactId = req.params.artifactId?.trim();
+
+    if (!requestId || !artifactId) {
+      res.status(404).json({ message: 'Generator artifact not found.' });
+      return;
+    }
+
+    const artifact = await prisma.generatorArtifact.findFirst({
+      where: { id: artifactId, requestId },
+      include: { request: { select: { id: true, userId: true } } },
+    });
+
+    if (!artifact || artifact.request.id !== requestId) {
+      res.status(404).json({ message: 'Generator artifact not found.' });
+      return;
+    }
+
+    const viewer = req.user;
+    if (!viewer) {
+      res.status(401).json({ message: 'Authentication is required to view generator artifacts.' });
+      return;
+    }
+
+    if (viewer.role !== 'ADMIN' && viewer.id !== artifact.request.userId) {
+      res.status(403).json({ message: 'You are not allowed to view this generator artifact.' });
+      return;
+    }
+
+    const bucket = artifact.bucket?.trim();
+    const objectKey = artifact.objectKey?.trim();
+
+    if (!bucket || !objectKey) {
+      res.status(404).json({ message: 'Generator artifact storage location missing.' });
+      return;
+    }
+
+    let stat;
+    try {
+      stat = await storageClient.statObject(bucket, objectKey);
+    } catch (error) {
+      const code = (error as Error & { code?: string }).code;
+      if (code === 'NoSuchKey' || code === 'NotFound') {
+        res.status(404).json({ message: 'Generator artifact was not found in storage.' });
+        return;
+      }
+      throw error;
+    }
+
+    const isHeadRequest = req.method === 'HEAD';
+    let objectStream = null;
+    if (!isHeadRequest) {
+      try {
+        objectStream = await storageClient.getObject(bucket, objectKey);
+      } catch (error) {
+        const code = (error as Error & { code?: string }).code;
+        if (code === 'NoSuchKey' || code === 'NotFound') {
+          res.status(404).json({ message: 'Generator artifact was not found in storage.' });
+          return;
+        }
+        throw error;
+      }
+    }
+
+    const contentType =
+      stat.metaData?.['content-type'] ??
+      stat.metaData?.['Content-Type'] ??
+      stat.metaData?.['Content-type'] ??
+      'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stat.size.toString());
+    res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+
+    if (stat.lastModified) {
+      res.setHeader('Last-Modified', stat.lastModified.toUTCString());
+    }
+
+    if (stat.etag) {
+      res.setHeader('ETag', stat.etag.startsWith('"') ? stat.etag : `"${stat.etag}"`);
+    }
+
+    const fileName = objectKey.split('/').pop();
+    if (fileName) {
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename=${encodeFilename(fileName)}; filename*=${encodeFilenameStar(fileName)}`,
+      );
+    }
+
+    if (!objectStream) {
+      res.status(200).end();
+      return;
+    }
+
+    objectStream.on('error', next);
+
+    await pipeline(objectStream, res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+generatorRouter.get('/requests/:id/artifacts/:artifactId', requireAuth, streamGeneratorArtifact);
+generatorRouter.head('/requests/:id/artifacts/:artifactId', requireAuth, streamGeneratorArtifact);
 
 export { generatorRouter };
