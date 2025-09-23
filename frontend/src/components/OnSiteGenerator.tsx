@@ -8,6 +8,7 @@ import type {
   GeneratorRequestSummary,
   GeneratorBaseModelOption,
   GeneratorBaseModelSource,
+  GeneratorQueueResponse,
   ModelAsset,
   Tag,
   User,
@@ -217,6 +218,9 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [history, setHistory] = useState<GeneratorRequestSummary[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [queueSummary, setQueueSummary] = useState<GeneratorQueueResponse | null>(null);
+  const [queueSummaryError, setQueueSummaryError] = useState<string | null>(null);
+  const [isQueueSummaryLoading, setIsQueueSummaryLoading] = useState(false);
   const [baseModels, setBaseModels] = useState<GeneratorBaseModelOption[]>([]);
   const [isBaseModelsLoading, setIsBaseModelsLoading] = useState(false);
   const [baseModelError, setBaseModelError] = useState<string | null>(null);
@@ -535,6 +539,24 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     });
   }, []);
 
+  const fetchQueueSummary = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+
+    setIsQueueSummaryLoading(true);
+    setQueueSummaryError(null);
+    try {
+      const response = await api.getGeneratorQueue(token);
+      setQueueSummary(response);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Unable to load generator queue status.';
+      setQueueSummaryError(message);
+    } finally {
+      setIsQueueSummaryLoading(false);
+    }
+  }, [token]);
+
   const fetchHistory = useCallback(async () => {
     if (!token) {
       return;
@@ -559,6 +581,10 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  useEffect(() => {
+    fetchQueueSummary();
+  }, [fetchQueueSummary]);
 
   useEffect(() => {
     setHistory((current) =>
@@ -612,7 +638,55 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     goToStep(1);
   }, [goToStep, selectableBaseModels]);
 
+  const queueBlocked = queueSummary?.viewer.isBlocked ?? false;
+  const queueBlockReason = queueSummary?.viewer.reason ?? null;
+  const queuePaused = queueSummary?.state?.isPaused ?? false;
+  const queueDeclines = queueSummary?.state?.declineNewRequests ?? false;
+  const queueDisabled = queueBlocked || queuePaused || queueDeclines;
+  const queueStats = queueSummary?.stats ?? null;
+  const queueActivityDetails = useMemo(() => {
+    if (!queueSummary?.activity?.data || typeof queueSummary.activity.data !== 'object') {
+      return null;
+    }
+
+    const raw = queueSummary.activity.data as Record<string, unknown>;
+    const container =
+      raw.queue && typeof raw.queue === 'object' ? (raw.queue as Record<string, unknown>) : raw;
+
+    const extractCount = (value: unknown) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.length;
+      }
+      return null;
+    };
+
+    return {
+      pending: extractCount(container.pending ?? container.queue_pending),
+      running: extractCount(container.running ?? container.queue_running),
+      updatedAt: queueSummary.activity?.updatedAt ?? null,
+    };
+  }, [queueSummary]);
+
   const handleSubmit = useCallback(async () => {
+    if (queueBlocked) {
+      const reason = queueBlockReason?.trim();
+      setSubmitError(
+        reason && reason.length > 0
+          ? `Your generator access is blocked: ${reason}`
+          : 'Your generator access is currently blocked by an administrator.',
+      );
+      return;
+    }
+
+    if (queuePaused || queueDeclines) {
+      setSubmitError('The generator queue is paused. Try again once administrators resume processing.');
+      void fetchQueueSummary();
+      return;
+    }
+
     if (selectedBaseModelIds.length === 0) {
       setSubmitError('Select at least one base model before submitting the request.');
       goToStep(1);
@@ -654,11 +728,13 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         ...request,
         loras: mapHistoryLoRAs(request.loras, loraLookup),
       }, ...current]);
+      void fetchQueueSummary();
       resetWizard();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Failed to create generator request.';
       setSubmitError(message);
       onNotify?.({ type: 'error', message });
+      void fetchQueueSummary();
     } finally {
       setIsSubmitting(false);
     }
@@ -678,6 +754,11 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     resetWizard,
     loraLookup,
     goToStep,
+    queueBlocked,
+    queueBlockReason,
+    queuePaused,
+    queueDeclines,
+    fetchQueueSummary,
   ]);
 
   const stepLabels: Record<WizardStep, string> = {
@@ -1307,6 +1388,50 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               as soon as it connects.
             </p>
           </header>
+          <div className="generator__queue-status" aria-live="polite">
+            {isQueueSummaryLoading ? (
+              <p className="generator__alert generator__alert--info">Checking queue status…</p>
+            ) : null}
+            {queueSummaryError ? (
+              <p className="generator__alert generator__alert--error">{queueSummaryError}</p>
+            ) : null}
+            {queueDisabled ? (
+              <p
+                className={`generator__alert ${queueBlocked ? 'generator__alert--error' : 'generator__alert--warning'}`}
+              >
+                {queueBlocked
+                  ? queueBlockReason?.trim()?.length
+                    ? `Generation disabled: ${queueBlockReason}`
+                    : 'Generation disabled for your account by an administrator.'
+                  : 'The GPU queue is paused. Submit requests once administrators resume processing.'}
+              </p>
+            ) : null}
+            {queueStats ? (
+              <div className="generator__queue-metrics">
+                <span>
+                  Pending <strong>{queueStats.pending}</strong>
+                </span>
+                <span>
+                  Running <strong>{queueStats.running}</strong>
+                </span>
+                <span>
+                  Queued <strong>{queueStats.queued}</strong>
+                </span>
+                <span>
+                  Failed <strong>{queueStats.failed}</strong>
+                </span>
+                {queueActivityDetails ? (
+                  <span className="generator__queue-activity">
+                    GPU activity: <strong>{queueActivityDetails.running ?? '—'}</strong> running ·{' '}
+                    <strong>{queueActivityDetails.pending ?? '—'}</strong> waiting
+                    {queueActivityDetails.updatedAt ? (
+                      <small>Updated {new Date(queueActivityDetails.updatedAt).toLocaleTimeString()}</small>
+                    ) : null}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           {renderStepIndicator}
           {wizardError ? <p className="generator__alert generator__alert--error">{wizardError}</p> : null}
           {renderWizardContent()}
@@ -1325,7 +1450,7 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                 type="button"
                 className="button button--primary"
                 onClick={handleSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || queueDisabled}
               >
                 {isSubmitting ? 'Saving…' : 'Save request'}
               </button>

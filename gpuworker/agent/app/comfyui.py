@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -56,6 +56,32 @@ class ComfyUIClient:
         if prompt_id in history:
             history = history[prompt_id]
         return history
+
+    async def describe_activity(self) -> Dict[str, Any]:
+        try:
+            response = await self._client.get(f"{self.config.comfyui.api_url}/queue")
+            response.raise_for_status()
+            data = response.json()
+        except httpx.HTTPError as exc:
+            LOGGER.debug("Failed to query ComfyUI queue state: %s", exc)
+            return {"pending": None, "running": None, "raw": None}
+
+        def extract(value: Any) -> Optional[int]:
+            if isinstance(value, list):
+                return len(value)
+            if isinstance(value, dict):
+                return len(value)
+            if isinstance(value, int):
+                return value
+            return None
+
+        pending = extract(data.get("queue_pending"))
+        running = extract(data.get("queue_running"))
+        return {
+            "pending": pending,
+            "running": running,
+            "raw": data,
+        }
 
     async def close(self) -> None:
         await self._client.aclose()

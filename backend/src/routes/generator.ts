@@ -1,4 +1,5 @@
 import { Prisma, GeneratorAccessMode } from '@prisma/client';
+import type { GeneratorQueueState } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -278,6 +279,177 @@ const ensureSettings = async () => {
   return prisma.generatorSettings.create({ data: {} });
 };
 
+const loadQueueState = () => prisma.generatorQueueState.findFirst({ orderBy: { id: 'asc' } });
+
+const ensureQueueState = async () => {
+  const existing = await loadQueueState();
+  if (existing) {
+    return existing;
+  }
+
+  return prisma.generatorQueueState.create({ data: {} });
+};
+
+const mapQueueStateRecord = (state: GeneratorQueueState) => ({
+  id: state.id,
+  isPaused: state.isPaused,
+  declineNewRequests: state.declineNewRequests,
+  pausedAt: state.pausedAt ? state.pausedAt.toISOString() : null,
+  createdAt: state.createdAt.toISOString(),
+  updatedAt: state.updatedAt.toISOString(),
+});
+
+const mapQueueActivitySnapshot = (state: GeneratorQueueState) => {
+  if (!state.activity) {
+    return null;
+  }
+
+  return {
+    data: state.activity,
+    updatedAt: state.activityUpdatedAt ? state.activityUpdatedAt.toISOString() : null,
+  };
+};
+
+const computeQueueStats = async () => {
+  const grouped = await prisma.generatorRequest.groupBy({
+    by: ['status'],
+    _count: { _all: true },
+  });
+
+  const counts = grouped.reduce<Record<string, number>>((accumulator, entry) => {
+    accumulator[entry.status] = entry._count._all;
+    return accumulator;
+  }, {});
+
+  const getCount = (...statuses: string[]) =>
+    statuses.reduce((total, status) => total + (counts[status] ?? 0), 0);
+
+  const total = grouped.reduce((sum, entry) => sum + entry._count._all, 0);
+
+  return {
+    total,
+    queued: counts['queued'] ?? 0,
+    pending: counts['pending'] ?? 0,
+    held: counts['held'] ?? 0,
+    running: getCount('running', 'uploading'),
+    completed: counts['completed'] ?? 0,
+    failed: getCount('failed', 'error'),
+    statuses: counts,
+  };
+};
+
+type RedispatchSummary = {
+  attempted: number;
+  queued: number;
+  busy: number;
+  errors: Array<{ id: string; message: string }>;
+};
+
+const redispatchPendingRequests = async (): Promise<RedispatchSummary> => {
+  const state = await ensureQueueState();
+  if (state.isPaused) {
+    return { attempted: 0, queued: 0, busy: 0, errors: [] };
+  }
+
+  const candidates = await prisma.generatorRequest.findMany({
+    where: { status: { in: ['pending', 'held', 'error'] } },
+    include: generatorRequestInclude,
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const summary: RedispatchSummary = { attempted: candidates.length, queued: 0, busy: 0, errors: [] };
+
+  for (const candidate of candidates) {
+    await prisma.generatorRequest.update({
+      where: { id: candidate.id },
+      data: { status: 'pending', errorReason: null },
+    });
+
+    try {
+      const result = await dispatchGeneratorRequest(candidate as HydratedGeneratorRequest);
+
+      if (result.status === 'queued') {
+        summary.queued += 1;
+        await prisma.generatorRequest.update({
+          where: { id: candidate.id },
+          data: { status: 'queued', errorReason: null },
+        });
+        continue;
+      }
+
+      if (result.status === 'busy') {
+        summary.busy += 1;
+        await prisma.generatorRequest.update({
+          where: { id: candidate.id },
+          data: { status: 'pending' },
+        });
+        continue;
+      }
+
+      const message = result.message ?? 'GPU agent rejected the request.';
+      summary.errors.push({ id: candidate.id, message });
+      await prisma.generatorRequest.update({
+        where: { id: candidate.id },
+        data: { status: 'error', errorReason: message },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to dispatch generator request.';
+      summary.errors.push({ id: candidate.id, message });
+      await prisma.generatorRequest.update({
+        where: { id: candidate.id },
+        data: { status: 'error', errorReason: message },
+      });
+    }
+  }
+
+  return summary;
+};
+
+const mapQueueBlock = (
+  block: Prisma.GeneratorQueueBlockGetPayload<{
+    include: { user: { select: { id: true; displayName: true; email: true; role: true } } };
+  }>,
+) => ({
+  user: {
+    id: block.user.id,
+    displayName: block.user.displayName,
+    email: block.user.email,
+    role: block.user.role,
+  },
+  reason: block.reason ?? null,
+  createdAt: block.createdAt.toISOString(),
+  updatedAt: block.updatedAt.toISOString(),
+});
+
+const buildQueueResponse = async (viewer: { id: string; role: string }) => {
+  const [state, stats, viewerBlock] = await Promise.all([
+    ensureQueueState(),
+    computeQueueStats(),
+    prisma.generatorQueueBlock.findUnique({ where: { userId: viewer.id } }),
+  ]);
+
+  const blocks =
+    viewer.role === 'ADMIN'
+      ? (
+          await prisma.generatorQueueBlock.findMany({
+            include: { user: { select: { id: true, displayName: true, email: true, role: true } } },
+            orderBy: { createdAt: 'asc' },
+          })
+        ).map(mapQueueBlock)
+      : undefined;
+
+  return {
+    state: mapQueueStateRecord(state),
+    stats,
+    activity: mapQueueActivitySnapshot(state),
+    viewer: {
+      isBlocked: Boolean(viewerBlock),
+      reason: viewerBlock?.reason ?? null,
+    },
+    ...(blocks ? { blocks } : {}),
+  };
+};
+
 const mapGeneratorRequest = (request: HydratedGeneratorRequest) => {
   const storedSelections = parseStoredBaseModelSelections(request.baseModelSelections);
   const primarySelection = storedSelections[0] ?? null;
@@ -490,6 +662,11 @@ const generatorFailureCallbackSchema = z.object({
   reason: z.string().optional(),
 });
 
+const generatorQueueBlockSchema = z.object({
+  userId: z.string().min(1),
+  reason: z.string().trim().max(512).optional(),
+});
+
 generatorRouter.get('/base-models', requireAuth, async (req, res, next) => {
   try {
     const settings = await ensureSettings();
@@ -619,6 +796,139 @@ generatorRouter.put('/settings', requireAuth, requireAdmin, async (req, res, nex
   }
 });
 
+generatorRouter.get('/queue', requireAuth, async (req, res, next) => {
+  try {
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/queue/actions/pause', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const state = await ensureQueueState();
+    const now = new Date();
+    await prisma.generatorQueueState.update({
+      where: { id: state.id },
+      data: {
+        isPaused: true,
+        declineNewRequests: true,
+        pausedAt: now,
+      },
+    });
+
+    await prisma.generatorRequest.updateMany({
+      where: { status: 'pending' },
+      data: { status: 'held' },
+    });
+
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/queue/actions/resume', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const state = await ensureQueueState();
+    await prisma.generatorQueueState.update({
+      where: { id: state.id },
+      data: {
+        isPaused: false,
+        declineNewRequests: false,
+        pausedAt: null,
+      },
+    });
+
+    await prisma.generatorRequest.updateMany({
+      where: { status: 'held' },
+      data: { status: 'pending' },
+    });
+
+    const summary = await redispatchPendingRequests();
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.json({ ...response, redispatch: summary });
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/queue/actions/retry', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    await prisma.generatorRequest.updateMany({
+      where: { status: 'held' },
+      data: { status: 'pending' },
+    });
+
+    const summary = await redispatchPendingRequests();
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.json({ ...response, redispatch: summary });
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.post('/queue/blocks', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const parsed = generatorQueueBlockSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Invalid block payload.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: parsed.data.userId } });
+    if (!targetUser) {
+      res.status(404).json({ message: 'User not found for generator block.' });
+      return;
+    }
+
+    await prisma.generatorQueueBlock.upsert({
+      where: { userId: parsed.data.userId },
+      update: { reason: parsed.data.reason ?? null },
+      create: { userId: parsed.data.userId, reason: parsed.data.reason ?? null },
+    });
+
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.status(201).json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
+generatorRouter.delete('/queue/blocks/:userId', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      res.status(400).json({ message: 'User id is required to remove a generator block.' });
+      return;
+    }
+
+    try {
+      await prisma.generatorQueueBlock.delete({ where: { userId } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        res.status(404).json({ message: 'No generator block found for that user.' });
+        return;
+      }
+
+      throw error;
+    }
+
+    const viewer = req.user!;
+    const response = await buildQueueResponse({ id: viewer.id, role: viewer.role });
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
 generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
   try {
     const parsed = generatorRequestSchema.safeParse(req.body);
@@ -628,6 +938,28 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
     }
 
     const viewer = req.user!;
+    const [queueState, blockRecord] = await Promise.all([
+      ensureQueueState(),
+      prisma.generatorQueueBlock.findUnique({ where: { userId: viewer.id } }),
+    ]);
+
+    if (blockRecord) {
+      const reason = blockRecord.reason?.trim();
+      res.status(403).json({
+        message: reason && reason.length > 0
+          ? `Generation access suspended: ${reason}`
+          : 'Generation access has been suspended by an administrator.',
+      });
+      return;
+    }
+
+    if (queueState.isPaused || queueState.declineNewRequests) {
+      res.status(503).json({
+        message: 'Generator queue is currently paused. Try again once processing resumes.',
+      });
+      return;
+    }
+
     const settings = await ensureSettings();
     const configuredEntries = enumerateConfiguredBaseModels(
       parseGeneratorBaseModels(extractSettingsBaseModels(settings)),
@@ -774,40 +1106,48 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
       },
     });
 
-    try {
-      const dispatchResult = await dispatchGeneratorRequest(created as HydratedGeneratorRequest);
-
-      if (dispatchResult.status === 'queued') {
-        await prisma.generatorRequest.update({
-          where: { id: created.id },
-          data: { status: 'queued' },
-        });
-      } else if (dispatchResult.status === 'busy') {
-        await prisma.generatorRequest.update({
-          where: { id: created.id },
-          data: { status: 'pending' },
-        });
-        if (dispatchResult.message) {
-          // eslint-disable-next-line no-console
-          console.warn(`Generator agent busy: ${dispatchResult.message}`);
-        }
-      } else if (dispatchResult.status === 'error') {
-        await prisma.generatorRequest.update({
-          where: { id: created.id },
-          data: { status: 'error' },
-        });
-        if (dispatchResult.message) {
-          // eslint-disable-next-line no-console
-          console.error(`Generator agent rejected request ${created.id}: ${dispatchResult.message}`);
-        }
-      }
-    } catch (dispatchError) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to dispatch generator request', dispatchError);
+    const latestQueueState = await ensureQueueState();
+    if (latestQueueState.isPaused || latestQueueState.declineNewRequests) {
       await prisma.generatorRequest.update({
         where: { id: created.id },
-        data: { status: 'error' },
+        data: { status: 'held' },
       });
+    } else {
+      try {
+        const dispatchResult = await dispatchGeneratorRequest(created as HydratedGeneratorRequest);
+
+        if (dispatchResult.status === 'queued') {
+          await prisma.generatorRequest.update({
+            where: { id: created.id },
+            data: { status: 'queued' },
+          });
+        } else if (dispatchResult.status === 'busy') {
+          await prisma.generatorRequest.update({
+            where: { id: created.id },
+            data: { status: 'pending' },
+          });
+          if (dispatchResult.message) {
+            // eslint-disable-next-line no-console
+            console.warn(`Generator agent busy: ${dispatchResult.message}`);
+          }
+        } else if (dispatchResult.status === 'error') {
+          await prisma.generatorRequest.update({
+            where: { id: created.id },
+            data: { status: 'error', errorReason: dispatchResult.message ?? null },
+          });
+          if (dispatchResult.message) {
+            // eslint-disable-next-line no-console
+            console.error(`Generator agent rejected request ${created.id}: ${dispatchResult.message}`);
+          }
+        }
+      } catch (dispatchError) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to dispatch generator request', dispatchError);
+        await prisma.generatorRequest.update({
+          where: { id: created.id },
+          data: { status: 'error', errorReason: dispatchError instanceof Error ? dispatchError.message : null },
+        });
+      }
     }
 
     const refreshed = await prisma.generatorRequest.findUnique({
@@ -840,6 +1180,25 @@ generatorRouter.post('/requests/:id/callbacks/status', async (req, res, next) =>
       data: { status: parsed.data.status, errorReason: null },
       include: generatorRequestInclude,
     });
+
+    const activityPayload = parsed.data.extra?.activity;
+    if (activityPayload && typeof activityPayload === 'object') {
+      try {
+        const state = await ensureQueueState();
+        await prisma.generatorQueueState.update({
+          where: { id: state.id },
+          data: {
+            activity: activityPayload as Prisma.InputJsonValue,
+            activityUpdatedAt: new Date(),
+          },
+        });
+      } catch (activityError) {
+        if (process.env.NODE_ENV === 'development') {
+          // eslint-disable-next-line no-console
+          console.warn('Failed to persist generator queue activity snapshot:', activityError);
+        }
+      }
+    }
 
     res.json({ request: mapGeneratorRequest(updated as HydratedGeneratorRequest) });
   } catch (error) {

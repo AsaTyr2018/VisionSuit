@@ -25,7 +25,8 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     async def healthcheck() -> Dict[str, Any]:
         busy = agent.is_busy()
-        return {"status": "ok", "busy": busy}
+        activity = await agent.describe_activity()
+        return {"status": "ok", "busy": busy, "activity": activity}
 
     @app.get("/")
     async def root() -> Dict[str, Any]:
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
             "status": "ok",
             "service": "VisionSuit GPU Agent",
             "busy": busy,
+            "activity": await agent.describe_activity(),
         }
 
     @app.post("/jobs", status_code=202)
