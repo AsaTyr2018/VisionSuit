@@ -787,3 +787,8 @@
 - **General**: Wired VisionSuit's on-site generator to the GPU agent so dispatches share a consistent envelope and health probes target the new service.
 - **Technical Changes**: Added a root health endpoint to the FastAPI agent, introduced a TypeScript agent client and dispatcher, updated generator routes to submit jobs and manage busy/error states, refreshed admin health checks, expanded configuration/env parsing for workflows and output buckets, and documented the handshake in the README.
 - **Data Changes**: None.
+
+## 036 – [Fix] GPU agent client fetch fallback
+- **General**: Restored backend startups by removing the hard dependency on the external Undici package.
+- **Technical Changes**: Replaced the generator agent client with a fetch-based helper that wraps network failures and dropped the Undici dependency from the backend package manifest.
+- **Data Changes**: None.

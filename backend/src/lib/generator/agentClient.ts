@@ -1,5 +1,3 @@
-import { request as undiciRequest } from 'undici';
-
 export type AgentCacheStrategy = 'persistent' | 'ephemeral';
 
 export interface AgentAssetRef {
@@ -113,17 +111,30 @@ export class GeneratorAgentClient {
     return `${this.baseUrl}${normalizedPath}`;
   }
 
+  private async performRequest(path: string, init: RequestInit): Promise<{ statusCode: number; bodyText: string }> {
+    const target = this.buildUrl(path);
+
+    try {
+      const response = await fetch(target, init);
+      const bodyText = await response.text();
+      return {
+        statusCode: response.status,
+        bodyText,
+      };
+    } catch (error) {
+      const details = error instanceof Error ? error.message : String(error);
+      throw new AgentRequestError(`Failed to reach GPU agent at ${target}.`, undefined, details);
+    }
+  }
+
   async getHealth(): Promise<AgentHealthPayload> {
-    const target = this.buildUrl('/healthz');
-    const response = await undiciRequest(target, {
+    const { statusCode, bodyText } = await this.performRequest('/healthz', {
       method: 'GET',
       headers: {
         accept: 'application/json',
       },
     });
 
-    const { statusCode } = response;
-    const bodyText = await response.body.text();
     let payload: unknown = null;
 
     if (bodyText) {
@@ -151,8 +162,7 @@ export class GeneratorAgentClient {
   }
 
   async submitJob(payload: AgentDispatchEnvelope): Promise<SubmitJobResult> {
-    const target = this.buildUrl('/jobs');
-    const response = await undiciRequest(target, {
+    const { statusCode, bodyText } = await this.performRequest('/jobs', {
       method: 'POST',
       headers: {
         accept: 'application/json',
@@ -161,8 +171,6 @@ export class GeneratorAgentClient {
       body: JSON.stringify(payload),
     });
 
-    const { statusCode } = response;
-    const bodyText = await response.body.text();
     let parsed: unknown = null;
 
     if (bodyText) {
