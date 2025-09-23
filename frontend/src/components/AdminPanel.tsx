@@ -142,6 +142,26 @@ type GeneratorErrorEntry = GeneratorFailureLogResponse['errors'][number];
 
 const generatorBaseModelTypeOptions: GeneratorBaseModelConfig['type'][] = ['SD1.5', 'SDXL', 'PonyXL'];
 
+const generatorSectionTabs = [
+  {
+    id: 'queue',
+    label: 'Queue & blocks',
+    description: 'Monitor GPU load, retry jobs, and manage temporary account blocks.',
+  },
+  {
+    id: 'failures',
+    label: 'Failure log',
+    description: 'Review recent GPU agent errors with prompt and model context.',
+  },
+  {
+    id: 'settings',
+    label: 'Access & presets',
+    description: 'Control who sees the generator and curate available base models.',
+  },
+] as const;
+
+type GeneratorSectionTab = (typeof generatorSectionTabs)[number]['id'];
+
 const normalizeGeneratorBaseModel = (entry: GeneratorBaseModelConfig): GeneratorBaseModelConfig => ({
   type: entry.type,
   name: entry.name.trim(),
@@ -381,6 +401,7 @@ export const AdminPanel = ({
   const [newAdultKeyword, setNewAdultKeyword] = useState('');
   const [isCreatingAdultKeyword, setIsCreatingAdultKeyword] = useState(false);
   const [activeAdultKeywordRemoval, setActiveAdultKeywordRemoval] = useState<string | null>(null);
+  const [activeGeneratorSection, setActiveGeneratorSection] = useState<GeneratorSectionTab>('queue');
 
   const [userFilter, setUserFilter] = useState<{ query: string; role: FilterValue<User['role']>; status: FilterValue<UserStatusFilter> }>(
     { query: '', role: 'all', status: 'all' },
@@ -589,6 +610,12 @@ export const AdminPanel = ({
     JSON.stringify(normalizedBaseModelDrafts) !== JSON.stringify(normalizedSettingsBaseModels);
 
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
+
+  useEffect(() => {
+    if (activeTab !== 'generator') {
+      setActiveGeneratorSection('queue');
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!token) {
@@ -3753,12 +3780,39 @@ export const AdminPanel = ({
         </div>
       ) : null}
       {activeTab === 'generator' ? (
-        <div className="admin__panel">
-          <section className="admin__section admin__section--generator-queue">
+        <div className="admin__panel admin__panel--generator">
+          <section className="admin__section admin__section--generator-overview">
             <div className="admin__section-intro">
-              <h3>Queue maintenance</h3>
-              <p>Pause GPU dispatch, retry held jobs, and manage member access to the generator.</p>
+              <h3>Generator administration</h3>
+              <p>
+                Focus queue operations, telemetry, or access presets with the controls below—no more endless scrolling through
+                every tool at once.
+              </p>
             </div>
+            <nav className="generator-subnav" aria-label="Generator administration sections">
+              {generatorSectionTabs.map((tab) => {
+                const isActive = activeGeneratorSection === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`generator-subnav__tab${isActive ? ' generator-subnav__tab--active' : ''}`}
+                    onClick={() => setActiveGeneratorSection(tab.id)}
+                    aria-pressed={isActive}
+                  >
+                    <span>{tab.label}</span>
+                    <small>{tab.description}</small>
+                  </button>
+                );
+              })}
+            </nav>
+          </section>
+          {activeGeneratorSection === 'queue' ? (
+            <section className="admin__section admin__section--generator-queue">
+              <div className="admin__section-intro">
+                <h3>Queue maintenance</h3>
+                <p>Pause GPU dispatch, retry held jobs, and temporarily block members while investigating issues.</p>
+              </div>
             <div className="generator-queue__summary" role="status">
               <div className="generator-queue__status">
                 <span
@@ -4012,222 +4066,228 @@ export const AdminPanel = ({
               )}
             </div>
           </section>
-          <section className="admin__section admin__section--generator-errors">
-            <div className="admin__section-intro">
-              <h3>Generation failure log</h3>
-              <p>Inspect recent GPU agent errors. Detailed diagnostics remain available only to administrators.</p>
-            </div>
-            <div className="generator-errors__actions">
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={handleRefreshErrorLog}
-                disabled={isGeneratorErrorLogLoading}
-              >
-                {isGeneratorErrorLogLoading ? 'Refreshing…' : 'Refresh log'}
-              </button>
-              <span>
-                Showing <strong>{generatorErrorLog.length}</strong> of{' '}
-                <strong>{generatorErrorLogTotal}</strong> failures
-              </span>
-            </div>
-            {generatorErrorLogError ? (
-              <p className="generator-errors__error">{generatorErrorLogError}</p>
-            ) : null}
-            {isGeneratorErrorLogLoading ? (
-              <p className="generator-errors__status">Loading failure log…</p>
-            ) : null}
-            {!isGeneratorErrorLogLoading && generatorErrorLog.length === 0 && !generatorErrorLogError ? (
-              <p className="generator-errors__empty">No generator failures recorded in the selected window.</p>
-            ) : null}
-            {generatorErrorLog.length > 0 ? (
-              <ul className="generator-errors__list">
-                {generatorErrorLog.map((entry) => {
-                  const failureMoment = new Date(entry.updatedAt);
-                  const detail = entry.errorDetail ?? entry.errorReason ?? 'Reason not provided.';
-                  const baseSummary =
-                    entry.baseModels.length > 0
-                      ? entry.baseModels.map((model) => model.name).join(', ')
-                      : entry.baseModel.title;
-                  return (
-                    <li key={entry.id} className="generator-errors__item">
-                      <header className="generator-errors__item-header">
-                        <div>
-                          <strong>{entry.owner.displayName}</strong>
-                          <span
-                            className={`generator-errors__status-tag generator-errors__status-tag--${entry.status.toLowerCase()}`}
-                          >
-                            {entry.status.replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        <time dateTime={entry.updatedAt}>{failureMoment.toLocaleString()}</time>
-                      </header>
-                      <p className="generator-errors__item-reason">{detail}</p>
-                      <dl className="generator-errors__meta">
-                        <div>
-                          <dt>Job ID</dt>
-                          <dd>{entry.id}</dd>
-                        </div>
-                        <div>
-                          <dt>Base models</dt>
-                          <dd>{baseSummary}</dd>
-                        </div>
-                        <div>
-                          <dt>Prompt</dt>
-                          <dd>{entry.prompt}</dd>
-                        </div>
-                        <div>
-                          <dt>Resolution</dt>
-                          <dd>
-                            {entry.width} × {entry.height}
-                          </dd>
-                        </div>
-                      </dl>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-          </section>
-          <section className="admin__section admin__section--generator">
-            <div className="admin__section-intro">
-              <h3>On-Site Generator visibility</h3>
-              <p>
-                Decide who sees the generator entry in the sidebar. Admin-only mode keeps the rollout private while the GPU
-                worker comes online; member mode exposes the wizard to every authenticated account (guests stay excluded).
-              </p>
-            </div>
-            <form className="generator-settings" onSubmit={handleGeneratorSettingsSubmit}>
-              <fieldset>
-                <legend>Choose the visibility mode</legend>
-                <label className="generator-settings__option">
-                  <input
-                    type="radio"
-                    name="generator-access"
-                    value="ADMIN_ONLY"
-                    checked={generatorAccessMode === 'ADMIN_ONLY'}
-                    onChange={() => handleGeneratorAccessChange('ADMIN_ONLY')}
-                  />
-                  <span>
-                    <strong>Admin only</strong>
-                    <small>Only administrators see and can use the generator interface.</small>
-                  </span>
-                </label>
-                <label className="generator-settings__option">
-                  <input
-                    type="radio"
-                    name="generator-access"
-                    value="MEMBERS"
-                    checked={generatorAccessMode === 'MEMBERS'}
-                    onChange={() => handleGeneratorAccessChange('MEMBERS')}
-                  />
-                  <span>
-                    <strong>Members & curators</strong>
-                    <small>All signed-in users (USER, CURATOR, ADMIN) can request renders; guests remain blocked.</small>
-                  </span>
-                </label>
-              </fieldset>
-              <section className="generator-base-models">
-                <div className="generator-base-models__header">
-                  <h4>Base model presets</h4>
-                  <p>Define the checkpoints exposed inside the On-Site Generator wizard.</p>
-                </div>
-                {baseModelDrafts.length === 0 ? (
-                  <p className="generator-base-models__empty">
-                    No base models configured yet. Add at least one checkpoint so users can request renders.
-                  </p>
-                ) : (
-                  <ol className="generator-base-models__list">
-                    {baseModelDrafts.map((entry, index) => (
-                      <li key={`generator-base-model-${index}`} className="generator-base-models__entry">
-                        <div className="generator-base-models__grid">
-                          <label>
-                            <span>Type</span>
-                            <select
-                              value={entry.type}
-                              onChange={(event) => handleBaseModelFieldChange(index, 'type', event.target.value)}
-                            >
-                              {generatorBaseModelTypeOptions.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            <span>Name</span>
-                            <input
-                              type="text"
-                              value={entry.name}
-                              onChange={(event) => handleBaseModelFieldChange(index, 'name', event.target.value)}
-                              placeholder="Display label shown to users"
-                            />
-                          </label>
-                          <label>
-                            <span>Filename</span>
-                            <input
-                              type="text"
-                              value={entry.filename}
-                              onChange={(event) => handleBaseModelFieldChange(index, 'filename', event.target.value)}
-                              placeholder="Model filename or object path"
-                            />
-                          </label>
-                        </div>
-                        <div className="generator-base-models__row-actions">
-                          <button
-                            type="button"
-                            className="button button--ghost"
-                            onClick={() => handleRemoveBaseModel(index)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                <div className="generator-base-models__footer">
-                  <button type="button" className="button button--ghost" onClick={handleAddBaseModel}>
-                    Add base model
-                  </button>
-                </div>
-              </section>
-              {generatorSettingsError ? (
-                <p className="generator-settings__error">{generatorSettingsError}</p>
-              ) : null}
-              <div className="generator-settings__actions">
-                <button
-                  type="submit"
-                  className="button button--primary"
-                  disabled={!isGeneratorDirty || isSavingGeneratorSettings}
-                >
-                  {isSavingGeneratorSettings ? 'Saving…' : 'Save access level'}
-                </button>
+          ) : null}
+          {activeGeneratorSection === 'failures' ? (
+            <section className="admin__section admin__section--generator-errors">
+              <div className="admin__section-intro">
+                <h3>Generation failure log</h3>
+                <p>Inspect recent GPU agent errors. Detailed diagnostics remain available only to administrators.</p>
+              </div>
+              <div className="generator-errors__actions">
                 <button
                   type="button"
                   className="button button--ghost"
-                  onClick={handleResetGeneratorAccess}
-                  disabled={isSavingGeneratorSettings || !isGeneratorDirty}
+                  onClick={handleRefreshErrorLog}
+                  disabled={isGeneratorErrorLogLoading}
                 >
-                  Revert changes
+                  {isGeneratorErrorLogLoading ? 'Refreshing…' : 'Refresh log'}
                 </button>
+                <span>
+                  Showing <strong>{generatorErrorLog.length}</strong> of{' '}
+                  <strong>{generatorErrorLogTotal}</strong> failures
+                </span>
               </div>
-            </form>
-          </section>
-          <section className="admin__section admin__section--generator-notes">
-            <h4>Rollout playbook</h4>
-            <ul className="generator-guidance-list">
-              <li>
-                Keep the mode on <strong>Admin only</strong> while syncing checkpoints, LoRAs, and validating GPU worker health.
-              </li>
-              <li>
-                Switch to <strong>Members & curators</strong> once the agent can hot-load models and return outputs reliably.
-              </li>
-              <li>
-                Switching modes updates the sidebar instantly—no deployment or browser refresh required.
-              </li>
-            </ul>
-          </section>
+              {generatorErrorLogError ? (
+                <p className="generator-errors__error">{generatorErrorLogError}</p>
+              ) : null}
+              {isGeneratorErrorLogLoading ? (
+                <p className="generator-errors__status">Loading failure log…</p>
+              ) : null}
+              {!isGeneratorErrorLogLoading && generatorErrorLog.length === 0 && !generatorErrorLogError ? (
+                <p className="generator-errors__empty">No generator failures recorded in the selected window.</p>
+              ) : null}
+              {generatorErrorLog.length > 0 ? (
+                <ul className="generator-errors__list">
+                  {generatorErrorLog.map((entry) => {
+                    const failureMoment = new Date(entry.updatedAt);
+                    const detail = entry.errorDetail ?? entry.errorReason ?? 'Reason not provided.';
+                    const baseSummary =
+                      entry.baseModels.length > 0
+                        ? entry.baseModels.map((model) => model.name).join(', ')
+                        : entry.baseModel.title;
+                    return (
+                      <li key={entry.id} className="generator-errors__item">
+                        <header className="generator-errors__item-header">
+                          <div>
+                            <strong>{entry.owner.displayName}</strong>
+                            <span
+                              className={`generator-errors__status-tag generator-errors__status-tag--${entry.status.toLowerCase()}`}
+                            >
+                              {entry.status.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                          <time dateTime={entry.updatedAt}>{failureMoment.toLocaleString()}</time>
+                        </header>
+                        <p className="generator-errors__item-reason">{detail}</p>
+                        <dl className="generator-errors__meta">
+                          <div>
+                            <dt>Job ID</dt>
+                            <dd>{entry.id}</dd>
+                          </div>
+                          <div>
+                            <dt>Base models</dt>
+                            <dd>{baseSummary}</dd>
+                          </div>
+                          <div>
+                            <dt>Prompt</dt>
+                            <dd>{entry.prompt}</dd>
+                          </div>
+                          <div>
+                            <dt>Resolution</dt>
+                            <dd>
+                              {entry.width} × {entry.height}
+                            </dd>
+                          </div>
+                        </dl>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
+          {activeGeneratorSection === 'settings' ? (
+            <>
+              <section className="admin__section admin__section--generator">
+                <div className="admin__section-intro">
+                  <h3>Access & presets</h3>
+                  <p>
+                    Decide who sees the generator entry in the sidebar and curate the checkpoint presets exposed to the wizard.
+                  </p>
+                </div>
+                <form className="generator-settings" onSubmit={handleGeneratorSettingsSubmit}>
+                <fieldset>
+                  <legend>Choose the visibility mode</legend>
+                  <label className="generator-settings__option">
+                    <input
+                      type="radio"
+                      name="generator-access"
+                      value="ADMIN_ONLY"
+                      checked={generatorAccessMode === 'ADMIN_ONLY'}
+                      onChange={() => handleGeneratorAccessChange('ADMIN_ONLY')}
+                    />
+                    <span>
+                      <strong>Admin only</strong>
+                      <small>Only administrators see and can use the generator interface.</small>
+                    </span>
+                  </label>
+                  <label className="generator-settings__option">
+                    <input
+                      type="radio"
+                      name="generator-access"
+                      value="MEMBERS"
+                      checked={generatorAccessMode === 'MEMBERS'}
+                      onChange={() => handleGeneratorAccessChange('MEMBERS')}
+                    />
+                    <span>
+                      <strong>Members & curators</strong>
+                      <small>All signed-in users (USER, CURATOR, ADMIN) can request renders; guests remain blocked.</small>
+                    </span>
+                  </label>
+                </fieldset>
+                <section className="generator-base-models">
+                  <div className="generator-base-models__header">
+                    <h4>Base model presets</h4>
+                    <p>Define the checkpoints exposed inside the On-Site Generator wizard.</p>
+                  </div>
+                  {baseModelDrafts.length === 0 ? (
+                    <p className="generator-base-models__empty">
+                      No base models configured yet. Add at least one checkpoint so users can request renders.
+                    </p>
+                  ) : (
+                    <ol className="generator-base-models__list">
+                      {baseModelDrafts.map((entry, index) => (
+                        <li key={`generator-base-model-${index}`} className="generator-base-models__entry">
+                          <div className="generator-base-models__grid">
+                            <label>
+                              <span>Type</span>
+                              <select
+                                value={entry.type}
+                                onChange={(event) => handleBaseModelFieldChange(index, 'type', event.target.value)}
+                              >
+                                {generatorBaseModelTypeOptions.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Name</span>
+                              <input
+                                type="text"
+                                value={entry.name}
+                                onChange={(event) => handleBaseModelFieldChange(index, 'name', event.target.value)}
+                                placeholder="Display label shown to users"
+                              />
+                            </label>
+                            <label>
+                              <span>Filename</span>
+                              <input
+                                type="text"
+                                value={entry.filename}
+                                onChange={(event) => handleBaseModelFieldChange(index, 'filename', event.target.value)}
+                                placeholder="Model filename or object path"
+                              />
+                            </label>
+                          </div>
+                          <div className="generator-base-models__row-actions">
+                            <button
+                              type="button"
+                              className="button button--ghost"
+                              onClick={() => handleRemoveBaseModel(index)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                  <div className="generator-base-models__footer">
+                    <button type="button" className="button button--ghost" onClick={handleAddBaseModel}>
+                      Add base model
+                    </button>
+                  </div>
+                </section>
+                {generatorSettingsError ? (
+                  <p className="generator-settings__error">{generatorSettingsError}</p>
+                ) : null}
+                <div className="generator-settings__actions">
+                  <button
+                    type="submit"
+                    className="button button--primary"
+                    disabled={!isGeneratorDirty || isSavingGeneratorSettings}
+                  >
+                    {isSavingGeneratorSettings ? 'Saving…' : 'Save access level'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={handleResetGeneratorAccess}
+                    disabled={isSavingGeneratorSettings || !isGeneratorDirty}
+                  >
+                    Revert changes
+                  </button>
+                </div>
+                </form>
+              </section>
+              <section className="admin__section admin__section--generator-notes">
+                <h4>Rollout playbook</h4>
+                <ul className="generator-guidance-list">
+                  <li>
+                    Keep the mode on <strong>Admin only</strong> while syncing checkpoints, LoRAs, and validating GPU worker health.
+                  </li>
+                  <li>
+                    Switch to <strong>Members & curators</strong> once the agent can hot-load models and return outputs reliably.
+                  </li>
+                  <li>
+                    Switching modes updates the sidebar instantly—no deployment or browser refresh required.
+                  </li>
+                </ul>
+              </section>
+            </>
+          ) : null}
         </div>
       ) : null}
 

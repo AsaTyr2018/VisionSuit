@@ -93,6 +93,8 @@ During execution the installer:
 
 Base checkpoints for the On-Site Generator still live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `backend/.env` with `GENERATOR_BASE_MODEL_BUCKET` and inside `frontend/.env` via `VITE_GENERATOR_BASE_MODEL_BUCKET` so the GPU worker and download proxy continue to line up. After new checkpoints land in the bucket, open **Administration → Generator** and add an entry for each filename so the curated picker exposes only vetted models; the generator now hydrates that list from the corresponding database records automatically. For headless maintenance windows or CI pipelines the helper remains available to pre-seed the catalog explicitly:
 
+Inside the Generator administration view, the segmented **Queue & blocks**, **Failure log**, and **Access & presets** controls keep the maintenance tools organized so you can jump directly to live queue telemetry, error diagnostics, or visibility settings without scrolling.
+
 ```bash
 cd backend
 npm run generator:sync-base-models
