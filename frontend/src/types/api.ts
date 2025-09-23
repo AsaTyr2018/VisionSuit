@@ -225,6 +225,7 @@ export interface GeneratorQueueStateSummary {
 export interface GeneratorQueueResponse {
   state: GeneratorQueueStateSummary;
   stats: GeneratorQueueStats;
+  globalStats?: GeneratorQueueStats;
   activity?: GeneratorQueueActivitySnapshot | null;
   viewer: {
     isBlocked: boolean;

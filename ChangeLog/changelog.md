@@ -933,3 +933,8 @@
 - **General**: Routed finished generator renders through the VisionSuit API so history thumbnails and downloads work under public domains.
 - **Technical Changes**: Added `GET|HEAD /api/generator/requests/:id/artifacts/:artifactId`, streamed MinIO objects with auth-aware access checks, rewrote artifact URLs in the generator mapper, and documented the proxy in the README.
 - **Data Changes**: None.
+
+## 175 – [Fix] Serialized generator queue (commit TBD)
+- **General**: Prevented concurrent GPU jobs from colliding by enforcing a single global dispatch slot while giving every member a personal queue dashboard and token-aware artifact links that open without manual authentication headers.
+- **Technical Changes**: Added queue-state locking with `activeRequestId`/`lockedAt`, centralized dispatch in a serialized `processGeneratorQueue`, scoped queue stats per user with global metrics for admins, refreshed admin/frontend displays to respect the new payload shape, and appended access tokens to generator artifact URLs. The README now highlights the serialized queue and automatic proxy authorization.
+- **Data Changes**: Introduced nullable `activeRequestId` and `lockedAt` columns on `GeneratorQueueState` to track the in-flight job and lock acquisition timestamp.

@@ -52,6 +52,22 @@ const computeCacheWindowToken = (cacheWindowMs: number) => {
   return Math.floor(Date.now() / cacheWindowMs).toString(36);
 };
 
+export const appendAccessToken = (url?: string | null) => {
+  if (!url) {
+    return null;
+  }
+
+  const token = readStoredToken();
+  if (!token) {
+    return url;
+  }
+
+  const [withoutHash, hashFragment] = url.split('#');
+  const separator = withoutHash.includes('?') ? '&' : '?';
+  const nextUrl = `${withoutHash}${separator}accessToken=${encodeURIComponent(token)}`;
+  return hashFragment ? `${nextUrl}#${hashFragment}` : nextUrl;
+};
+
 export interface ResolveCachedStorageOptions {
   updatedAt?: string | null;
   cacheWindowMs?: number;

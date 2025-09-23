@@ -895,6 +895,7 @@ export const AdminPanel = ({
       updatedAt: generatorQueue.activity?.updatedAt ?? null,
     };
   }, [generatorQueue]);
+  const queueStats = generatorQueue?.globalStats ?? generatorQueue?.stats ?? null;
   const queueStatusLabel = isQueuePaused ? 'Paused' : queueDeclines ? 'Restricted' : 'Active';
 
   useEffect(() => {
@@ -3774,16 +3775,16 @@ export const AdminPanel = ({
               </div>
               <div className="generator-queue__metrics">
                 <span>
-                  Pending <strong>{generatorQueue?.stats?.pending ?? 0}</strong>
+                  Pending <strong>{queueStats?.pending ?? 0}</strong>
                 </span>
                 <span>
-                  Running <strong>{generatorQueue?.stats?.running ?? 0}</strong>
+                  Running <strong>{queueStats?.running ?? 0}</strong>
                 </span>
                 <span>
-                  Queued <strong>{generatorQueue?.stats?.queued ?? 0}</strong>
+                  Queued <strong>{queueStats?.queued ?? 0}</strong>
                 </span>
                 <span>
-                  Failed <strong>{generatorQueue?.stats?.failed ?? 0}</strong>
+                  Failed <strong>{queueStats?.failed ?? 0}</strong>
                 </span>
               </div>
               {queueActivityDetails ? (
