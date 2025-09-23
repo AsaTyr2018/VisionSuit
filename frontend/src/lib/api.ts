@@ -5,6 +5,7 @@ import type {
   GeneratorAccessMode,
   GeneratorBaseModelConfig,
   GeneratorBaseModelOption,
+  GeneratorBaseModelType,
   GeneratorRequestSummary,
   GeneratorSettings,
   ImageAsset,
@@ -71,7 +72,7 @@ interface UpdateGalleryPayload {
 }
 
 interface CreateGeneratorRequestPayload {
-  baseModelId: string;
+  baseModels: { id: string; name: string; type: GeneratorBaseModelType }[];
   prompt: string;
   negativePrompt?: string | null;
   seed?: string | null;

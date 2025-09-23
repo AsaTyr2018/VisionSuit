@@ -319,6 +319,7 @@ model GeneratorRequest {
   id             String                @id @default(cuid())
   userId         String
   baseModelId    String
+  baseModelSelections Json?
   prompt         String
   negativePrompt String?
   seed           String?

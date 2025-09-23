@@ -792,3 +792,13 @@
 - **General**: Restored backend startups by removing the hard dependency on the external Undici package.
 - **Technical Changes**: Replaced the generator agent client with a fetch-based helper that wraps network failures and dropped the Undici dependency from the backend package manifest.
 - **Data Changes**: None.
+
+## 037 – [Addition] Multi-base generator payloads
+- **General**: Reworked the On-Site Generator to select multiple curated base models via a checkbox matrix so members can bundle several checkpoints with a single request.
+- **Technical Changes**: Added a `baseModelSelections` JSON column plus migration, updated generator routes and dispatcher to persist and forward the full base-model roster, refreshed API typings, and rebuilt the wizard with a matrix UI, richer preview, review summaries, and history badges that surface every selected model.
+- **Data Changes**: New Prisma migration adds the nullable `baseModelSelections` column to `GeneratorRequest` for storing the curated base-model bundle.
+
+## 149 – [Fix] On-Site generator base-model checkboxes
+- **General**: Restored the generator wizard’s base-model picker so curators can toggle curated checkpoints via an accessible checkbox matrix before dispatching jobs.
+- **Technical Changes**: Replaced the button-based cards with labelled checkboxes, refreshed the styling to accommodate the new control layout, and noted the checkbox matrix in the README for up-to-date operator guidance.
+- **Data Changes**: None.

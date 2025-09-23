@@ -102,6 +102,15 @@ export interface GeneratorBaseModelOption extends GeneratorBaseModelConfig {
   isMissing: boolean;
 }
 
+export interface GeneratorRequestBaseModelSelection {
+  id: string;
+  name: string;
+  type?: GeneratorBaseModelType | null;
+  title?: string | null;
+  slug?: string | null;
+  version?: string | null;
+}
+
 export interface GeneratorSettings {
   id?: string | number;
   accessMode: GeneratorAccessMode;
@@ -128,6 +137,7 @@ export interface GeneratorRequestSummary {
   width: number;
   height: number;
   loras: GeneratorRequestLoRASelection[];
+  baseModels: GeneratorRequestBaseModelSelection[];
   baseModel: {
     id: string;
     title: string;
