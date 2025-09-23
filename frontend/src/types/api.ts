@@ -230,6 +230,9 @@ export interface GeneratorQueueResponse {
     busy: number;
     errors: { id: string; message: string }[];
   };
+  cleared?: {
+    removed: number;
+  };
 }
 
 export interface UserProfileModelSummary {

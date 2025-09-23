@@ -832,3 +832,13 @@
 - **General**: Ensured GPU jobs load MinIO-hosted LoRAs by storing them under their dispatched filenames instead of opaque IDs.
 - **Technical Changes**: Added filename lookup logic sourced from job extras, renamed legacy cached assets, removed stale UUID downloads, and documented the lifecycle update.
 - **Data Changes**: None; filesystem layout only.
+
+## 156 – [Addition] Queue clearing administration control (commit TBD)
+- **General**: Empowered administrators to flush the active GPU queue directly from the Administration → Generator screen when dispatches need a clean slate.
+- **Technical Changes**: Added a secured backend clear action that marks pending jobs as cancelled, folded cancellations into queue metrics, exposed the capability via the API client, surfaced a dedicated UI control with dynamic success messaging, and updated generator history to explain cleared requests.
+- **Data Changes**: None; existing queue records are only reclassified when the action runs.
+
+## 157 – [Fix] GPU agent reinstall reset (commit TBD)
+- **General**: Guaranteed GPU agent upgrades start from a pristine environment by tearing down any prior service before reinstalling.
+- **Technical Changes**: Extended the installer to stop and disable existing systemd units, purge `/opt/visionsuit-gpu-agent`, recreate fresh directories, drop stale unit files ahead of deployment, and documented the reset flow in the README.
+- **Data Changes**: None; adjustments operate on runtime directories only.
