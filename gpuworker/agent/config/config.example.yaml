@@ -5,7 +5,12 @@ minio:
   secure: false
   verify_tls: false
 comfyui:
+  # Provide either `api_url` or the `scheme`/`host`/`port` trio. `api_url` wins when set.
   api_url: "http://127.0.0.1:8188"
+  # base_url: "http://127.0.0.1:8188"
+  # scheme: "http"
+  # host: "127.0.0.1"
+  # port: 8188
   timeout_seconds: 900
   poll_interval_seconds: 2
   client_id: "visionsuit-gpu-agent"
@@ -21,6 +26,8 @@ cleanup:
   delete_downloaded_loras: true
   delete_downloaded_models: true
 callbacks:
+  # Optionally override the callback base URL when VisionSuit issues relative paths.
+  # base_url: "https://visionsuit.example.com"
   verify_tls: true
   timeout_seconds: 10
 workflow_defaults:

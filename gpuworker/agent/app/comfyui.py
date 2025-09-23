@@ -15,11 +15,12 @@ class ComfyUIClient:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self._client = httpx.AsyncClient(timeout=config.comfyui.timeout_seconds)
+        self._base_url = config.comfyui.api_url.rstrip("/")
 
     async def submit_workflow(self, workflow: Dict[str, Any]) -> str:
         payload = {"prompt": workflow, "client_id": self.config.comfyui.client_id}
         LOGGER.info("Submitting workflow to ComfyUI")
-        response = await self._client.post(f"{self.config.comfyui.api_url}/prompt", json=payload)
+        response = await self._client.post(f"{self._base_url}/prompt", json=payload)
         response.raise_for_status()
         data = response.json()
         prompt_id = data.get("prompt_id") or data.get("id")
@@ -49,7 +50,7 @@ class ComfyUIClient:
             await asyncio.sleep(poll_interval)
 
     async def _fetch_history(self, prompt_id: str) -> Dict[str, Any]:
-        response = await self._client.get(f"{self.config.comfyui.api_url}/history/{prompt_id}")
+        response = await self._client.get(f"{self._base_url}/history/{prompt_id}")
         response.raise_for_status()
         history = response.json()
         # Some ComfyUI builds wrap the history under the prompt ID key.
@@ -59,7 +60,7 @@ class ComfyUIClient:
 
     async def describe_activity(self) -> Dict[str, Any]:
         try:
-            response = await self._client.get(f"{self.config.comfyui.api_url}/queue")
+            response = await self._client.get(f"{self._base_url}/queue")
             response.raise_for_status()
             data = response.json()
         except httpx.HTTPError as exc:

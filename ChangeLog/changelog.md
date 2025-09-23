@@ -872,3 +872,13 @@
 - **General**: Added a maintenance script so operators can refresh deployed GPU agents directly from the repository clone.
 - **Technical Changes**: Introduced `installer/update.sh` to pull the latest sources from the home-directory git checkout, resynchronise them into `/opt/visionsuit-gpu-agent`, upgrade the virtual environment dependencies, reapply service ownership, refresh the systemd unit, and restart the daemon. Documented the new workflow in the GPU agent README.
 - **Data Changes**: None; updates only touch code and Python dependencies in the agent runtime.
+
+## 164 – [Fix] GPU agent ComfyUI endpoint alignment
+- **General**: Made the GPU agent mirror the working ComfyUI connection strategy from the CLI tester while letting VisionSuit callbacks target an operator-defined base URL.
+- **Technical Changes**: Allowed the agent to derive its ComfyUI API URL from either a full endpoint or a scheme/host/port trio, normalised the HTTP client base path, documented the options in both READMEs and the sample config, and exposed `GENERATOR_CALLBACK_BASE_URL` in the backend environment template for failure callback routing.
+- **Data Changes**: None; configuration surface only.
+
+## 165 – [Fix] GPU agent callback base rewrite
+- **General**: Ensured GPU-side failure reports can reach VisionSuit when the backend exposes callback endpoints on a non-local host.
+- **Technical Changes**: Added an optional `callbacks.base_url` setting, taught the agent to rewrite relative callback targets against it, updated the sample configuration, and expanded both READMEs with deployment guidance.
+- **Data Changes**: None; configuration schema extension only.
