@@ -353,10 +353,12 @@ class ParameterContextTests(unittest.TestCase):
                 WorkflowParameterBinding(parameter="primary_lora_strength_model", node=2, path="inputs.strength_model"),
                 WorkflowParameterBinding(parameter="primary_lora_strength_clip", node=2, path="inputs.strength_clip"),
                 WorkflowParameterBinding(parameter="prompt", node=3, path="inputs.text_g"),
+                WorkflowParameterBinding(parameter="prompt", node=3, path="inputs.text_l"),
                 WorkflowParameterBinding(parameter="width", node=3, path="inputs.width"),
                 WorkflowParameterBinding(parameter="width", node=3, path="inputs.target_width"),
                 WorkflowParameterBinding(parameter="height", node=3, path="inputs.height"),
                 WorkflowParameterBinding(parameter="height", node=3, path="inputs.target_height"),
+                WorkflowParameterBinding(parameter="negative_prompt", node=4, path="inputs.text_g"),
                 WorkflowParameterBinding(parameter="negative_prompt", node=4, path="inputs.text_l"),
                 WorkflowParameterBinding(parameter="width", node=4, path="inputs.width"),
                 WorkflowParameterBinding(parameter="width", node=4, path="inputs.target_width"),
@@ -395,6 +397,8 @@ class ParameterContextTests(unittest.TestCase):
         self.assertEqual(payload["2"]["inputs"]["strength_model"], 0.75)
         self.assertEqual(payload["2"]["inputs"]["strength_clip"], 0.75)
         self.assertEqual(payload["3"]["inputs"]["text_g"], "VisionSuit SDXL integration test")
+        self.assertEqual(payload["3"]["inputs"]["text_l"], "VisionSuit SDXL integration test")
+        self.assertEqual(payload["4"]["inputs"]["text_g"], "blurry, artifacts")
         self.assertEqual(payload["4"]["inputs"]["text_l"], "blurry, artifacts")
         self.assertEqual(payload["3"]["inputs"]["width"], 832)
         self.assertEqual(payload["3"]["inputs"]["height"], 1216)
