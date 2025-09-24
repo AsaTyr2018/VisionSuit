@@ -219,6 +219,41 @@ const normalizeUsername = (user: DispatchableGeneratorRequest['user']): string =
   return user.id;
 };
 
+const sanitizeText = (value: string | null | undefined, fallback = ''): string => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+};
+
+const sanitizeFiniteNumber = (value: number | null | undefined, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  return fallback;
+};
+
+const sanitizeInteger = (value: number | null | undefined, fallback: number): number => {
+  const numeric = sanitizeFiniteNumber(value, fallback);
+  const rounded = Math.round(numeric);
+  return rounded > 0 ? rounded : fallback;
+};
+
+const sanitizeSeedValue = (value: number | null | undefined): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const normalized = Math.floor(Math.abs(value));
+    if (normalized < 1_000_000_000) {
+      return normalized;
+    }
+    return normalized % 1_000_000_000;
+  }
+
+  return Math.floor(Math.random() * 1_000_000_000);
+};
+
 const parseLoraSelections = (value: unknown): StoredLoraSelection[] => {
   if (!value) {
     return [];
@@ -568,6 +603,26 @@ export const dispatchGeneratorRequest = async (
     };
   });
 
+  const promptText = sanitizeText(request.prompt);
+  const negativePrompt = sanitizeText(request.negativePrompt);
+  const resolvedWidth = sanitizeInteger(request.width, 1024);
+  const resolvedHeight = sanitizeInteger(request.height, 1024);
+  const resolvedSteps = sanitizeInteger(request.steps, 28);
+  const resolvedCfg = sanitizeFiniteNumber(request.guidanceScale, 7.5);
+  const parsedSeed = parseSeed(request.seed);
+  const resolvedSeed = sanitizeSeedValue(parsedSeed ?? null);
+
+  const workflowParameters = appConfig.generator.workflow.parameters
+    .map((binding) => ({ ...binding }))
+    .filter((binding) => {
+      if (lorasForAgent.length === 0) {
+        return !['primary_lora_name', 'primary_lora_strength_model', 'primary_lora_strength_clip'].includes(
+          binding.parameter,
+        );
+      }
+      return true;
+    });
+
   const envelope: AgentDispatchEnvelope = {
     jobId: request.id,
     user: {
@@ -578,10 +633,14 @@ export const dispatchGeneratorRequest = async (
     baseModel: baseModelForAgent,
     loras: lorasForAgent,
     parameters: {
-      prompt: request.prompt,
+      prompt: promptText,
+      negativePrompt,
+      seed: resolvedSeed,
+      cfgScale: resolvedCfg,
+      steps: resolvedSteps,
       resolution: {
-        width: request.width,
-        height: request.height,
+        width: resolvedWidth,
+        height: resolvedHeight,
       },
     },
     output: {
@@ -589,7 +648,7 @@ export const dispatchGeneratorRequest = async (
       prefix: buildOutputPrefix(request),
     },
     workflowOverrides: [...appConfig.generator.workflow.overrides],
-    workflowParameters: [...appConfig.generator.workflow.parameters],
+    workflowParameters,
   };
 
   const callbackBase = appConfig.generator.callbacks.baseUrl.replace(/\/$/, '');
@@ -603,23 +662,6 @@ export const dispatchGeneratorRequest = async (
     completion: buildCallbackUrl('completion'),
     failure: buildCallbackUrl('failure'),
   };
-
-  if (request.negativePrompt !== undefined) {
-    envelope.parameters.negativePrompt = request.negativePrompt;
-  }
-
-  const seed = parseSeed(request.seed);
-  if (typeof seed === 'number') {
-    envelope.parameters.seed = seed;
-  }
-
-  if (request.guidanceScale !== null && request.guidanceScale !== undefined) {
-    envelope.parameters.cfgScale = request.guidanceScale;
-  }
-
-  if (request.steps !== null && request.steps !== undefined) {
-    envelope.parameters.steps = request.steps;
-  }
 
   if (baseModelExtraPayload.length > 0 || loraExtraPayload.length > 0) {
     envelope.parameters.extra = {

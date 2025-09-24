@@ -43,6 +43,15 @@ class ParameterContextTests(unittest.TestCase):
             downloaded=False,
             link_created=False,
         )
+        self.second_lora_asset_ref = AssetRef(bucket="models", key="loras/second-lora.safetensors")
+        self.second_lora_resolved = ResolvedAsset(
+            asset=self.second_lora_asset_ref,
+            cache_path=Path("/loras/second-lora.safetensors"),
+            comfy_name="second-lora.safetensors",
+            symlink_path=Path("/loras/second-lora.safetensors"),
+            downloaded=False,
+            link_created=False,
+        )
         self.workflow_ref = WorkflowRef(
             id="inline",
             inline={
@@ -54,14 +63,14 @@ class ParameterContextTests(unittest.TestCase):
             },
         )
 
-    def _build_job(self, extra: dict | None = None) -> DispatchEnvelope:
+    def _build_job(self, extra: dict | None = None, loras: list[AssetRef] | None = None) -> DispatchEnvelope:
         parameters = JobParameters(prompt="Test prompt", extra=extra or {})
         return DispatchEnvelope(
             jobId="job-1",
             user=UserContext(id="user-1", username="tester"),
             workflow=self.workflow_ref,
             baseModel=self.base_asset_ref,
-            loras=[self.lora_asset_ref],
+            loras=loras or [self.lora_asset_ref],
             parameters=parameters,
             output=OutputSpec(bucket="outputs", prefix="jobs/job-1"),
             workflowParameters=[
@@ -127,6 +136,59 @@ class ParameterContextTests(unittest.TestCase):
         self.assertEqual(context["primary_lora_strength_model"], 1.0)
         self.assertEqual(context["primary_lora_strength_clip"], 1.0)
         self.assertNotIn("loras_metadata", context)
+
+    def test_apply_lora_chain_without_loras_removes_loader(self) -> None:
+        job = self._build_job(loras=[])
+        context = self.agent._build_parameter_context(job, self.base_resolved, [])
+        workflow = {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {}},
+            "2": {
+                "class_type": "LoraLoader",
+                "inputs": {"model": ["1", 0], "clip": ["1", 1], "lora_name": "", "strength_model": 1.0, "strength_clip": 1.0},
+            },
+            "3": {"class_type": "CLIPTextEncodeSDXL", "inputs": {"clip": ["2", 1]}},
+            "4": {"class_type": "KSampler", "inputs": {"model": ["2", 0]}},
+        }
+
+        applied = self.agent._apply_lora_chain(workflow, [], context)
+        self.assertEqual(applied, [])
+        self.assertNotIn("2", workflow)
+        self.assertEqual(workflow["3"]["inputs"]["clip"], ["1", 1])
+        self.assertEqual(workflow["4"]["inputs"]["model"], ["1", 0])
+
+    def test_apply_lora_chain_with_multiple_loras(self) -> None:
+        extra = {
+            "loras": [
+                {"filename": "my-lora.safetensors", "strength": 0.6},
+                {"filename": "second-lora.safetensors", "strength": 0.3},
+            ]
+        }
+        job = self._build_job(extra, loras=[self.lora_asset_ref, self.second_lora_asset_ref])
+        resolved_loras = [self.lora_resolved, self.second_lora_resolved]
+        context = self.agent._build_parameter_context(job, self.base_resolved, resolved_loras)
+        workflow = {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {}},
+            "2": {
+                "class_type": "LoraLoader",
+                "inputs": {"model": ["1", 0], "clip": ["1", 1], "lora_name": "", "strength_model": 1.0, "strength_clip": 1.0},
+            },
+            "3": {"class_type": "CLIPTextEncodeSDXL", "inputs": {"clip": ["2", 1]}},
+            "4": {"class_type": "KSampler", "inputs": {"model": ["2", 0]}},
+        }
+
+        applied = self.agent._apply_lora_chain(workflow, resolved_loras, context)
+        self.agent._synchronize_lora_context(job, context, resolved_loras, applied)
+
+        self.assertEqual(len(applied), 2)
+        new_node_id = max(workflow.keys(), key=int)
+        self.assertNotEqual(new_node_id, "2")
+        self.assertEqual(workflow["3"]["inputs"]["clip"], [new_node_id, 1])
+        self.assertEqual(workflow["4"]["inputs"]["model"], [new_node_id, 0])
+        self.assertEqual(workflow["2"]["inputs"]["lora_name"], "my-lora.safetensors")
+        self.assertEqual(workflow["2"]["inputs"]["strength_model"], 0.6)
+        self.assertEqual(workflow[new_node_id]["inputs"]["lora_name"], "second-lora.safetensors")
+        self.assertEqual(workflow[new_node_id]["inputs"]["strength_model"], 0.3)
+        self.assertEqual(context["loras"], ["my-lora.safetensors", "second-lora.safetensors"])
 
 
 if __name__ == "__main__":

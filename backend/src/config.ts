@@ -231,8 +231,6 @@ const defaultWorkflowParameterBindings: AgentWorkflowParameterBinding[] = [
   { parameter: 'primary_lora_strength_model', node: 2, path: 'inputs.strength_model' },
   { parameter: 'primary_lora_strength_clip', node: 2, path: 'inputs.strength_clip' },
   { parameter: 'prompt', node: 3, path: 'inputs.text_g' },
-  { parameter: 'prompt', node: 3, path: 'inputs.text_l' },
-  { parameter: 'negative_prompt', node: 4, path: 'inputs.text_g' },
   { parameter: 'negative_prompt', node: 4, path: 'inputs.text_l' },
   { parameter: 'width', node: 5, path: 'inputs.width' },
   { parameter: 'height', node: 5, path: 'inputs.height' },
