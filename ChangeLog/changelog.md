@@ -1008,3 +1008,8 @@
 - **General**: Realigned the on-site generator and GPU agent so SDXL prompts, negatives, and LoRA selections land on the intended nodes while the job manifest reflects the exact payload that reached ComfyUI.
 - **Technical Changes**: Sanitised generator defaults, filtered workflow bindings when no LoRA is present, chained multiple `LoraLoader` nodes with job-scoped adapter filenames, collapsed the loader automatically when the selection list is empty, synchronised the manifest and status logs with resolved parameters, emitted an `applied-workflow.json` dump before submission, and extended the regression suite to cover the new flow.
 - **Data Changes**: Stores the final `/prompt` payload alongside each job manifest under `<outputs>/logs/<jobId>/applied-workflow.json`.
+
+## 190 – [Fix] SDXL payload dimension propagation
+- **General**: Ensured ComfyUI receives SDXL prompts with matching encoder and latent dimensions so LoRA-powered renders no longer error on malformed payloads.
+- **Technical Changes**: Bound the generator’s width and height parameters to both SDXL text-encoder nodes plus their target dimensions, refreshed the validation workflow’s checkpoint loader inputs, and documented the dimension propagation in the README.
+- **Data Changes**: None.

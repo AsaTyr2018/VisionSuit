@@ -1,7 +1,9 @@
 {
   "1": {
     "inputs": {
-      "ckpt_name": "calicomixPonyXL_v20.safetensors"
+      "ckpt_name": "calicomixPonyXL_v20.safetensors",
+      "vae_name": "None",
+      "clip_name": "None"
     },
     "class_type": "CheckpointLoaderSimple"
   },
