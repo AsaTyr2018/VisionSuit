@@ -1037,3 +1037,8 @@
 - **General**: Restored GPU jobs that failed when sampler and scheduler values only lived in the worker defaults.
 - **Technical Changes**: Allowed reserved workflow defaults to populate sampler and scheduler bindings, added coverage for the fallback behaviour, and refreshed the README to explain the configuration path.
 - **Data Changes**: None; runtime validation only.
+
+## 196 – [Fix] GPU agent accepts scheduler from dispatch payload
+- **General**: Prevented the GPU agent from rejecting generator jobs when the scheduler travels inside the main parameter payload instead of the legacy `extra` map.
+- **Technical Changes**: Added explicit `sampler` and `scheduler` fields to the dispatch schema, normalised them before validation, seeded the workflow context with the trimmed values, and refreshed the parameter-context regression tests to cover the direct bindings.
+- **Data Changes**: None.

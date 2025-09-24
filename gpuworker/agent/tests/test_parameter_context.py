@@ -67,14 +67,14 @@ class ParameterContextTests(unittest.TestCase):
         )
 
     def _build_job(self, extra: dict | None = None, loras: list[AssetRef] | None = None) -> DispatchEnvelope:
-        payload_extra = {"sampler": "dpmpp_2m_sde_gpu", "scheduler": "karras"}
-        if extra:
-            payload_extra.update(extra)
+        payload_extra = dict(extra) if extra else {}
         parameters = JobParameters(
             prompt="Test prompt",
             steps=60,
             cfgScale=7.5,
             resolution=Resolution(width=1024, height=1024),
+            sampler="dpmpp_2m_sde_gpu",
+            scheduler="karras",
             extra=payload_extra,
         )
         return DispatchEnvelope(
@@ -151,14 +151,14 @@ class ParameterContextTests(unittest.TestCase):
 
     def test_missing_sampler_raises_validation_failure(self) -> None:
         job = self._build_job()
-        job.parameters.extra.pop("sampler", None)
+        job.parameters.sampler = None
 
         with self.assertRaises(ValidationFailure):
             self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
 
     def test_missing_scheduler_raises_validation_failure(self) -> None:
         job = self._build_job()
-        job.parameters.extra.pop("scheduler", None)
+        job.parameters.scheduler = None
 
         with self.assertRaises(ValidationFailure):
             self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
@@ -168,8 +168,8 @@ class ParameterContextTests(unittest.TestCase):
         try:
             self.agent.config.workflow_defaults = {"sampler": "k_euler", "scheduler": "normal"}
             job = self._build_job()
-            job.parameters.extra.pop("sampler", None)
-            job.parameters.extra.pop("scheduler", None)
+            job.parameters.sampler = None
+            job.parameters.scheduler = None
 
             context = self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
 
