@@ -963,3 +963,8 @@
 - **General**: Prevented artifact imports from buffering massive generator renders so detail-page onboarding stays responsive.
 - **Technical Changes**: Added a 32 MiB streaming guard that only hydrates metadata when safe, skips buffer hydration for oversized files, and preserves adult-content checks using request data fallbacks while keeping gallery creation intact.
 - **Data Changes**: None.
+
+## 181 – [Addition] Default workflow LoRA loader wiring
+- **General**: Threaded the bundled SDXL workflow through a dedicated LoRA loader so generator jobs can target curated adapters without manual graph edits.
+- **Technical Changes**: Inserted a `LoraLoader` node into `backend/generator-workflows/default.json`, bound its filename and strength inputs to `primary_lora_*` parameters, taught the dispatcher to surface those values from request selections, and covered the new context builder with node-based unit tests plus README guidance.
+- **Data Changes**: None.

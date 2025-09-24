@@ -147,6 +147,7 @@ VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Poin
 - VisionSuit now auto-seeds the configured workflow into `GENERATOR_WORKFLOW_BUCKET` before every dispatch, so provide either a
   local template path or inline JSON when rolling out a new graph to avoid 404s on the GPU node.
 - Prompt, sampler, and resolution bindings are pre-wired for the bundled workflow—only override `GENERATOR_WORKFLOW_PARAMETERS` when publishing a custom node layout.
+- The default graph injects a `LoraLoader` between the checkpoint and sampler; VisionSuit maps LoRA selections onto `primary_lora_name`, `primary_lora_strength_model`, and `primary_lora_strength_clip` so the loader node receives the chosen adapter and strength values automatically.
 - `GENERATOR_WORKFLOW_PARAMETERS` (JSON array) to map prompt/seed/CFG inputs onto workflow nodes and `GENERATOR_WORKFLOW_OVERRIDES` for fixed node tweaks.
 - `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
 - `GENERATOR_CALLBACK_BASE_URL` so the backend can publish reachable callback URLs for status, completion, and failure updates (defaults to `http://127.0.0.1:4000` when unset).

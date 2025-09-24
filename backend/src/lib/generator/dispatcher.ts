@@ -1,11 +1,8 @@
 import path from 'node:path';
 
 import { appConfig } from '../../config';
-import {
-  AgentDispatchEnvelope,
-  AgentRequestError,
-  GeneratorAgentClient,
-} from './agentClient';
+import { AgentDispatchEnvelope, AgentRequestError, GeneratorAgentClient } from './agentClient';
+import { mergeLoraExtras } from './loraContext';
 import { prisma } from '../prisma';
 import { ensureBucketExists, resolveStorageLocation, storageClient } from '../storage';
 
@@ -482,7 +479,7 @@ export const dispatchGeneratorRequest = async (
     envelope.parameters.extra = {
       ...(envelope.parameters.extra ?? {}),
       ...(baseModelExtraPayload.length > 0 ? { baseModels: baseModelExtraPayload } : {}),
-      ...(loraExtraPayload.length > 0 ? { loras: loraExtraPayload } : {}),
+      ...mergeLoraExtras(selections, loraExtraPayload),
     };
   }
 
