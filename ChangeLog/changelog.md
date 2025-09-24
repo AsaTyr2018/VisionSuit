@@ -1013,3 +1013,8 @@
 - **General**: Ensured ComfyUI receives SDXL prompts with matching encoder and latent dimensions so LoRA-powered renders no longer error on malformed payloads.
 - **Technical Changes**: Bound the generator’s width and height parameters to both SDXL text-encoder nodes plus their target dimensions, refreshed the validation workflow’s checkpoint loader inputs, and documented the dimension propagation in the README.
 - **Data Changes**: None.
+
+## 191 – [Fix] SDXL workflow payload unification
+- **General**: Lined up the On-Site Generator, GPU agent, and ComfyUI payload so SDXL jobs carry the selected checkpoint, prompts, LoRAs, and resolution without manual tweaks.
+- **Technical Changes**: Rebased the default and validation workflow JSON on the unified SDXL graph, updated the GPU agent tests and documentation to verify every binding, refreshed sampler defaults, and clarified the main README around the new `SaveImage` outputs.
+- **Data Changes**: None.

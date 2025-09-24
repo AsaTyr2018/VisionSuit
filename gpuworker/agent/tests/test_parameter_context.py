@@ -24,7 +24,9 @@ class InlineWorkflowLoader:
 class ParameterContextTests(unittest.TestCase):
     def setUp(self) -> None:
         self.agent = GPUAgent.__new__(GPUAgent)
-        self.agent.config = SimpleNamespace(workflow_defaults={"sampler": "euler"})
+        self.agent.config = SimpleNamespace(
+            workflow_defaults={"sampler": "dpmpp_2m_sde_gpu", "scheduler": "karras"}
+        )
         self.base_asset_ref = AssetRef(bucket="models", key="checkpoints/base.safetensors")
         self.base_resolved = ResolvedAsset(
             asset=self.base_asset_ref,
@@ -119,7 +121,7 @@ class ParameterContextTests(unittest.TestCase):
         self.assertEqual(context["primary_lora_strength_model"], 0.85)
         self.assertEqual(context["primary_lora_strength_clip"], 0.85)
         self.assertEqual(context["misc"], "value")
-        self.assertEqual(context["sampler"], "euler")
+        self.assertEqual(context["sampler"], "dpmpp_2m_sde_gpu")
 
         payload = build_workflow_payload(InlineWorkflowLoader(), job, context)
         lora_inputs = payload["2"]["inputs"]
@@ -189,6 +191,153 @@ class ParameterContextTests(unittest.TestCase):
         self.assertEqual(workflow[new_node_id]["inputs"]["lora_name"], "second-lora.safetensors")
         self.assertEqual(workflow[new_node_id]["inputs"]["strength_model"], 0.3)
         self.assertEqual(context["loras"], ["my-lora.safetensors", "second-lora.safetensors"])
+
+    def test_sdxl_workflow_bindings_receive_resolved_parameters(self) -> None:
+        workflow_template = {
+            "1": {
+                "class_type": "CheckpointLoaderSimple",
+                "inputs": {"ckpt_name": "sdxl_base_1.0.safetensors", "vae_name": "None", "clip_name": "None"},
+            },
+            "2": {
+                "class_type": "LoraLoader",
+                "inputs": {
+                    "model": ["1", 0],
+                    "clip": ["1", 1],
+                    "lora_name": "",
+                    "strength_model": 0.75,
+                    "strength_clip": 0.75,
+                },
+            },
+            "3": {
+                "class_type": "CLIPTextEncodeSDXL",
+                "inputs": {
+                    "clip": ["2", 1],
+                    "width": 1024,
+                    "height": 1024,
+                    "crop_w": 0,
+                    "crop_h": 0,
+                    "target_width": 1024,
+                    "target_height": 1024,
+                    "text_g": "",
+                    "text_l": "",
+                },
+            },
+            "4": {
+                "class_type": "CLIPTextEncodeSDXL",
+                "inputs": {
+                    "clip": ["2", 1],
+                    "width": 1024,
+                    "height": 1024,
+                    "crop_w": 0,
+                    "crop_h": 0,
+                    "target_width": 1024,
+                    "target_height": 1024,
+                    "text_g": "",
+                    "text_l": "",
+                },
+            },
+            "5": {
+                "class_type": "EmptyLatentImage",
+                "inputs": {"width": 1024, "height": 1024, "batch_size": 1},
+            },
+            "6": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "model": ["2", 0],
+                    "positive": ["3", 0],
+                    "negative": ["4", 0],
+                    "latent_image": ["5", 0],
+                    "seed": 123456789,
+                    "steps": 28,
+                    "cfg": 7.5,
+                    "sampler_name": "dpmpp_2m_sde_gpu",
+                    "scheduler": "karras",
+                    "denoise": 1.0,
+                },
+            },
+            "7": {
+                "class_type": "VAEDecode",
+                "inputs": {"samples": ["6", 0], "vae": ["1", 2]},
+            },
+            "8": {
+                "class_type": "SaveImage",
+                "inputs": {"images": ["7", 0], "filename_prefix": "SDXL_LoRA_API_{TIMESTAMP}"},
+            },
+        }
+
+        workflow_ref = WorkflowRef(id="sdxl", inline=workflow_template)
+        job = DispatchEnvelope(
+            jobId="job-sdxl",
+            user=UserContext(id="user-1", username="tester"),
+            workflow=workflow_ref,
+            baseModel=self.base_asset_ref,
+            loras=[self.lora_asset_ref],
+            parameters=JobParameters(prompt=""),
+            output=OutputSpec(bucket="outputs", prefix="jobs/job-sdxl"),
+            workflowParameters=[
+                WorkflowParameterBinding(parameter="base_model_path", node=1, path="inputs.ckpt_name"),
+                WorkflowParameterBinding(parameter="primary_lora_name", node=2, path="inputs.lora_name"),
+                WorkflowParameterBinding(parameter="primary_lora_strength_model", node=2, path="inputs.strength_model"),
+                WorkflowParameterBinding(parameter="primary_lora_strength_clip", node=2, path="inputs.strength_clip"),
+                WorkflowParameterBinding(parameter="prompt", node=3, path="inputs.text_g"),
+                WorkflowParameterBinding(parameter="width", node=3, path="inputs.width"),
+                WorkflowParameterBinding(parameter="width", node=3, path="inputs.target_width"),
+                WorkflowParameterBinding(parameter="height", node=3, path="inputs.height"),
+                WorkflowParameterBinding(parameter="height", node=3, path="inputs.target_height"),
+                WorkflowParameterBinding(parameter="negative_prompt", node=4, path="inputs.text_l"),
+                WorkflowParameterBinding(parameter="width", node=4, path="inputs.width"),
+                WorkflowParameterBinding(parameter="width", node=4, path="inputs.target_width"),
+                WorkflowParameterBinding(parameter="height", node=4, path="inputs.height"),
+                WorkflowParameterBinding(parameter="height", node=4, path="inputs.target_height"),
+                WorkflowParameterBinding(parameter="width", node=5, path="inputs.width"),
+                WorkflowParameterBinding(parameter="height", node=5, path="inputs.height"),
+                WorkflowParameterBinding(parameter="seed", node=6, path="inputs.seed"),
+                WorkflowParameterBinding(parameter="steps", node=6, path="inputs.steps"),
+                WorkflowParameterBinding(parameter="cfg_scale", node=6, path="inputs.cfg"),
+                WorkflowParameterBinding(parameter="sampler", node=6, path="inputs.sampler_name"),
+                WorkflowParameterBinding(parameter="scheduler", node=6, path="inputs.scheduler"),
+            ],
+        )
+
+        resolved_params = {
+            "prompt": "VisionSuit SDXL integration test",
+            "negative_prompt": "blurry, artifacts",
+            "width": 832,
+            "height": 1216,
+            "seed": 987654321,
+            "steps": 28,
+            "cfg_scale": 7.5,
+            "sampler": "dpmpp_2m_sde_gpu",
+            "scheduler": "karras",
+            "base_model_path": "sdxl_base_1.0.safetensors",
+            "primary_lora_name": "cyber_fantasy.safetensors",
+            "primary_lora_strength_model": 0.75,
+            "primary_lora_strength_clip": 0.75,
+        }
+
+        payload = build_workflow_payload(InlineWorkflowLoader(), job, resolved_params)
+
+        self.assertEqual(payload["1"]["inputs"]["ckpt_name"], "sdxl_base_1.0.safetensors")
+        self.assertEqual(payload["2"]["inputs"]["lora_name"], "cyber_fantasy.safetensors")
+        self.assertEqual(payload["2"]["inputs"]["strength_model"], 0.75)
+        self.assertEqual(payload["2"]["inputs"]["strength_clip"], 0.75)
+        self.assertEqual(payload["3"]["inputs"]["text_g"], "VisionSuit SDXL integration test")
+        self.assertEqual(payload["4"]["inputs"]["text_l"], "blurry, artifacts")
+        self.assertEqual(payload["3"]["inputs"]["width"], 832)
+        self.assertEqual(payload["3"]["inputs"]["height"], 1216)
+        self.assertEqual(payload["3"]["inputs"]["target_width"], 832)
+        self.assertEqual(payload["3"]["inputs"]["target_height"], 1216)
+        self.assertEqual(payload["4"]["inputs"]["width"], 832)
+        self.assertEqual(payload["4"]["inputs"]["height"], 1216)
+        self.assertEqual(payload["4"]["inputs"]["target_width"], 832)
+        self.assertEqual(payload["4"]["inputs"]["target_height"], 1216)
+        self.assertEqual(payload["5"]["inputs"]["width"], 832)
+        self.assertEqual(payload["5"]["inputs"]["height"], 1216)
+        self.assertEqual(payload["6"]["inputs"]["seed"], 987654321)
+        self.assertEqual(payload["6"]["inputs"]["steps"], 28)
+        self.assertEqual(payload["6"]["inputs"]["cfg"], 7.5)
+        self.assertEqual(payload["6"]["inputs"]["sampler_name"], "dpmpp_2m_sde_gpu")
+        self.assertEqual(payload["6"]["inputs"]["scheduler"], "karras")
 
 
 if __name__ == "__main__":
