@@ -973,3 +973,8 @@
 - **General**: Ensured generator jobs feed ComfyUI the sanitized LoRA adapter name and intended strength so queued renders honor the on-site selections.
 - **Technical Changes**: Preserved normalized LoRA filenames in the agent context, derived primary strength values from request metadata, exposed the raw payloads under `loras_metadata`, ignored conflicting extras, and added unit coverage that verifies the workflow payload binds the sanitized adapter and strengths.
 - **Data Changes**: None.
+
+## 183 – [Fix] Restored LoRA filenames for ComfyUI consumption
+- **General**: Delivered `.safetensors` LoRA adapters to ComfyUI under their original upload names so hashed MinIO keys no longer break loader discovery.
+- **Technical Changes**: Taught the backend dispatcher to include `displayName`/`originalName` metadata for base models and LoRAs, look up stored original filenames, and fall back to deterministic `.safetensors` labels; updated the GPU agent to apply those names when caching, migrate legacy downloads, ensure cache files carry an extension, and clean up stale symlinks; refreshed the READMEs to document the restored naming flow.
+- **Data Changes**: None.

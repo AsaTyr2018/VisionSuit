@@ -57,6 +57,8 @@ The ComfyUI node can now be promoted to a managed VisionSuit GPU agent by instal
 
 Dispatch envelopes sent to `POST /jobs` must include all MinIO keys for base models, LoRAs, and the workflow template plus the desired output bucket and prefix. The agent downloads missing assets, renders via ComfyUI, uploads results back into MinIO, and deletes LoRAs or temporary models after completion while leaving persistent checkpoints intact.
 
+When staging assets the agent now rewrites each cached LoRA or checkpoint to use the original uploaded filename (defaulting to `LoraModel.safetensors` when no metadata is available) before surfacing it to ComfyUI, keeping the `.safetensors` extension intact even if the MinIO object key is a hashed identifier.
+
 ## Test validation scripts
 
 When VisionSuit has not yet been wired to the worker you can still verify connectivity with the purpose-built test helpers (copied to `/usr/local/bin` alongside the other utilities):
