@@ -993,3 +993,8 @@
 - **General**: Ensured the GPU worker delivers primary LoRA adapters to ComfyUI under the manifest-declared filename so dispatch logs and runtime bindings stay consistent.
 - **Technical Changes**: Sanitized and applied the `primary_lora_name` override while materializing cached LoRAs, updated parameter-context expectations, and refreshed README guidance on the rename flow.
 - **Data Changes**: None; cached files continue to download from the same MinIO objects.
+
+## 187 – [Fix] Primary LoRA override now replaces stale adapters
+- **General**: Guaranteed the GPU agent always presents the manifest-named primary LoRA to ComfyUI, even when repeated jobs reuse the same filename.
+- **Technical Changes**: Added a cache-rename stage for the primary adapter, taught non-symlink materialization and symlink creation to overwrite existing files when the manifest demands a specific name, and covered the new behaviour with unit tests plus README guidance.
+- **Data Changes**: None; only temporary cache filenames and symlinks change.

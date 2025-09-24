@@ -6,6 +6,7 @@ import errno
 import json
 import logging
 import mimetypes
+import shutil
 import time
 import uuid
 from asyncio import Event
@@ -664,16 +665,25 @@ class GPUAgent:
         source_name: str,
         asset: AssetRef,
         asset_kind: str,
+        replace_existing: bool = False,
     ) -> Tuple[Path, bool, bool]:
         pretty_path.parent.mkdir(parents=True, exist_ok=True)
         if pretty_path.is_symlink():
             pretty_path.unlink(missing_ok=True)
+        if replace_existing and pretty_path.exists():
+            try:
+                pretty_path.unlink()
+            except IsADirectoryError:
+                shutil.rmtree(pretty_path)
         created = not pretty_path.exists()
         downloaded = False
-        if created:
+        if created or replace_existing:
             candidates = [cache_dir / cache_name, cache_dir / source_name]
             for candidate in candidates:
                 if candidate.exists():
+                    if candidate == pretty_path:
+                        created = False
+                        break
                     try:
                         candidate.replace(pretty_path)
                         LOGGER.debug(
@@ -772,6 +782,51 @@ class GPUAgent:
                 link_created=created,
             )
 
+    def _prepare_primary_lora_cache(
+        self,
+        cache_dir: Path,
+        cache_path: Path,
+        override_name: str,
+    ) -> Path:
+        desired = cache_dir / override_name
+        if cache_path == desired:
+            return cache_path
+        desired.parent.mkdir(parents=True, exist_ok=True)
+        if desired.exists() or desired.is_symlink():
+            try:
+                if desired.samefile(cache_path):
+                    return desired
+            except FileNotFoundError:
+                pass
+            try:
+                desired.unlink()
+            except IsADirectoryError:
+                shutil.rmtree(desired)
+            except FileNotFoundError:
+                pass
+        try:
+            cache_path.replace(desired)
+            LOGGER.debug(
+                "Retitled primary LoRA cache %s to %s", cache_path, desired
+            )
+            return desired
+        except Exception:  # noqa: BLE001
+            LOGGER.debug(
+                "Failed to rename primary LoRA cache %s to %s; copying instead",
+                cache_path,
+                desired,
+                exc_info=True,
+            )
+            desired.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cache_path, desired)
+            cache_path.unlink(missing_ok=True)
+            LOGGER.debug(
+                "Copied primary LoRA cache %s into %s after rename failure",
+                cache_path,
+                desired,
+            )
+            return desired
+
     def _ensure_loras(self, job: DispatchEnvelope) -> List[ResolvedAsset]:
         resolved: List[ResolvedAsset] = []
         if not job.loras:
@@ -786,7 +841,8 @@ class GPUAgent:
         for index, asset in enumerate(job.loras):
             source_name = Path(asset.key).name
             cache_name = ensure_extension(source_name)
-            if index == 0 and primary_override:
+            is_primary = index == 0 and primary_override is not None
+            if is_primary:
                 override = ensure_extension(primary_override)
                 display_name = override
             else:
@@ -814,6 +870,12 @@ class GPUAgent:
                 self.minio.download_to_path(asset.bucket, asset.key, cache_path)
                 downloaded = True
 
+            if is_primary and cache_path.parent == cache_dir:
+                cache_path = self._prepare_primary_lora_cache(cache_dir, cache_path, override)
+                cache_name = cache_path.name
+            elif cache_path.parent == cache_dir:
+                cache_name = cache_path.name
+
             if not use_symlink:
                 link_path, direct_downloaded, created = self._materialize_without_symlink(
                     pretty_path,
@@ -822,6 +884,7 @@ class GPUAgent:
                     source_name,
                     asset,
                     "LoRA",
+                    replace_existing=is_primary,
                 )
                 comfy_name = normalize_name(link_path.name)
                 resolved.append(
@@ -837,7 +900,12 @@ class GPUAgent:
                 continue
 
             try:
-                symlink_path, created = self._ensure_symlink(pretty_path, cache_path, asset.key)
+                symlink_path, created = self._ensure_symlink(
+                    pretty_path,
+                    cache_path,
+                    asset.key,
+                    replace_existing=is_primary,
+                )
                 comfy_name = normalize_name(symlink_path.name)
                 resolved.append(
                     ResolvedAsset(
@@ -858,6 +926,7 @@ class GPUAgent:
                     source_name,
                     asset,
                     "LoRA",
+                    replace_existing=is_primary,
                 )
                 comfy_name = normalize_name(link_path.name)
                 resolved.append(
@@ -879,7 +948,13 @@ class GPUAgent:
             candidate = metadata.get("original-name") or metadata.get("original_name") or metadata.get("display-name")
         return derive_pretty_name(candidate, fallback)
 
-    def _ensure_symlink(self, desired: Path, target: Path, source_key: str) -> Tuple[Path, bool]:
+    def _ensure_symlink(
+        self,
+        desired: Path,
+        target: Path,
+        source_key: str,
+        replace_existing: bool = False,
+    ) -> Tuple[Path, bool]:
         if desired == target:
             return desired, False
         desired.parent.mkdir(parents=True, exist_ok=True)
@@ -893,6 +968,14 @@ class GPUAgent:
                 except FileNotFoundError:
                     try:
                         candidate.unlink()
+                    except FileNotFoundError:
+                        pass
+                    continue
+                if replace_existing:
+                    try:
+                        candidate.unlink()
+                    except IsADirectoryError:
+                        shutil.rmtree(candidate)
                     except FileNotFoundError:
                         pass
                     continue
