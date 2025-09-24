@@ -737,6 +737,8 @@ const mapGeneratorRequest = (
     seed: request.seed,
     guidanceScale: request.guidanceScale,
     steps: request.steps,
+    sampler: request.sampler,
+    scheduler: request.scheduler,
     width: request.width,
     height: request.height,
     loras:
@@ -856,6 +858,13 @@ generatorRouter.get('/base-models/catalog', requireAuth, async (_req, res, next)
   }
 });
 
+const samplingParameterSchema = z
+  .string()
+  .trim()
+  .min(1, 'Sampling parameter is required.')
+  .max(64)
+  .transform((value) => value.toLowerCase());
+
 const generatorRequestSchema = z.object({
   baseModels: z
     .array(
@@ -883,6 +892,12 @@ const generatorRequestSchema = z.object({
   steps: z.coerce.number().int().min(1).max(200).optional(),
   width: z.coerce.number().int().min(256).max(2048),
   height: z.coerce.number().int().min(256).max(2048),
+  sampler: samplingParameterSchema.refine((value) => value.length > 0, {
+    message: 'Sampler selection is required.',
+  }),
+  scheduler: samplingParameterSchema.refine((value) => value.length > 0, {
+    message: 'Scheduler selection is required.',
+  }),
 });
 
 const generatorAgentStateEnum = z.enum([
@@ -1661,6 +1676,8 @@ generatorRouter.post('/requests', requireAuth, async (req, res, next) => {
         seed: parsed.data.seed ?? null,
         guidanceScale: parsed.data.guidanceScale ?? null,
         steps: parsed.data.steps ?? null,
+        sampler: parsed.data.sampler,
+        scheduler: parsed.data.scheduler,
         width: parsed.data.width,
         height: parsed.data.height,
         loraSelections: loraDetails,

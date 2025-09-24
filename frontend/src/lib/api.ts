@@ -83,6 +83,8 @@ interface CreateGeneratorRequestPayload {
   steps?: number | null;
   width: number;
   height: number;
+  sampler: string;
+  scheduler: string;
   loras: { id: string; strength: number }[];
 }
 

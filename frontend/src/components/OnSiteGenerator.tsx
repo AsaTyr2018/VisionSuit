@@ -58,6 +58,23 @@ const dimensionPresets = [
   { label: 'Landscape — 1152 × 768', width: 1152, height: 768 },
 ];
 
+const samplerOptions = [
+  { value: 'dpmpp_2m_sde_gpu', label: 'DPM++ 2M SDE (GPU)' },
+  { value: 'dpmpp_2m', label: 'DPM++ 2M' },
+  { value: 'euler', label: 'Euler' },
+  { value: 'heun', label: 'Heun' },
+];
+
+const schedulerOptions = [
+  { value: 'karras', label: 'Karras' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'simple', label: 'Simple' },
+  { value: 'exponential', label: 'Exponential' },
+];
+
+const defaultSampler = samplerOptions[0]?.value ?? 'dpmpp_2m_sde_gpu';
+const defaultScheduler = schedulerOptions[0]?.value ?? 'karras';
+
 const describeModelType = (asset: ModelAsset) =>
   asset.tags.find((tag) => tag.category === 'model-type')?.label ?? 'LoRA asset';
 
@@ -219,6 +236,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
   const [seed, setSeed] = useState('');
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [steps, setSteps] = useState(28);
+  const [sampler, setSampler] = useState(defaultSampler);
+  const [scheduler, setScheduler] = useState(defaultScheduler);
   const [width, setWidth] = useState(1024);
   const [height, setHeight] = useState(1024);
   const [wizardError, setWizardError] = useState<string | null>(null);
@@ -791,6 +810,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     setSeed('');
     setGuidanceScale(7.5);
     setSteps(28);
+    setSampler(defaultSampler);
+    setScheduler(defaultScheduler);
     setWidth(1024);
     setHeight(1024);
     setLoraSelections([]);
@@ -881,6 +902,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
         steps: Number.isFinite(steps) ? Number(steps) : undefined,
         width,
         height,
+        sampler,
+        scheduler,
         loras: loraSelections.map((entry) => ({ id: entry.id, strength: normalizeStrength(entry.strength) })),
       };
 
@@ -908,6 +931,8 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
     seed,
     guidanceScale,
     steps,
+    sampler,
+    scheduler,
     width,
     height,
     loraSelections,
@@ -1314,6 +1339,26 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
               placeholder="Leave blank for randomness"
             />
           </label>
+          <label>
+            Sampler
+            <select value={sampler} onChange={(event) => setSampler(event.target.value)}>
+              {samplerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Scheduler
+            <select value={scheduler} onChange={(event) => setScheduler(event.target.value)}>
+              {schedulerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
     </div>
@@ -1361,6 +1406,13 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
             <dt>Guidance / Steps</dt>
             <dd>
               CFG {guidanceScale.toFixed(1)} · {steps} steps
+            </dd>
+          </div>
+          <div>
+            <dt>Sampler / Scheduler</dt>
+            <dd>
+              {samplerOptions.find((option) => option.value === sampler)?.label ?? sampler} ·{' '}
+              {schedulerOptions.find((option) => option.value === scheduler)?.label ?? scheduler}
             </dd>
           </div>
           <div>
@@ -1679,6 +1731,16 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                     {request.guidanceScale ? request.guidanceScale.toFixed(1) : '—'} · {request.steps ?? '—'} steps
                   </dd>
                 </div>
+                <div>
+                  <dt>Sampler / Scheduler</dt>
+                  <dd>
+                    {(samplerOptions.find((option) => option.value === request.sampler)?.label ?? request.sampler) || '—'} ·{' '}
+                    {
+                      (schedulerOptions.find((option) => option.value === request.scheduler)?.label ?? request.scheduler) ||
+                        '—'
+                    }
+                  </dd>
+                </div>
               </dl>
               {request.loras.length > 0 ? (
                 <ul className="generator-history__loras">
@@ -1960,6 +2022,16 @@ export const OnSiteGenerator = ({ models, token, currentUser, onNotify }: OnSite
                     <dt>CFG / Steps</dt>
                     <dd>
                       {request.guidanceScale ? request.guidanceScale.toFixed(1) : '—'} · {request.steps ?? '—'} steps
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Sampler / Scheduler</dt>
+                    <dd>
+                      {(samplerOptions.find((option) => option.value === request.sampler)?.label ?? request.sampler) || '—'} ·{' '}
+                      {
+                        (schedulerOptions.find((option) => option.value === request.scheduler)?.label ?? request.scheduler) ||
+                          '—'
+                      }
                     </dd>
                   </div>
                   <div>
