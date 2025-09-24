@@ -16,7 +16,13 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 
-from .assets import build_collision_suffix, derive_pretty_name, must_be_allowed, normalize_name
+from .assets import (
+    build_collision_suffix,
+    derive_pretty_name,
+    ensure_extension,
+    must_be_allowed,
+    normalize_name,
+)
 from .comfyui import (
     ComfyUICancelledError,
     ComfyUIClient,
@@ -412,14 +418,22 @@ class GPUAgent:
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         source_name = Path(base_model.key).name
-        display_name = self._resolve_display_name(base_model, source_name)
+        cache_name = ensure_extension(source_name)
+        display_name = self._resolve_display_name(base_model, cache_name)
         pretty_path = base_dir / display_name
 
         cache_path = (
             pretty_path
             if pretty_path.exists() and pretty_path.is_file() and not pretty_path.is_symlink()
-            else cache_dir / source_name
+            else cache_dir / cache_name
         )
+        legacy_cache = cache_dir / source_name
+        if not cache_path.exists() and legacy_cache.exists():
+            try:
+                legacy_cache.rename(cache_path)
+                LOGGER.debug("Migrated legacy base model cache %s to %s", legacy_cache, cache_path)
+            except Exception:  # noqa: BLE001
+                LOGGER.debug("Failed to migrate legacy cache %s", legacy_cache, exc_info=True)
         downloaded = False
         if not cache_path.exists():
             LOGGER.info("Downloading base model %s", base_model.key)
@@ -447,14 +461,22 @@ class GPUAgent:
 
         for asset in job.loras:
             source_name = Path(asset.key).name
-            override = self._resolve_lora_filename(asset, lookup)
+            cache_name = ensure_extension(source_name)
+            override = ensure_extension(self._resolve_lora_filename(asset, lookup))
             display_name = self._resolve_display_name(asset, override)
             pretty_path = self.config.paths.loras / display_name
             cache_path = (
                 pretty_path
                 if pretty_path.exists() and pretty_path.is_file() and not pretty_path.is_symlink()
-                else cache_dir / source_name
+                else cache_dir / cache_name
             )
+            legacy_cache = cache_dir / source_name
+            if not cache_path.exists() and legacy_cache.exists():
+                try:
+                    legacy_cache.rename(cache_path)
+                    LOGGER.debug("Migrated legacy LoRA cache %s to %s", legacy_cache, cache_path)
+                except Exception:  # noqa: BLE001
+                    LOGGER.debug("Failed to migrate legacy LoRA cache %s", legacy_cache, exc_info=True)
             downloaded = False
             if not cache_path.exists():
                 LOGGER.info("Downloading LoRA %s", asset.key)
@@ -493,7 +515,11 @@ class GPUAgent:
                     if candidate.samefile(target):
                         return candidate, False
                 except FileNotFoundError:
-                    pass
+                    try:
+                        candidate.unlink()
+                    except FileNotFoundError:
+                        pass
+                    continue
                 new_name = f"{candidate.stem}__{suffix}{candidate.suffix or target.suffix or '.safetensors'}"
                 candidate = candidate.with_name(new_name)
                 continue
@@ -510,6 +536,8 @@ class GPUAgent:
             if not isinstance(entry, dict):
                 continue
             filename = entry.get("filename")
+            if not isinstance(filename, str) or not filename:
+                filename = entry.get("originalName")
             if not isinstance(filename, str):
                 continue
             sanitized = normalize_name(filename)
@@ -528,6 +556,14 @@ class GPUAgent:
         return lookup
 
     def _resolve_lora_filename(self, asset: AssetRef, lookup: Dict[str, str]) -> str:
+        if asset.original_name:
+            original = normalize_name(asset.original_name)
+            if original:
+                return original
+        if asset.display_name:
+            display = normalize_name(asset.display_name)
+            if display:
+                return display
         key = asset.key
         candidates = [key, Path(key).name]
         for candidate in candidates:

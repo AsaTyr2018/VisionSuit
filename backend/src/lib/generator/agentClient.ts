@@ -5,6 +5,8 @@ export interface AgentAssetRef {
   key: string;
   cacheStrategy?: AgentCacheStrategy;
   checksum?: string | null;
+  displayName?: string | null;
+  originalName?: string | null;
 }
 
 export interface AgentWorkflowRef {

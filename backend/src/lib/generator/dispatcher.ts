@@ -6,6 +6,60 @@ import { mergeLoraExtras } from './loraContext';
 import { prisma } from '../prisma';
 import { ensureBucketExists, resolveStorageLocation, storageClient } from '../storage';
 
+const buildStorageLookupKey = (bucket: string, objectName: string) => `${bucket}/${objectName}`;
+
+const registerStorageLookup = (
+  map: Map<string, { bucket: string; objectName: string }>,
+  bucket: string | null | undefined,
+  objectName: string | null | undefined,
+) => {
+  if (!bucket || !objectName) {
+    return;
+  }
+
+  const key = buildStorageLookupKey(bucket, objectName);
+  if (!map.has(key)) {
+    map.set(key, { bucket, objectName });
+  }
+};
+
+const extractOriginalFileName = (metadata: unknown): string | null => {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+
+  const record = metadata as Record<string, unknown>;
+  const candidates: unknown[] = [
+    record.originalFileName,
+    record.original_filename,
+    record.originalname,
+    record.fileName,
+    record.filename,
+    record.name,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const ensureFilename = (value: string | null | undefined, fallbackStem: string, extension: string) => {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const base = trimmed ? path.basename(trimmed) : '';
+  const sanitized = base.length > 0 ? base : fallbackStem;
+  if (path.extname(sanitized)) {
+    return sanitized;
+  }
+  return `${sanitized}${extension}`;
+};
+
 const isNotFoundError = (error: unknown) => {
   if (!error || typeof error !== 'object') {
     return false;
@@ -319,16 +373,20 @@ export const dispatchGeneratorRequest = async (
     return { status: 'error', message: 'Base model is missing an accessible storage location.' };
   }
 
+  const storageLookups = new Map<string, { bucket: string; objectName: string }>();
+  registerStorageLookup(storageLookups, baseModelLocation.bucket, baseModelLocation.objectName);
+
   const baseModelIds = Array.from(new Set(normalizedBaseModels.map((entry) => entry.id)));
-  let baseModelAssets: Array<{ id: string; storagePath: string | null }> = [];
+  let baseModelAssets: Array<{ id: string; storagePath: string | null; title: string | null; metadata: unknown }> = [];
   if (baseModelIds.length > 0) {
     baseModelAssets = await prisma.modelAsset.findMany({
       where: { id: { in: baseModelIds } },
-      select: { id: true, storagePath: true },
+      select: { id: true, storagePath: true, title: true, metadata: true },
     });
   }
 
   const baseModelStorage = new Map(baseModelAssets.map((entry) => [entry.id, entry.storagePath ?? null]));
+  const baseModelInfo = new Map(baseModelAssets.map((entry) => [entry.id, entry]));
   if (request.baseModel) {
     baseModelStorage.set(request.baseModel.id, request.baseModel.storagePath);
   }
@@ -336,15 +394,23 @@ export const dispatchGeneratorRequest = async (
   const selections = parseLoraSelections(request.loraSelections);
   const loraIds = selections.map((entry) => entry.id);
 
-  let loraAssets: Array<{ id: string; storagePath: string | null }> = [];
+  let loraAssets: Array<{ id: string; storagePath: string | null; title: string | null; metadata: unknown }> = [];
   if (loraIds.length > 0) {
     loraAssets = await prisma.modelAsset.findMany({
       where: { id: { in: loraIds } },
-      select: { id: true, storagePath: true },
+      select: { id: true, storagePath: true, title: true, metadata: true },
     });
   }
 
-  const lorasForAgent: AgentDispatchEnvelope['loras'] = [];
+  const loraInfo = new Map(loraAssets.map((entry) => [entry.id, entry]));
+
+  const pendingLoras: Array<{
+    bucket: string;
+    key: string;
+    displayName: string | null;
+    filename: string | null;
+    metadataOriginalName: string | null;
+  }> = [];
   const loraExtraPayload: Array<Record<string, unknown>> = [];
   const baseModelExtraPayload: Array<Record<string, unknown>> = [];
   const missingLoras: string[] = [];
@@ -391,10 +457,19 @@ export const dispatchGeneratorRequest = async (
       continue;
     }
 
-    lorasForAgent.push({
+    registerStorageLookup(storageLookups, location.bucket, location.objectName);
+
+    const info = loraInfo.get(selection.id) ?? null;
+    const metadataOriginal = extractOriginalFileName(info?.metadata);
+    const filename = path.basename(location.objectName);
+    const displayName = selection.title ?? info?.title ?? null;
+
+    pendingLoras.push({
       bucket: location.bucket,
       key: location.objectName,
-      cacheStrategy: 'ephemeral',
+      displayName,
+      filename,
+      metadataOriginalName: metadataOriginal,
     });
 
     loraExtraPayload.push({
@@ -404,7 +479,8 @@ export const dispatchGeneratorRequest = async (
       strength: selection.strength ?? null,
       bucket: location.bucket,
       key: location.objectName,
-      filename: path.basename(location.objectName),
+      filename,
+      ...(metadataOriginal ? { originalName: metadataOriginal } : {}),
     });
   }
 
@@ -418,6 +494,80 @@ export const dispatchGeneratorRequest = async (
     console.warn('Generator request is missing base model assets:', missingBaseModels.join(', '));
   }
 
+  let storageOriginals = new Map<string, string | null>();
+  if (storageLookups.size > 0) {
+    const storageRecords = await prisma.storageObject.findMany({
+      where: {
+        OR: Array.from(storageLookups.values()).map(({ bucket, objectName }) => ({ bucket, objectName })),
+      },
+      select: { bucket: true, objectName: true, originalName: true },
+    });
+
+    storageOriginals = new Map(
+      storageRecords.map((record) => [buildStorageLookupKey(record.bucket, record.objectName), record.originalName ?? null]),
+    );
+  }
+
+  const baseModelStorageKey = buildStorageLookupKey(baseModelLocation.bucket, baseModelLocation.objectName);
+  const baseModelRecord = primarySelection ? baseModelInfo.get(primarySelection.id) ?? null : null;
+  const baseMetadataOriginal = extractOriginalFileName(baseModelRecord?.metadata);
+  const baseOriginalName = ensureFilename(
+    storageOriginals.get(baseModelStorageKey) ?? baseMetadataOriginal ?? primarySelection?.filename ?? null,
+    'BaseModel',
+    '.safetensors',
+  );
+  const baseDisplayName =
+    primaryBaseModelRecord?.title ??
+    baseModelRecord?.title ??
+    primarySelection?.title ??
+    primarySelection?.name ??
+    null;
+
+  const baseModelForAgent: AgentDispatchEnvelope['baseModel'] = {
+    bucket: baseModelLocation.bucket,
+    key: baseModelLocation.objectName,
+    cacheStrategy: 'persistent',
+    ...(baseDisplayName ? { displayName: baseDisplayName } : {}),
+    ...(baseOriginalName ? { originalName: baseOriginalName } : {}),
+  };
+
+  baseModelExtraPayload.forEach((entry) => {
+    if (entry.key === baseModelLocation.objectName) {
+      entry.filename = baseOriginalName;
+      entry.originalName = baseOriginalName;
+      if (baseDisplayName) {
+        entry.displayName = baseDisplayName;
+      }
+    }
+  });
+
+  const lorasForAgent: AgentDispatchEnvelope['loras'] = pendingLoras.map((entry, index) => {
+    const storageKey = buildStorageLookupKey(entry.bucket, entry.key);
+    const storedOriginal = storageOriginals.get(storageKey);
+    const resolvedOriginal = ensureFilename(
+      storedOriginal ?? entry.metadataOriginalName ?? entry.filename ?? entry.displayName ?? null,
+      'LoraModel',
+      '.safetensors',
+    );
+
+    if (loraExtraPayload[index]) {
+      loraExtraPayload[index] = {
+        ...loraExtraPayload[index],
+        filename: resolvedOriginal,
+        originalName: resolvedOriginal,
+        ...(entry.displayName ? { displayName: entry.displayName } : {}),
+      };
+    }
+
+    return {
+      bucket: entry.bucket,
+      key: entry.key,
+      cacheStrategy: 'ephemeral',
+      ...(entry.displayName ? { displayName: entry.displayName } : {}),
+      ...(resolvedOriginal ? { originalName: resolvedOriginal } : {}),
+    };
+  });
+
   const envelope: AgentDispatchEnvelope = {
     jobId: request.id,
     user: {
@@ -425,11 +575,7 @@ export const dispatchGeneratorRequest = async (
       username: normalizeUsername(request.user),
     },
     workflow: buildWorkflowReference(),
-    baseModel: {
-      bucket: baseModelLocation.bucket,
-      key: baseModelLocation.objectName,
-      cacheStrategy: 'persistent',
-    },
+    baseModel: baseModelForAgent,
     loras: lorasForAgent,
     parameters: {
       prompt: request.prompt,
