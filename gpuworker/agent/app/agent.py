@@ -833,10 +833,11 @@ class GPUAgent:
             return resolved
         lookup = self._build_lora_filename_lookup(job)
         primary_override = self._extract_primary_lora_name(job)
-        cache_dir = self.config.paths.loras / "cache"
+        cache_dir = self.config.paths.loras
+        legacy_cache_dir = cache_dir / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-        use_symlink = self._supports_symlinks(self.config.paths.loras)
+        use_symlink = self._supports_symlinks(cache_dir)
 
         for index, asset in enumerate(job.loras):
             source_name = Path(asset.key).name
@@ -848,7 +849,7 @@ class GPUAgent:
             else:
                 override = ensure_extension(self._resolve_lora_filename(asset, lookup))
                 display_name = self._resolve_display_name(asset, override)
-            pretty_path = self.config.paths.loras / display_name
+            pretty_path = cache_dir / display_name
             cache_path = (
                 pretty_path
                 if not use_symlink
@@ -857,13 +858,25 @@ class GPUAgent:
                 and not pretty_path.is_symlink()
                 else cache_dir / cache_name
             )
-            legacy_cache = cache_dir / source_name
-            if not cache_path.exists() and legacy_cache.exists():
-                try:
-                    legacy_cache.rename(cache_path)
-                    LOGGER.debug("Migrated legacy LoRA cache %s to %s", legacy_cache, cache_path)
-                except Exception:  # noqa: BLE001
-                    LOGGER.debug("Failed to migrate legacy LoRA cache %s", legacy_cache, exc_info=True)
+            if not cache_path.exists() and legacy_cache_dir.exists():
+                legacy_candidates = [legacy_cache_dir / cache_name, legacy_cache_dir / source_name]
+                for legacy_cache in legacy_candidates:
+                    if not legacy_cache.exists():
+                        continue
+                    try:
+                        legacy_cache.rename(cache_path)
+                        LOGGER.debug(
+                            "Migrated legacy LoRA cache %s to %s",
+                            legacy_cache,
+                            cache_path,
+                        )
+                        break
+                    except Exception:  # noqa: BLE001
+                        LOGGER.debug(
+                            "Failed to migrate legacy LoRA cache %s",
+                            legacy_cache,
+                            exc_info=True,
+                        )
             downloaded = False
             if not cache_path.exists():
                 LOGGER.info("Downloading LoRA %s", asset.key)

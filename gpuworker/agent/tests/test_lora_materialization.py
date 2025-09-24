@@ -15,6 +15,8 @@ class LoraMaterializationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         self.base_dir = Path(self.tempdir.name)
+        self.loras_dir = self.base_dir / "loras"
+        self.loras_dir.mkdir()
         self.agent = GPUAgent.__new__(GPUAgent)
         self.agent.minio = DummyMinio()
         self.agent._symlink_support = {}
@@ -23,8 +25,7 @@ class LoraMaterializationTests(unittest.TestCase):
         self.tempdir.cleanup()
 
     def test_prepare_primary_lora_cache_replaces_existing_file(self) -> None:
-        cache_dir = self.base_dir / "cache"
-        cache_dir.mkdir()
+        cache_dir = self.loras_dir
         original = cache_dir / "original.safetensors"
         original.write_text("new", encoding="utf-8")
         desired = cache_dir / "hero.safetensors"
@@ -37,8 +38,7 @@ class LoraMaterializationTests(unittest.TestCase):
         self.assertFalse(original.exists())
 
     def test_ensure_symlink_replace_existing_preserves_override_name(self) -> None:
-        cache_dir = self.base_dir / "cache"
-        cache_dir.mkdir()
+        cache_dir = self.loras_dir
         target = cache_dir / "fresh.safetensors"
         target.write_text("fresh", encoding="utf-8")
         previous_target = cache_dir / "stale.safetensors"
@@ -59,21 +59,20 @@ class LoraMaterializationTests(unittest.TestCase):
         self.assertTrue(link.samefile(target))
 
     def test_materialize_without_symlink_replaces_existing_payload(self) -> None:
-        lora_dir = self.base_dir / "loras"
-        cache_dir = lora_dir / "cache"
-        cache_dir.mkdir(parents=True)
-        pretty_path = lora_dir / "hero.safetensors"
+        cache_dir = self.loras_dir
+        pretty_path = cache_dir / "hero.safetensors"
         pretty_path.parent.mkdir(parents=True, exist_ok=True)
         pretty_path.write_text("old", encoding="utf-8")
-        cached = cache_dir / "hero.safetensors"
+        cache_name = "hero__cache.safetensors"
+        cached = cache_dir / cache_name
         cached.write_text("fresh", encoding="utf-8")
         asset = AssetRef(bucket="models", key="loras/hero.safetensors")
 
         link_path, downloaded, created = self.agent._materialize_without_symlink(
             pretty_path,
             cache_dir,
-            cached.name,
-            cached.name,
+            cache_name,
+            pretty_path.name,
             asset,
             "LoRA",
             replace_existing=True,
