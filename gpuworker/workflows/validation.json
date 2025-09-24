@@ -1,7 +1,7 @@
 {
   "1": {
     "inputs": {
-      "ckpt_name": "calicomixPonyXL_v20.safetensors",
+      "ckpt_name": "sdxl_base_1.0.safetensors",
       "vae_name": "None",
       "clip_name": "None"
     },
@@ -17,9 +17,9 @@
         "1",
         1
       ],
-      "lora_name": "DoomGirl.safetensors",
-      "strength_model": 0.85,
-      "strength_clip": 0.8
+      "lora_name": "",
+      "strength_model": 0.75,
+      "strength_clip": 0.75
     },
     "class_type": "LoraLoader"
   },
@@ -35,8 +35,8 @@
       "crop_h": 0,
       "target_width": 1024,
       "target_height": 1024,
-      "text_g": "Heroic Doom marine portrait, cinematic angle, ultra-detailed armor, volumetric lighting",
-      "text_l": "studio quality, 85mm lens, high dynamic range"
+      "text_g": "",
+      "text_l": ""
     },
     "class_type": "CLIPTextEncodeSDXL"
   },
@@ -53,7 +53,7 @@
       "target_width": 1024,
       "target_height": 1024,
       "text_g": "",
-      "text_l": "blurry, low detail, deformed anatomy, duplicate limbs, watermark"
+      "text_l": ""
     },
     "class_type": "CLIPTextEncodeSDXL"
   },
@@ -72,9 +72,9 @@
         0
       ],
       "seed": 123456789,
-      "steps": 30,
-      "cfg": 6.5,
-      "sampler_name": "dpmpp_2m",
+      "steps": 28,
+      "cfg": 7.5,
+      "sampler_name": "dpmpp_2m_sde_gpu",
       "scheduler": "karras",
       "positive": [
         "3",
@@ -88,7 +88,7 @@
         "5",
         0
       ],
-      "denoise": 1
+      "denoise": 1.0
     },
     "class_type": "KSampler"
   },
@@ -111,7 +111,7 @@
         "7",
         0
       ],
-      "filename_prefix": "validation/sdxl_doomgirl"
+      "filename_prefix": "SDXL_LoRA_API_{TIMESTAMP}"
     },
     "class_type": "SaveImage"
   }

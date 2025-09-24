@@ -102,46 +102,60 @@ The agent exposes lightweight HTTP endpoints:
   "jobId": "c7c4b87a-6c9e-4a53-9301-7a1d5f6d32b2",
   "user": { "id": "30d6", "username": "curator.one" },
   "workflow": {
-    "id": "sdxl-base",
-    "minioKey": "generator-workflows/sdxl-refined.json"
+    "id": "sdxl-default",
+    "minioKey": "generator-workflows/default.json"
   },
   "baseModel": {
     "bucket": "comfyui-models",
-    "key": "models/checkpoints/sdxl_base.safetensors",
+    "key": "models/checkpoints/sdxl_base_1.0.safetensors",
     "cacheStrategy": "persistent"
   },
   "loras": [
     {
       "bucket": "comfyui-loras",
-      "key": "models/loras/my-character.safetensors",
+      "key": "models/loras/cyber_fantasy.safetensors",
       "cacheStrategy": "ephemeral"
     }
   ],
   "parameters": {
     "prompt": "portrait of a neon samurai",
     "negativePrompt": "lowres, blurry",
-    "seed": 12345,
-    "cfgScale": 7,
-    "steps": 30,
-    "resolution": { "width": 1024, "height": 1024 },
-    "extra": { "scheduler": "dpmpp_2m" }
+    "seed": 987654321,
+    "cfgScale": 7.5,
+    "steps": 28,
+    "resolution": { "width": 832, "height": 1216 }
   },
   "workflowParameters": [
-    { "parameter": "prompt", "node": 23, "path": "inputs.text" },
-    { "parameter": "negative_prompt", "node": 24, "path": "inputs.text" },
-    { "parameter": "seed", "node": 12, "path": "inputs.seed" },
-    { "parameter": "cfg_scale", "node": 12, "path": "inputs.cfg" },
-    { "parameter": "steps", "node": 12, "path": "inputs.steps" },
-    { "parameter": "base_model_path", "node": 3, "path": "inputs.ckpt_name" }
+    { "parameter": "base_model_path", "node": 1, "path": "inputs.ckpt_name" },
+    { "parameter": "primary_lora_name", "node": 2, "path": "inputs.lora_name" },
+    { "parameter": "primary_lora_strength_model", "node": 2, "path": "inputs.strength_model" },
+    { "parameter": "primary_lora_strength_clip", "node": 2, "path": "inputs.strength_clip" },
+    { "parameter": "prompt", "node": 3, "path": "inputs.text_g" },
+    { "parameter": "negative_prompt", "node": 4, "path": "inputs.text_l" },
+    { "parameter": "width", "node": 3, "path": "inputs.width" },
+    { "parameter": "width", "node": 3, "path": "inputs.target_width" },
+    { "parameter": "height", "node": 3, "path": "inputs.height" },
+    { "parameter": "height", "node": 3, "path": "inputs.target_height" },
+    { "parameter": "width", "node": 4, "path": "inputs.width" },
+    { "parameter": "width", "node": 4, "path": "inputs.target_width" },
+    { "parameter": "height", "node": 4, "path": "inputs.height" },
+    { "parameter": "height", "node": 4, "path": "inputs.target_height" },
+    { "parameter": "width", "node": 5, "path": "inputs.width" },
+    { "parameter": "height", "node": 5, "path": "inputs.height" },
+    { "parameter": "seed", "node": 6, "path": "inputs.seed" },
+    { "parameter": "steps", "node": 6, "path": "inputs.steps" },
+    { "parameter": "cfg_scale", "node": 6, "path": "inputs.cfg" },
+    { "parameter": "sampler", "node": 6, "path": "inputs.sampler_name" },
+    { "parameter": "scheduler", "node": 6, "path": "inputs.scheduler" }
   ],
   "output": {
     "bucket": "generator-outputs",
     "prefix": "generated/30d6/c7c4b87a-6c9e-4a53-9301-7a1d5f6d32b2"
   },
   "callbacks": {
-    "status": "https://visionsiot.local/api/queue/status",
-    "completion": "https://visionsiot.local/api/queue/done",
-    "failure": "https://visionsiot.local/api/queue/fail"
+    "status": "https://visionsuit.local/api/generator/requests/c7c4b87a-6c9e-4a53-9301-7a1d5f6d32b2/callbacks/status",
+    "completion": "https://visionsuit.local/api/generator/requests/c7c4b87a-6c9e-4a53-9301-7a1d5f6d32b2/callbacks/completion",
+    "failure": "https://visionsuit.local/api/generator/requests/c7c4b87a-6c9e-4a53-9301-7a1d5f6d32b2/callbacks/failure"
   }
 }
 ```
