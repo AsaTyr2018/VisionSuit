@@ -37,5 +37,6 @@ callbacks:
   max_retries: 3
   retry_backoff_seconds: 1
 workflow_defaults:
-  sampler: "dpmpp_2m_sde_gpu"
-  scheduler: "karras"
+  # Optional metadata fallbacks. Core sampling controls (sampler, scheduler, steps, cfg_scale, width, height, seed)
+  # must come from the generator payload and are ignored if provided here.
+  # example_tag: "value"

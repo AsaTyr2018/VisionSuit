@@ -1018,3 +1018,12 @@
 - **General**: Lined up the On-Site Generator, GPU agent, and ComfyUI payload so SDXL jobs carry the selected checkpoint, prompts, LoRAs, and resolution without manual tweaks.
 - **Technical Changes**: Rebased the default and validation workflow JSON on the unified SDXL graph, updated the GPU agent tests and documentation to verify every binding, refreshed sampler defaults, and clarified the main README around the new `SaveImage` outputs.
 - **Data Changes**: None.
+
+## 192 – [Fix] GPU agent workflow defaults respect dispatch payloads
+- **General**: Stopped the GPU agent from overwriting prompts, LoRA selections, or step counts with stale defaults so queued renders now match the on-site generator input.
+- **Technical Changes**: Applied workflow defaults as true fallbacks inside `_build_parameter_context`, expanded the regression suite to cover override precedence, raised the bundled SDXL workflow templates to 80 sampling steps, and refreshed the README plus example config to document the behaviour.
+- **Data Changes**: None.
+## 193 – [Fix] GPU agent enforces generator sampling inputs
+- **General**: Locked sampling controls, resolution, and sampler selection to the on-site generator payload so ComfyUI runs use the exact user-supplied values.
+- **Technical Changes**: Removed hard-coded fallbacks in the agent parameter builder, added double validation that compares workflow bindings and sampler connections, reset the bundled workflow templates to neutral placeholders, refreshed tests and configuration guidance, and documented the stricter contract.
+- **Data Changes**: None; workflow templates now ship with zeroed placeholders only.
