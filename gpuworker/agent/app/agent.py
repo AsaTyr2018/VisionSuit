@@ -9,8 +9,9 @@ from asyncio import Event
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from math import isfinite
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -553,9 +554,87 @@ class GPUAgent:
         if job.parameters.resolution:
             context["width"] = job.parameters.resolution.width
             context["height"] = job.parameters.resolution.height
+        extra_payload = job.parameters.extra or {}
+        lora_metadata = self._extract_lora_metadata(extra_payload)
+        if lora_metadata:
+            context["loras_metadata"] = lora_metadata
+        primary_lora_context = self._derive_primary_lora_context(loras, lora_metadata)
+        context.update(primary_lora_context)
         context.update(self.config.workflow_defaults)
-        context.update(job.parameters.extra or {})
+        for key, value in extra_payload.items():
+            if key in {"loras", "primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"}:
+                continue
+            context[key] = value
         return {key: value for key, value in context.items() if value is not None}
+
+    def _extract_lora_metadata(self, extra: Dict[str, Any]) -> List[Dict[str, Any]]:
+        entries = extra.get("loras") if isinstance(extra, dict) else None
+        if not isinstance(entries, list):
+            return []
+        metadata: List[Dict[str, Any]] = []
+        for entry in entries:
+            if isinstance(entry, dict):
+                metadata.append(dict(entry))
+        return metadata
+
+    def _derive_primary_lora_context(
+        self,
+        loras: Sequence[ResolvedAsset],
+        metadata: Sequence[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        if not loras:
+            return {}
+        primary = loras[0]
+        payload = self._match_lora_metadata(primary, metadata)
+        strength = self._normalize_strength(self._extract_strength_value(payload))
+        return {
+            "primary_lora_name": primary.comfy_name,
+            "primary_lora_strength_model": strength,
+            "primary_lora_strength_clip": strength,
+        }
+
+    def _match_lora_metadata(
+        self,
+        target: ResolvedAsset,
+        metadata: Sequence[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        target_name = target.comfy_name
+        for entry in metadata:
+            for field in ("filename", "key", "name", "title", "id", "slug"):
+                value = entry.get(field)
+                if isinstance(value, str) and normalize_name(value) == target_name:
+                    return entry
+        return metadata[0] if metadata else None
+
+    def _extract_strength_value(self, payload: Optional[Dict[str, Any]]) -> Optional[float]:
+        if not payload:
+            return None
+        for field in ("strength_model", "strength_clip", "strength"):
+            candidate = payload.get(field)
+            normalized = self._as_float(candidate)
+            if normalized is not None:
+                return normalized
+        return None
+
+    def _normalize_strength(self, value: Optional[float]) -> float:
+        if value is None:
+            return 1.0
+        clamped = max(-2.0, min(2.0, value))
+        return round(clamped, 2)
+
+    def _as_float(self, value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            numeric = float(value)
+        elif isinstance(value, str):
+            try:
+                numeric = float(value)
+            except ValueError:
+                return None
+        else:
+            return None
+        if not isfinite(numeric):
+            return None
+        return numeric
 
     def _upload_outputs(
         self,

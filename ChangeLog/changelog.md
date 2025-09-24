@@ -968,3 +968,8 @@
 - **General**: Threaded the bundled SDXL workflow through a dedicated LoRA loader so generator jobs can target curated adapters without manual graph edits.
 - **Technical Changes**: Inserted a `LoraLoader` node into `backend/generator-workflows/default.json`, bound its filename and strength inputs to `primary_lora_*` parameters, taught the dispatcher to surface those values from request selections, and covered the new context builder with node-based unit tests plus README guidance.
 - **Data Changes**: None.
+
+## 182 – [Fix] Sanitized LoRA parameter propagation
+- **General**: Ensured generator jobs feed ComfyUI the sanitized LoRA adapter name and intended strength so queued renders honor the on-site selections.
+- **Technical Changes**: Preserved normalized LoRA filenames in the agent context, derived primary strength values from request metadata, exposed the raw payloads under `loras_metadata`, ignored conflicting extras, and added unit coverage that verifies the workflow payload binds the sanitized adapter and strengths.
+- **Data Changes**: None.
