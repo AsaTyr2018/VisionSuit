@@ -22,7 +22,7 @@ paths:
   base_models: "/opt/comfyui/models/checkpoints"
   loras: "/opt/comfyui/models/loras"
   workflows: "/opt/visionsuit-gpu-agent/workflows"
-  outputs: "/opt/comfyui/output"
+  outputs: "/opt/comfyui/output" # The agent writes job manifests into <outputs>/logs/
   temp: "/opt/visionsuit-gpu-agent/tmp"
 persistent_model_keys:
   - "models/checkpoints/base-model.safetensors"
