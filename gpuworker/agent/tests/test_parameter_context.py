@@ -91,13 +91,22 @@ class ParameterContextTests(unittest.TestCase):
         }
         job = self._build_job(extra)
 
-        context = self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
+        renamed_lora = ResolvedAsset(
+            asset=self.lora_asset_ref,
+            cache_path=self.lora_resolved.cache_path,
+            comfy_name="unsanitized-path.safetensors",
+            symlink_path=Path("/loras/unsanitized-path.safetensors"),
+            downloaded=self.lora_resolved.downloaded,
+            link_created=self.lora_resolved.link_created,
+        )
 
-        self.assertEqual(context["loras"], ["my-lora.safetensors"])
+        context = self.agent._build_parameter_context(job, self.base_resolved, [renamed_lora])
+
+        self.assertEqual(context["loras"], ["unsanitized-path.safetensors"])
         self.assertIn("loras_metadata", context)
         self.assertIsNot(context["loras_metadata"], job.parameters.extra["loras"])
         self.assertEqual(context["loras_metadata"], job.parameters.extra["loras"])
-        self.assertEqual(context["primary_lora_name"], "my-lora.safetensors")
+        self.assertEqual(context["primary_lora_name"], "unsanitized-path.safetensors")
         self.assertEqual(context["primary_lora_strength_model"], 0.85)
         self.assertEqual(context["primary_lora_strength_clip"], 0.85)
         self.assertEqual(context["misc"], "value")
@@ -105,7 +114,7 @@ class ParameterContextTests(unittest.TestCase):
 
         payload = build_workflow_payload(InlineWorkflowLoader(), job, context)
         lora_inputs = payload["2"]["inputs"]
-        self.assertEqual(lora_inputs["lora_name"], "my-lora.safetensors")
+        self.assertEqual(lora_inputs["lora_name"], "unsanitized-path.safetensors")
         self.assertEqual(lora_inputs["strength_model"], 0.85)
         self.assertEqual(lora_inputs["strength_clip"], 0.85)
 

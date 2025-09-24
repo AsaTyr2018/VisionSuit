@@ -777,16 +777,21 @@ class GPUAgent:
         if not job.loras:
             return resolved
         lookup = self._build_lora_filename_lookup(job)
+        primary_override = self._extract_primary_lora_name(job)
         cache_dir = self.config.paths.loras / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         use_symlink = self._supports_symlinks(self.config.paths.loras)
 
-        for asset in job.loras:
+        for index, asset in enumerate(job.loras):
             source_name = Path(asset.key).name
             cache_name = ensure_extension(source_name)
-            override = ensure_extension(self._resolve_lora_filename(asset, lookup))
-            display_name = self._resolve_display_name(asset, override)
+            if index == 0 and primary_override:
+                override = ensure_extension(primary_override)
+                display_name = override
+            else:
+                override = ensure_extension(self._resolve_lora_filename(asset, lookup))
+                display_name = self._resolve_display_name(asset, override)
             pretty_path = self.config.paths.loras / display_name
             cache_path = (
                 pretty_path
@@ -933,6 +938,15 @@ class GPUAgent:
             if isinstance(slug, str) and slug:
                 lookup[slug] = sanitized
         return lookup
+
+    def _extract_primary_lora_name(self, job: DispatchEnvelope) -> Optional[str]:
+        extra = job.parameters.extra or {}
+        primary = extra.get("primary_lora_name")
+        if isinstance(primary, str):
+            sanitized = normalize_name(primary)
+            if sanitized:
+                return sanitized
+        return None
 
     def _resolve_lora_filename(self, asset: AssetRef, lookup: Dict[str, str]) -> str:
         if asset.original_name:
