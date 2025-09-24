@@ -988,3 +988,8 @@
 - **General**: Captured every GPU dispatch for troubleshooting with persistent manifests and status timelines.
 - **Technical Changes**: Added structured job logging inside `GPUAgent`, wrote manifest/event helpers with cancellation hooks, introduced regression tests, and refreshed GPU agent documentation plus configuration comments.
 - **Data Changes**: Stores JSON manifests and JSONL event logs under `<outputs>/logs/<jobId>/` on the GPU node.
+
+## 186 – [Fix] Manifest-aligned LoRA staging
+- **General**: Ensured the GPU worker delivers primary LoRA adapters to ComfyUI under the manifest-declared filename so dispatch logs and runtime bindings stay consistent.
+- **Technical Changes**: Sanitized and applied the `primary_lora_name` override while materializing cached LoRAs, updated parameter-context expectations, and refreshed README guidance on the rename flow.
+- **Data Changes**: None; cached files continue to download from the same MinIO objects.
