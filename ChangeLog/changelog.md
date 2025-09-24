@@ -983,3 +983,8 @@
 - **General**: Guaranteed ComfyUI still sees cached checkpoints and LoRAs when the GPU worker mounts model directories from filesystems that disallow symlinks.
 - **Technical Changes**: Detected per-directory symlink support in the GPU agent, fell back to copying cached assets into the ComfyUI tree when links fail, migrated existing caches into place, and refreshed both READMEs to document the new behaviour.
 - **Data Changes**: None.
+
+## 185 – [Addition] GPU job manifest archives (commit TBD)
+- **General**: Captured every GPU dispatch for troubleshooting with persistent manifests and status timelines.
+- **Technical Changes**: Added structured job logging inside `GPUAgent`, wrote manifest/event helpers with cancellation hooks, introduced regression tests, and refreshed GPU agent documentation plus configuration comments.
+- **Data Changes**: Stores JSON manifests and JSONL event logs under `<outputs>/logs/<jobId>/` on the GPU node.

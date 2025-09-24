@@ -124,6 +124,14 @@ class CancellationHandle:
     job: DispatchEnvelope
 
 
+@dataclass
+class JobLogHandle:
+    job_id: str
+    directory: Path
+    manifest_path: Path
+    events_path: Path
+
+
 class FailureCategory(str, Enum):
     VALIDATION = "validation"
     TRANSIENT = "transient"
@@ -166,6 +174,8 @@ class GPUAgent:
         self._cancel_handle: Optional[CancellationHandle] = None
         self._runtime: Dict[str, JobRuntimeState] = {}
         self._symlink_support: Dict[Path, bool] = {}
+        self._job_log_dir = config.paths.outputs / "logs"
+        self._job_logs: Dict[str, JobLogHandle] = {}
 
     def is_busy(self) -> bool:
         return self._lock.locked()
@@ -197,6 +207,7 @@ class GPUAgent:
             return False
         if not handle.event.is_set():
             LOGGER.info("Received cancellation request for job %s", handle.job.jobId)
+            self._log_job_event(self._job_logs.get(handle.job.jobId), "cancel_requested", None)
             handle.event.set()
             try:
                 await self._emit_status(
@@ -220,6 +231,17 @@ class GPUAgent:
         history: Optional[Dict[str, Any]] = None
         warnings: List[str] = []
         cancel_handle: Optional[CancellationHandle] = None
+        job_log = self._create_job_log(job)
+        self._log_job_event(
+            job_log,
+            "accepted",
+            {
+                "user": job.user.username,
+                "output_bucket": job.output.bucket,
+                "output_prefix": job.output.prefix,
+            },
+        )
+        prompt_id: Optional[str] = None
         try:
             resolved_base = self._ensure_base_model(job.baseModel)
             resolved_loras = self._ensure_loras(job)
@@ -232,13 +254,26 @@ class GPUAgent:
             save_nodes = find_save_image_nodes(workflow_payload)
             await self._validate_workflow_assets(workflow_payload)
 
+            self._log_job_event(
+                job_log,
+                "context_resolved",
+                self._build_log_context(resolved_base, resolved_loras, job, resolved_params),
+            )
+
             await self._emit_status(
                 job,
                 GeneratorState.QUEUED,
                 message="Job queued",
                 progress={"phase": "queued", "percent": 0},
             )
+            self._log_job_event(
+                job_log,
+                "queued",
+                {"progress": {"phase": "queued", "percent": 0}},
+            )
             cancel_handle = self._register_cancellation(job)
+            if cancel_handle:
+                self._log_job_event(job_log, "cancellation_registered", {"token_present": True})
             prompt_id = await self.comfyui.submit_workflow(workflow_payload)
             await self._emit_status(
                 job,
@@ -246,6 +281,11 @@ class GPUAgent:
                 message="Workflow submitted to ComfyUI",
                 prompt_id=prompt_id,
                 progress={"phase": "running"},
+            )
+            self._log_job_event(
+                job_log,
+                "running",
+                {"prompt_id": prompt_id},
             )
 
             timeout = self._compute_timeout(job, workflow_payload)
@@ -260,6 +300,7 @@ class GPUAgent:
                 message="Uploading generated artifacts",
                 progress={"phase": "uploading"},
             )
+            self._log_job_event(job_log, "uploading", {"prompt_id": prompt_id})
 
             outputs = extract_output_files(history, save_nodes if save_nodes else None)
             if save_nodes and not outputs:
@@ -278,37 +319,81 @@ class GPUAgent:
                 resolved_params,
                 history,
             )
+            self._log_job_event(
+                job_log,
+                "completed",
+                self._build_completion_log(upload_result, warnings, prompt_id),
+            )
             LOGGER.info("Job %s completed", job.jobId)
             return {"uploaded": upload_result.uploaded}
         except ValidationFailure as exc:
             LOGGER.exception("Job %s failed validation", job.jobId)
+            self._log_job_event(
+                job_log,
+                "failed",
+                {"reason": str(exc), "category": FailureCategory.VALIDATION.value, "prompt_id": prompt_id},
+            )
             await self._emit_failure(job, str(exc), FailureCategory.VALIDATION, history)
             raise
         except ComfyUICancelledError:
             LOGGER.info("Job %s cancelled by controller", job.jobId)
+            self._log_job_event(
+                job_log,
+                "cancelled",
+                {"reason": "Cancelled by controller", "prompt_id": prompt_id},
+            )
             await self._emit_cancellation(job)
             return {"uploaded": []}
         except asyncio.TimeoutError as exc:
             LOGGER.exception("Job %s timed out", job.jobId)
+            self._log_job_event(
+                job_log,
+                "failed",
+                {"reason": str(exc), "category": FailureCategory.TIMEOUT.value, "prompt_id": prompt_id},
+            )
             await self._emit_failure(job, str(exc), FailureCategory.TIMEOUT, history)
             raise
         except ComfyUIJobFailed as exc:
             history = exc.history
             LOGGER.exception("ComfyUI reported failure for job %s", job.jobId)
+            self._log_job_event(
+                job_log,
+                "failed",
+                {"reason": str(exc), "category": FailureCategory.VALIDATION.value, "prompt_id": prompt_id},
+            )
             await self._emit_failure(job, str(exc), FailureCategory.VALIDATION, history)
             raise
         except ComfyUIError as exc:
             LOGGER.exception("ComfyUI transport error for job %s", job.jobId)
+            self._log_job_event(
+                job_log,
+                "failed",
+                {"reason": str(exc), "category": FailureCategory.TRANSIENT.value, "prompt_id": prompt_id},
+            )
             await self._emit_failure(job, str(exc), FailureCategory.TRANSIENT, history)
             raise
         except Exception as exc:  # noqa: BLE001
             LOGGER.exception("Job %s failed unexpectedly", job.jobId)
+            self._log_job_event(
+                job_log,
+                "failed",
+                {"reason": str(exc), "category": FailureCategory.SYSTEM.value, "prompt_id": prompt_id},
+            )
             await self._emit_failure(job, str(exc), FailureCategory.SYSTEM, history)
             raise
         finally:
+            runtime = self._get_runtime(job.jobId)
+            if runtime:
+                duration = time.perf_counter() - runtime.started_monotonic
+                self._log_job_event(
+                    job_log,
+                    "finalized",
+                    {"duration_seconds": round(duration, 3)},
+                )
             self._cleanup(resolved_base, resolved_loras)
             self._clear_cancellation(cancel_handle)
             self._clear_runtime(job.jobId)
+            self._clear_job_log(job.jobId)
 
     def _register_cancellation(self, job: DispatchEnvelope) -> Optional[CancellationHandle]:
         token = (job.cancelToken or "").strip()
@@ -338,9 +423,113 @@ class GPUAgent:
     def _clear_runtime(self, job_id: str) -> None:
         self._runtime.pop(job_id, None)
 
+    def _clear_job_log(self, job_id: str) -> None:
+        self._job_logs.pop(job_id, None)
+
     def _now_iso(self) -> str:
         now = datetime.now(timezone.utc)
         return now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    def _create_job_log(self, job: DispatchEnvelope) -> Optional[JobLogHandle]:
+        base_dir = self._job_log_dir
+        try:
+            base_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Failed to prepare job log directory %s: %s", base_dir, exc)
+            fallback = self.config.paths.temp / "job-logs"
+            try:
+                fallback.mkdir(parents=True, exist_ok=True)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Failed to prepare fallback job log directory %s", fallback)
+                return None
+            base_dir = fallback
+            self._job_log_dir = fallback
+
+        job_dir = base_dir / job.jobId
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        manifest_path = job_dir / f"manifest-{timestamp}.json"
+        manifest_payload = {
+            "schemaVersion": 1,
+            "capturedAt": self._now_iso(),
+            "job": job.dict(by_alias=True),
+        }
+        try:
+            job_dir.mkdir(parents=True, exist_ok=True)
+            with manifest_path.open("w", encoding="utf-8") as handle:
+                json.dump(manifest_payload, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+            events_path = job_dir / "events.jsonl"
+            events_path.touch(exist_ok=True)
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Failed to persist manifest for job %s", job.jobId)
+            return None
+
+        log_handle = JobLogHandle(job.jobId, job_dir, manifest_path, events_path)
+        self._job_logs[job.jobId] = log_handle
+        return log_handle
+
+    def _log_job_event(
+        self,
+        log_handle: Optional[JobLogHandle],
+        event: str,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not log_handle:
+            return
+        entry: Dict[str, Any] = {"timestamp": self._now_iso(), "event": event}
+        if details:
+            entry["details"] = details
+        try:
+            with log_handle.events_path.open("a", encoding="utf-8") as stream:
+                json.dump(entry, stream, ensure_ascii=False)
+                stream.write("\n")
+        except Exception:  # noqa: BLE001
+            LOGGER.warning(
+                "Failed to record %s event for job %s", event, log_handle.job_id, exc_info=True
+            )
+
+    def _build_log_context(
+        self,
+        base_model: Optional[ResolvedAsset],
+        loras: Sequence[ResolvedAsset],
+        job: DispatchEnvelope,
+        resolved_params: Dict[str, object],
+    ) -> Dict[str, Any]:
+        details: Dict[str, Any] = {
+            "base_model": base_model.comfy_name if base_model else None,
+            "loras": [lora.comfy_name for lora in loras] if loras else [],
+            "output_bucket": job.output.bucket,
+            "output_prefix": job.output.prefix,
+        }
+        resolution = job.parameters.resolution
+        if resolution:
+            details["resolution"] = {"width": resolution.width, "height": resolution.height}
+        seed = job.parameters.seed
+        if seed is not None:
+            details["seed"] = seed
+        cfg_scale = resolved_params.get("cfg") or resolved_params.get("cfg_scale")
+        if cfg_scale is not None:
+            details["cfg_scale"] = cfg_scale
+        steps = job.parameters.steps or resolved_params.get("steps")
+        if steps is not None:
+            details["steps"] = steps
+        return {key: value for key, value in details.items() if value not in (None, {})}
+
+    def _build_completion_log(
+        self,
+        upload_result: UploadResult,
+        warnings: Sequence[str],
+        prompt_id: Optional[str],
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "prompt_id": prompt_id,
+            "uploaded": upload_result.uploaded,
+        }
+        if upload_result.missing:
+            payload["missing"] = [path.name for path in upload_result.missing]
+        if warnings:
+            payload["warnings"] = list(warnings)
+        return payload
 
     def _build_activity_snapshot(self, activity: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         if not activity:

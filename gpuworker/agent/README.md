@@ -7,6 +7,7 @@ The VisionSuit GPU Agent turns a ComfyUI render node into a managed worker that 
 - **Single-job enforcement** – The agent processes exactly one job at a time and immediately rejects additional submissions with HTTP 409 so VisionSIOt can preserve the queue discipline.
 - **Workflow templating** – Supports inline workflows, on-disk templates, or MinIO-hosted JSON and applies node overrides or parameter bindings defined in the dispatch envelope.
 - **Managed asset lifecycle** – Caches base checkpoints permanently, downloads job-scoped LoRAs or auxiliary models on demand, normalises filenames to the "pretty" names supplied in the dispatch or MinIO metadata, and removes ephemeral assets once the render completes. The agent maintains cache copies under `cache/` and exposes deterministic symlinks (`PrettyName__abcd.safetensors`) in the ComfyUI directories so dropdowns pick up fresh assets immediately. When the underlying filesystem blocks symlink creation (for example SMB/CIFS mounts without UNIX extensions) the agent automatically copies the cache into place so ComfyUI still sees the refreshed weights.
+- **Structured job archives** – Backs up every dispatch manifest to `<outputs>/logs/<jobId>/manifest-*.json` and appends newline-delimited status events so operators can review prompts, parameters, cancellations, and upload outcomes for each job.
 - **MinIO integration** – Pulls missing models from MinIO before execution and pushes rendered files back to user-specific prefixes with prompt metadata embedded as object metadata.
 - **Callback hooks** – Emits optional status, completion, and failure callbacks to VisionSIOt or VisionSuit so UIs can surface progress.
 - **Strict ComfyUI validation** – Resolves every checkpoint, VAE, CLIP, and LoRA name against the ComfyUI `/object_info` registry (with a short-lived cache) before submission. Invalid names produce a validation failure and skip the `/prompt` call entirely.
@@ -77,6 +78,7 @@ The script performs a `git pull` from the directory that originally cloned Visio
 - `minio.*` – Connection details for the MinIO/S3 endpoint that holds base models, LoRAs, and output buckets.
 - `comfyui.*` – REST endpoint configuration (either a direct `api_url` or discrete `scheme`/`host`/`port` values), timeout, polling cadence, client identifier, asset refresh delay, and the per-step/img2img timeout tunables.
 - `paths.*` – Local filesystem paths for ComfyUI models, outputs, workflow cache, and temporary files.
+- The agent automatically creates `<outputs>/logs` to store per-job manifests and event logs for troubleshooting.
 - `persistent_model_keys` – Keys that should never be deleted after download (typically base checkpoints).
 - `cleanup.*` – Toggle removal of temporary LoRAs or ad-hoc models after each job.
 - `callbacks.*` – Optional `base_url` override plus TLS verification, timeout, and retry policy for VisionSIOt callback URLs.
