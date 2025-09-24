@@ -69,6 +69,8 @@ class JobParameters(BaseModel):
     seed: Optional[int] = None
     cfgScale: Optional[float] = None
     steps: Optional[int] = None
+    sampler: Optional[str] = None
+    scheduler: Optional[str] = None
     resolution: Optional[Resolution] = None
     extra: Dict[str, Any] = Field(default_factory=dict)
 

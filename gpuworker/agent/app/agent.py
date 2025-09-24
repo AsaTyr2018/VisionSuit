@@ -1101,6 +1101,10 @@ class GPUAgent:
             return ""
         return str(value).strip()
 
+    def _sanitize_optional_text(self, value: Optional[str]) -> Optional[str]:
+        sanitized = self._sanitize_text(value)
+        return sanitized or None
+
     def _coerce_positive_int(self, value: Any) -> Optional[int]:
         candidate = self._as_float(value)
         if candidate is None:
@@ -1181,6 +1185,8 @@ class GPUAgent:
         cfg_scale = self._require_cfg_scale(job.parameters.cfgScale)
         seed = self._normalize_seed_value(job.parameters.seed)
         resolution = self._require_resolution(job.parameters.resolution)
+        sampler = self._sanitize_optional_text(job.parameters.sampler)
+        scheduler = self._sanitize_optional_text(job.parameters.scheduler)
 
         job.parameters.prompt = prompt
         job.parameters.negativePrompt = negative
@@ -1188,6 +1194,8 @@ class GPUAgent:
         job.parameters.cfgScale = cfg_scale
         job.parameters.seed = seed
         job.parameters.resolution = resolution
+        job.parameters.sampler = sampler
+        job.parameters.scheduler = scheduler
 
         context: Dict[str, object] = {
             "prompt": prompt,
@@ -1202,6 +1210,10 @@ class GPUAgent:
             "base_model_full_path": str(base_model.cache_path),
             "loras": [entry.comfy_name for entry in loras],
         }
+        if sampler:
+            context["sampler"] = sampler
+        if scheduler:
+            context["scheduler"] = scheduler
         extra_payload = job.parameters.extra or {}
         lora_metadata = self._extract_lora_metadata(extra_payload)
         if lora_metadata:
