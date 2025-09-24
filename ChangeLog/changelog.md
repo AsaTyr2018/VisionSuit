@@ -1042,3 +1042,8 @@
 - **General**: Prevented the GPU agent from rejecting generator jobs when the scheduler travels inside the main parameter payload instead of the legacy `extra` map.
 - **Technical Changes**: Added explicit `sampler` and `scheduler` fields to the dispatch schema, normalised them before validation, seeded the workflow context with the trimmed values, and refreshed the parameter-context regression tests to cover the direct bindings.
 - **Data Changes**: None.
+
+## 197 – [Fix] SDXL prompt polarity correction
+- **General**: Ensured on-site generator jobs feed positive prompts and negatives into their intended SDXL text encoders so ComfyUI receives the right conditioning.
+- **Technical Changes**: Bound both global and local text fields for the positive and negative CLIP nodes in the default workflow parameter map and expanded the GPU agent regression test to verify the mirrored bindings.
+- **Data Changes**: None.
