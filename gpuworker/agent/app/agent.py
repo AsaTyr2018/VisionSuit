@@ -1209,17 +1209,31 @@ class GPUAgent:
         primary_lora_context = self._derive_primary_lora_context(loras, lora_metadata)
         context.update(primary_lora_context)
         defaults = self.config.workflow_defaults or {}
+        # 1) Defaults anwenden
         for key, value in defaults.items():
             if key in self._RESERVED_DEFAULT_KEYS and key not in self._RESERVED_KEYS_WITH_DEFAULTS:
                 continue
             if key not in context and value is not None:
                 context[key] = value
+
+        # 2) Extra-Payload anwenden
         for key, value in extra_payload.items():
             if key in {"loras", "primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"}:
                 continue
             if key in self._RESERVED_DEFAULT_KEYS and key not in self._RESERVED_KEYS_WITH_DEFAULTS:
                 continue
             context[key] = value
+
+        # 3) Alias-Brücke für sampler_name / scheduler_name
+        alias_map = {
+            "sampler_name": "sampler",
+            "scheduler_name": "scheduler",
+        }
+        for src, dst in alias_map.items():
+            val = context.get(src)
+            if isinstance(val, str) and val.strip() and not context.get(dst):
+                context[dst] = val.strip()
+
         self._validate_parameter_context(context)
         return {key: value for key, value in context.items() if value is not None}
 
