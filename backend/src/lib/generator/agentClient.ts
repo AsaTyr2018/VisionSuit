@@ -52,6 +52,8 @@ export interface AgentJobParameters {
   seed?: number | null;
   cfgScale?: number | null;
   steps?: number | null;
+  sampler?: string | null;
+  scheduler?: string | null;
   resolution?: AgentResolution;
   extra?: Record<string, unknown>;
 }

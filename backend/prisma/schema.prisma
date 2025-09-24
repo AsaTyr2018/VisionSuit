@@ -349,6 +349,8 @@ model GeneratorRequest {
   seed           String?
   guidanceScale  Float?
   steps          Int?
+  sampler        String   @default("dpmpp_2m_sde_gpu")
+  scheduler      String   @default("karras")
   width          Int
   height         Int
   loraSelections Json?

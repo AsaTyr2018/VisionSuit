@@ -166,6 +166,8 @@ export interface GeneratorRequestSummary {
   seed?: string | null;
   guidanceScale?: number | null;
   steps?: number | null;
+  sampler: string;
+  scheduler: string;
   width: number;
   height: number;
   loras: GeneratorRequestLoRASelection[];

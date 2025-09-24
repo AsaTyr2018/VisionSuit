@@ -149,6 +149,8 @@ interface DispatchableGeneratorRequest {
   seed: string | null;
   guidanceScale: number | null;
   steps: number | null;
+  sampler: string | null;
+  scheduler: string | null;
   width: number;
   height: number;
   loraSelections: unknown;
@@ -609,6 +611,8 @@ export const dispatchGeneratorRequest = async (
   const resolvedHeight = sanitizeInteger(request.height, 1024);
   const resolvedSteps = sanitizeInteger(request.steps, 28);
   const resolvedCfg = sanitizeFiniteNumber(request.guidanceScale, 7.5);
+  const samplerName = sanitizeText(request.sampler, 'dpmpp_2m_sde_gpu');
+  const schedulerName = sanitizeText(request.scheduler, 'karras');
   const parsedSeed = parseSeed(request.seed);
   const resolvedSeed = sanitizeSeedValue(parsedSeed ?? null);
 
@@ -638,6 +642,8 @@ export const dispatchGeneratorRequest = async (
       seed: resolvedSeed,
       cfgScale: resolvedCfg,
       steps: resolvedSteps,
+      sampler: samplerName,
+      scheduler: schedulerName,
       resolution: {
         width: resolvedWidth,
         height: resolvedHeight,

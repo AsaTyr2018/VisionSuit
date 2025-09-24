@@ -1027,3 +1027,8 @@
 - **General**: Locked sampling controls, resolution, and sampler selection to the on-site generator payload so ComfyUI runs use the exact user-supplied values.
 - **Technical Changes**: Removed hard-coded fallbacks in the agent parameter builder, added double validation that compares workflow bindings and sampler connections, reset the bundled workflow templates to neutral placeholders, refreshed tests and configuration guidance, and documented the stricter contract.
 - **Data Changes**: None; workflow templates now ship with zeroed placeholders only.
+
+## 194 – [Fix] On-site generator forwards sampler & scheduler
+- **General**: Ensured every on-site generation request captures the chosen sampler and scheduler so GPU jobs survive the agent's required-parameter validation.
+- **Technical Changes**: Added sampler/scheduler columns to `GeneratorRequest`, trimmed/normalized the API payload, passed the values through the dispatcher, and refreshed the React wizard with dropdown selectors plus review/history displays that mirror the GPU contract.
+- **Data Changes**: Backfilled existing generator requests with the default `dpmpp_2m_sde_gpu` sampler and `karras` scheduler while keeping future rows non-null by default.
