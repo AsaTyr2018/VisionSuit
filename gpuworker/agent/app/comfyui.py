@@ -151,16 +151,16 @@ class ComfyUIClient:
             "raw": data,
         }
 
-    async def get_allowed_names(self) -> Dict[str, Set[str]]:
+    async def get_allowed_names(self, *, force_refresh: bool = False) -> Dict[str, Set[str]]:
         ttl = self.config.comfyui.object_info_cache_seconds
         cached = self._object_info_cache
         now = time.monotonic()
-        if cached and cached[0] > now:
+        if cached and cached[0] > now and not force_refresh:
             return cached[1]
 
         async with self._object_info_lock:
             cached = self._object_info_cache
-            if cached and cached[0] > now:
+            if cached and cached[0] > now and not force_refresh:
                 return cached[1]
 
             mapping: Dict[str, Set[str]] = {}
@@ -208,6 +208,30 @@ class ComfyUIClient:
 
     def invalidate_object_cache(self) -> None:
         self._object_info_cache = None
+
+    async def ensure_allowed_names(
+        self,
+        field: str,
+        names: Iterable[str],
+        *,
+        attempts: int = 8,
+        delay: float = 0.2,
+    ) -> None:
+        normalized = {normalize_name(name) for name in names if name}
+        if not normalized:
+            return
+        self.invalidate_object_cache()
+        attempt = 0
+        while attempt < max(1, attempts):
+            attempt += 1
+            allowed = await self.get_allowed_names(force_refresh=True)
+            bucket = allowed.get(field, set())
+            if normalized.issubset(bucket):
+                return
+            await asyncio.sleep(delay)
+        LOGGER.debug(
+            "Timed out waiting for %s to expose %s in /object_info", field, sorted(normalized)
+        )
 
 
 def _parse_object_info(payload: Dict[str, Any]) -> Dict[str, Set[str]]:

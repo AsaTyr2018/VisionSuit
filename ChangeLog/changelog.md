@@ -1003,3 +1003,8 @@
 - **General**: Ensured dispatched LoRAs appear where ComfyUI expects them by delivering downloads straight into the configured `models/loras` directory instead of a hidden cache folder.
 - **Technical Changes**: Pointed the GPU agent's LoRA materialisation flow at the primary directory, migrated any legacy `cache/` contents on the fly, refreshed the supporting unit tests, and updated the agent README to describe the direct staging behaviour.
 - **Data Changes**: None.
+
+## 189 – [Fix] SDXL prompt mapping parity and audit artefacts
+- **General**: Realigned the on-site generator and GPU agent so SDXL prompts, negatives, and LoRA selections land on the intended nodes while the job manifest reflects the exact payload that reached ComfyUI.
+- **Technical Changes**: Sanitised generator defaults, filtered workflow bindings when no LoRA is present, chained multiple `LoraLoader` nodes with job-scoped adapter filenames, collapsed the loader automatically when the selection list is empty, synchronised the manifest and status logs with resolved parameters, emitted an `applied-workflow.json` dump before submission, and extended the regression suite to cover the new flow.
+- **Data Changes**: Stores the final `/prompt` payload alongside each job manifest under `<outputs>/logs/<jobId>/applied-workflow.json`.

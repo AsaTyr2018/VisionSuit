@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import errno
 import json
 import logging
 import mimetypes
+import re
+import secrets
 import shutil
 import time
 import uuid
@@ -37,7 +40,7 @@ from .comfyui import (
 )
 from .config import AgentConfig
 from .minio_client import MinioManager, compute_sha256
-from .models import AssetRef, DispatchEnvelope
+from .models import AssetRef, DispatchEnvelope, Resolution
 from .workflow import WorkflowLoader, build_workflow_payload, find_save_image_nodes
 
 LOGGER = logging.getLogger(__name__)
@@ -252,7 +255,12 @@ class GPUAgent:
 
             resolved_params = self._build_parameter_context(job, resolved_base, resolved_loras)
             workflow_payload = build_workflow_payload(self.workflow_loader, job, resolved_params)
+            applied_loras = self._apply_lora_chain(workflow_payload, resolved_loras, resolved_params)
+            self._synchronize_lora_context(job, resolved_params, resolved_loras, applied_loras)
             save_nodes = find_save_image_nodes(workflow_payload)
+            await self._ensure_lora_visibility(resolved_loras)
+            await self._persist_applied_workflow(job_log, job, workflow_payload)
+            await self._update_job_manifest(job_log, job, resolved_params, workflow_payload)
             await self._validate_workflow_assets(workflow_payload)
 
             self._log_job_event(
@@ -307,7 +315,7 @@ class GPUAgent:
             if save_nodes and not outputs:
                 raise ValidationFailure("Workflow completed without producing outputs from SaveImage nodes")
 
-            upload_result = self._upload_outputs(job, outputs, resolved_base, resolved_loras)
+            upload_result = self._upload_outputs(job, outputs, resolved_base, resolved_loras, resolved_params)
             if upload_result.missing:
                 missing_names = ", ".join(path.name for path in upload_result.missing)
                 warnings.append(f"Missing outputs on disk: {missing_names}")
@@ -505,15 +513,25 @@ class GPUAgent:
         resolution = job.parameters.resolution
         if resolution:
             details["resolution"] = {"width": resolution.width, "height": resolution.height}
-        seed = job.parameters.seed
+        prompt_text = resolved_params.get("prompt") or job.parameters.prompt or ""
+        negative_text = resolved_params.get("negative_prompt") or job.parameters.negativePrompt or ""
+        details["prompt"] = prompt_text
+        details["negative_prompt"] = negative_text
+        seed = resolved_params.get("seed", job.parameters.seed)
         if seed is not None:
             details["seed"] = seed
-        cfg_scale = resolved_params.get("cfg") or resolved_params.get("cfg_scale")
+        cfg_scale = resolved_params.get("cfg_scale") or resolved_params.get("cfg")
         if cfg_scale is not None:
             details["cfg_scale"] = cfg_scale
-        steps = job.parameters.steps or resolved_params.get("steps")
+        steps = resolved_params.get("steps") or job.parameters.steps
         if steps is not None:
             details["steps"] = steps
+        sampler = resolved_params.get("sampler")
+        scheduler = resolved_params.get("scheduler")
+        if sampler is not None:
+            details["sampler"] = sampler
+        if scheduler is not None:
+            details["scheduler"] = scheduler
         return {key: value for key, value in details.items() if value not in (None, {})}
 
     def _build_completion_log(
@@ -839,17 +857,20 @@ class GPUAgent:
 
         use_symlink = self._supports_symlinks(cache_dir)
 
+        used_visible: Set[str] = set()
+
         for index, asset in enumerate(job.loras):
             source_name = Path(asset.key).name
             cache_name = ensure_extension(source_name)
             is_primary = index == 0 and primary_override is not None
             if is_primary:
                 override = ensure_extension(primary_override)
-                display_name = override
+                display_candidate = override
             else:
                 override = ensure_extension(self._resolve_lora_filename(asset, lookup))
-                display_name = self._resolve_display_name(asset, override)
-            pretty_path = cache_dir / display_name
+                display_candidate = self._resolve_display_name(asset, override)
+            visible_name = self._build_visible_lora_name(job, asset, display_candidate, index, used_visible)
+            pretty_path = cache_dir / visible_name
             cache_path = (
                 pretty_path
                 if not use_symlink
@@ -1059,26 +1080,127 @@ class GPUAgent:
             if candidate in lookup:
                 return lookup[candidate]
         return Path(key).name
+
+    def _sanitize_text(self, value: Optional[str]) -> str:
+        if value is None:
+            return ""
+        return str(value).strip()
+
+    def _default_steps(self) -> int:
+        fallback = self._as_float(self.config.workflow_defaults.get("steps"))
+        if fallback is not None:
+            candidate = int(round(fallback))
+            if candidate > 0:
+                return candidate
+        return 28
+
+    def _default_cfg(self) -> float:
+        for key in ("cfg_scale", "cfg"):
+            candidate = self._as_float(self.config.workflow_defaults.get(key))
+            if candidate is not None:
+                return round(candidate, 2)
+        return 7.5
+
+    def _default_resolution(self) -> Tuple[int, int]:
+        width = self._normalize_positive_int(self.config.workflow_defaults.get("width"), 1024)
+        height = self._normalize_positive_int(self.config.workflow_defaults.get("height"), 1024)
+        return width, height
+
+    def _normalize_positive_int(self, value: Any, fallback: int) -> int:
+        candidate = self._as_float(value)
+        if candidate is not None:
+            normalized = int(round(candidate))
+            if normalized > 0:
+                return normalized
+        return fallback
+
+    def _normalize_cfg_scale(self, value: Any) -> float:
+        candidate = self._as_float(value)
+        if candidate is None:
+            return self._default_cfg()
+        return round(candidate, 2)
+
+    def _generate_seed(self) -> int:
+        return secrets.randbelow(1_000_000_000)
+
+    def _normalize_seed_value(self, value: Any) -> int:
+        if isinstance(value, (int, float)) and isfinite(value):
+            normalized = abs(int(value))
+            return normalized % 1_000_000_000
+        return self._generate_seed()
+
+    def _normalize_resolution(self, resolution: Optional[Resolution]) -> Resolution:
+        fallback_width, fallback_height = self._default_resolution()
+        if resolution is None:
+            return Resolution(width=fallback_width, height=fallback_height)
+        width = self._normalize_positive_int(resolution.width, fallback_width)
+        height = self._normalize_positive_int(resolution.height, fallback_height)
+        return Resolution(width=width, height=height)
+
+    def _slugify_component(self, value: str, fallback: str, *, length: int = 32) -> str:
+        base = normalize_name(value) if value else ""
+        candidate = base or fallback
+        candidate = re.sub(r"[^A-Za-z0-9_-]+", "-", candidate).strip("-_.")
+        if not candidate:
+            candidate = fallback
+        if len(candidate) > length:
+            trimmed = candidate[:length].rstrip("-_.")
+            candidate = trimmed or candidate[:length]
+        return candidate or fallback
+
+    def _build_visible_lora_name(
+        self,
+        job: DispatchEnvelope,
+        asset: AssetRef,
+        display_name: str,
+        index: int,
+        used: Set[str],
+    ) -> str:
+        base = self._slugify_component(Path(display_name).stem or f"lora{index + 1}", f"lora{index + 1}")
+        owner_source = job.user.username or job.user.id
+        owner = self._slugify_component(owner_source, "user", length=12)
+        job_short = build_collision_suffix(job.jobId, length=6)
+        candidate = f"{base}__{owner}__{job_short}.safetensors"
+        counter = 1
+        while candidate in used:
+            suffix = build_collision_suffix(f"{asset.key}:{counter}", length=6)
+            candidate = f"{base}__{owner}__{job_short}__{suffix}.safetensors"
+            counter += 1
+        used.add(candidate)
+        return candidate
     def _build_parameter_context(
         self,
         job: DispatchEnvelope,
         base_model: ResolvedAsset,
         loras: List[ResolvedAsset],
     ) -> Dict[str, object]:
+        prompt = self._sanitize_text(job.parameters.prompt)
+        negative = self._sanitize_text(job.parameters.negativePrompt)
+        steps = self._normalize_positive_int(job.parameters.steps, self._default_steps())
+        cfg_scale = self._normalize_cfg_scale(job.parameters.cfgScale)
+        seed = self._normalize_seed_value(job.parameters.seed)
+        resolution = self._normalize_resolution(job.parameters.resolution)
+
+        job.parameters.prompt = prompt
+        job.parameters.negativePrompt = negative
+        job.parameters.steps = steps
+        job.parameters.cfgScale = cfg_scale
+        job.parameters.seed = seed
+        job.parameters.resolution = resolution
+
         context: Dict[str, object] = {
-            "prompt": job.parameters.prompt,
-            "negative_prompt": job.parameters.negativePrompt,
-            "seed": job.parameters.seed,
-            "cfg_scale": job.parameters.cfgScale,
-            "steps": job.parameters.steps,
+            "prompt": prompt,
+            "negative_prompt": negative,
+            "seed": seed,
+            "cfg_scale": cfg_scale,
+            "steps": steps,
+            "width": resolution.width,
+            "height": resolution.height,
             "base_model_path": base_model.comfy_name,
             "base_model_name": base_model.comfy_name,
             "base_model_full_path": str(base_model.cache_path),
             "loras": [entry.comfy_name for entry in loras],
         }
-        if job.parameters.resolution:
-            context["width"] = job.parameters.resolution.width
-            context["height"] = job.parameters.resolution.height
         extra_payload = job.parameters.extra or {}
         lora_metadata = self._extract_lora_metadata(extra_payload)
         if lora_metadata:
@@ -1086,6 +1208,10 @@ class GPUAgent:
         primary_lora_context = self._derive_primary_lora_context(loras, lora_metadata)
         context.update(primary_lora_context)
         context.update(self.config.workflow_defaults)
+        sampler = str(context.get("sampler") or self.config.workflow_defaults.get("sampler") or "dpmpp_2m")
+        scheduler = str(context.get("scheduler") or self.config.workflow_defaults.get("scheduler") or "karras")
+        context["sampler"] = sampler
+        context["scheduler"] = scheduler
         for key, value in extra_payload.items():
             if key in {"loras", "primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"}:
                 continue
@@ -1118,6 +1244,215 @@ class GPUAgent:
             "primary_lora_strength_clip": strength,
         }
 
+    def _collect_lora_nodes(self, workflow: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
+        nodes: List[Tuple[str, Dict[str, Any]]] = []
+        for key, node in workflow.items():
+            if not isinstance(node, dict):
+                continue
+            class_type = str(node.get("class_type") or "").lower()
+            if class_type == "loraloader":
+                nodes.append((str(key), node))
+        nodes.sort(key=lambda item: int(item[0]) if str(item[0]).isdigit() else 0)
+        return nodes
+
+    def _as_connection_ref(self, value: Any) -> Optional[Tuple[str, int]]:
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            target, index = value
+            if isinstance(target, (str, int)) and isinstance(index, (int, float)):
+                return str(target), int(index)
+        return None
+
+    def _allocate_node_id(self, workflow: Dict[str, Any]) -> str:
+        max_id = 0
+        for key in workflow.keys():
+            if isinstance(key, int):
+                max_id = max(max_id, key)
+            elif isinstance(key, str) and key.isdigit():
+                max_id = max(max_id, int(key))
+        return str(max_id + 1)
+
+    def _redirect_connections(
+        self,
+        workflow: Dict[str, Any],
+        mapping: Dict[str, Dict[int, Tuple[str, int]]],
+        *,
+        skip_nodes: Optional[Set[str]] = None,
+    ) -> None:
+        skip = {str(node) for node in skip_nodes} if skip_nodes else set()
+        for node_id, node in workflow.items():
+            if str(node_id) in skip or not isinstance(node, dict):
+                continue
+            inputs = node.get("inputs")
+            if not isinstance(inputs, dict):
+                continue
+            for key, value in list(inputs.items()):
+                ref = self._as_connection_ref(value)
+                if not ref:
+                    continue
+                target, index = ref
+                replacement = mapping.get(target, {}).get(index)
+                if not replacement:
+                    continue
+                inputs[key] = [str(replacement[0]), replacement[1]]
+
+    def _apply_lora_chain(
+        self,
+        workflow: Dict[str, Any],
+        loras: Sequence[ResolvedAsset],
+        resolved_params: Dict[str, Any],
+    ) -> List[Tuple[str, float]]:
+        lora_nodes = self._collect_lora_nodes(workflow)
+        if not lora_nodes:
+            return []
+
+        template_id, template_node = lora_nodes[0]
+        inputs = template_node.setdefault("inputs", {})
+        upstream_model = self._as_connection_ref(inputs.get("model"))
+        upstream_clip = self._as_connection_ref(inputs.get("clip"))
+        if upstream_model is None or upstream_clip is None:
+            return []
+
+        metadata_entries = resolved_params.get("loras_metadata")
+        metadata = metadata_entries if isinstance(metadata_entries, list) else []
+
+        applied: List[Tuple[str, float]] = []
+        redirect: Dict[str, Dict[int, Tuple[str, int]]] = {}
+
+        for extra_id, _ in lora_nodes[1:]:
+            workflow.pop(extra_id, None)
+            redirect[extra_id] = {0: upstream_model, 1: upstream_clip}
+
+        if not loras:
+            workflow.pop(template_id, None)
+            redirect[template_id] = {0: upstream_model, 1: upstream_clip}
+            self._redirect_connections(workflow, redirect)
+            return []
+
+        prototype = copy.deepcopy(template_node)
+        keep_nodes: Set[str] = {template_id}
+        last_node_id = template_id
+
+        for index, asset in enumerate(loras):
+            payload = self._match_lora_metadata(asset, metadata)
+            strength = self._normalize_strength(self._extract_strength_value(payload))
+            if index == 0:
+                inputs["model"] = [upstream_model[0], upstream_model[1]]
+                inputs["clip"] = [upstream_clip[0], upstream_clip[1]]
+                inputs["lora_name"] = asset.comfy_name
+                inputs["strength_model"] = strength
+                inputs["strength_clip"] = strength
+                applied.append((asset.comfy_name, strength))
+                continue
+
+            new_id = self._allocate_node_id(workflow)
+            new_node = copy.deepcopy(prototype)
+            new_inputs = new_node.setdefault("inputs", {})
+            new_inputs["model"] = [last_node_id, 0]
+            new_inputs["clip"] = [last_node_id, 1]
+            new_inputs["lora_name"] = asset.comfy_name
+            new_inputs["strength_model"] = strength
+            new_inputs["strength_clip"] = strength
+            new_node["id"] = int(new_id) if new_id.isdigit() else new_id
+            workflow[new_id] = new_node
+            keep_nodes.add(new_id)
+            last_node_id = new_id
+            applied.append((asset.comfy_name, strength))
+
+        if applied:
+            redirect[template_id] = {0: (last_node_id, 0), 1: (last_node_id, 1)}
+        self._redirect_connections(workflow, redirect, skip_nodes=keep_nodes)
+        return applied
+
+    def _synchronize_lora_context(
+        self,
+        job: DispatchEnvelope,
+        resolved_params: Dict[str, Any],
+        resolved_loras: Sequence[ResolvedAsset],
+        applied_loras: Sequence[Tuple[str, float]],
+    ) -> None:
+        extra = job.parameters.extra or {}
+        names = [name for name, _ in applied_loras]
+        strengths = {name: strength for name, strength in applied_loras}
+        if applied_loras:
+            primary_name, primary_strength = applied_loras[0]
+            resolved_params["primary_lora_name"] = primary_name
+            resolved_params["primary_lora_strength_model"] = primary_strength
+            resolved_params["primary_lora_strength_clip"] = primary_strength
+            extra["primary_lora_name"] = primary_name
+            extra["primary_lora_strength_model"] = primary_strength
+            extra["primary_lora_strength_clip"] = primary_strength
+        else:
+            for key in ("primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"):
+                resolved_params.pop(key, None)
+                extra.pop(key, None)
+
+        metadata_entries = extra.get("loras") if isinstance(extra, dict) else None
+        if isinstance(metadata_entries, list) and resolved_loras:
+            for index, entry in enumerate(metadata_entries):
+                if not isinstance(entry, dict):
+                    continue
+                if index < len(resolved_loras):
+                    entry["filename"] = resolved_loras[index].comfy_name
+                    original = resolved_loras[index].asset.original_name or entry.get("originalName")
+                    if isinstance(original, str) and original:
+                        entry["originalName"] = normalize_name(original)
+                    strength = strengths.get(resolved_loras[index].comfy_name)
+                    if strength is not None:
+                        entry["strength"] = strength
+        elif not applied_loras and isinstance(extra, dict):
+            extra.pop("loras", None)
+
+        job.parameters.extra = extra
+        resolved_params["loras"] = names
+
+    async def _ensure_lora_visibility(self, loras: Sequence[ResolvedAsset]) -> None:
+        names = [entry.comfy_name for entry in loras if entry.comfy_name]
+        if not names:
+            return
+        try:
+            await self.comfyui.ensure_allowed_names("lora_name", names)
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to confirm LoRA visibility in object_info", exc_info=True)
+
+    async def _persist_applied_workflow(
+        self,
+        log_handle: Optional[JobLogHandle],
+        job: DispatchEnvelope,
+        workflow: Dict[str, Any],
+    ) -> None:
+        directory = log_handle.directory if log_handle else self.config.paths.outputs / "logs" / job.jobId
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            path = directory / "applied-workflow.json"
+            payload = {"prompt": workflow, "client_id": self.config.comfyui.client_id}
+            with path.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to persist applied workflow for job %s", job.jobId, exc_info=True)
+
+    async def _update_job_manifest(
+        self,
+        log_handle: Optional[JobLogHandle],
+        job: DispatchEnvelope,
+        resolved_params: Dict[str, Any],
+        workflow: Dict[str, Any],
+    ) -> None:
+        if not log_handle:
+            return
+        snapshot = {
+            "schemaVersion": 1,
+            "capturedAt": self._now_iso(),
+            "job": job.dict(by_alias=True),
+            "resolvedParameters": resolved_params,
+            "workflow": workflow,
+        }
+        try:
+            with log_handle.manifest_path.open("w", encoding="utf-8") as handle:
+                json.dump(snapshot, handle, indent=2, ensure_ascii=False)
+                handle.write("\n")
+        except Exception:  # noqa: BLE001
+            LOGGER.debug("Failed to update manifest for job %s", job.jobId, exc_info=True)
     def _match_lora_metadata(
         self,
         target: ResolvedAsset,
@@ -1167,13 +1502,20 @@ class GPUAgent:
         outputs: List[OutputImage],
         base_model: ResolvedAsset,
         loras: List[ResolvedAsset],
+        resolved_params: Dict[str, Any],
     ) -> UploadResult:
         uploaded_keys: List[str] = []
         missing_files: List[Path] = []
         artifact_records: List[ArtifactRecord] = []
         output_root = Path(self.config.paths.outputs)
-        seed_value = str(job.parameters.seed or 0)
-        lora_names = ",".join(entry.comfy_name for entry in loras) if loras else ""
+        seed_value = str(resolved_params.get("seed", job.parameters.seed or 0))
+        lora_entries = resolved_params.get("loras")
+        if not lora_entries:
+            lora_entries = [entry.comfy_name for entry in loras]
+        lora_names = ",".join(lora_entries) if lora_entries else ""
+        prompt_text = resolved_params.get("prompt") or job.parameters.prompt or ""
+        negative_text = resolved_params.get("negative_prompt") or job.parameters.negativePrompt or ""
+        steps_value = resolved_params.get("steps", job.parameters.steps or "")
 
         for index, image in enumerate(outputs, start=1):
             output_dir = output_root / image.subfolder if image.subfolder else output_root
@@ -1186,10 +1528,10 @@ class GPUAgent:
             destination_key = f"comfy-outputs/{job.jobId}/{index:02d}_{seed_value}{ext}"
             sha_value = compute_sha256(source)
             metadata = {
-                "prompt": job.parameters.prompt or "",
-                "negative_prompt": job.parameters.negativePrompt or "",
+                "prompt": prompt_text,
+                "negative_prompt": negative_text,
                 "seed": seed_value,
-                "steps": str(job.parameters.steps or ""),
+                "steps": str(steps_value),
                 "user": job.user.username,
                 "job_id": job.jobId,
                 "model": base_model.comfy_name,
