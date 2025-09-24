@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import errno
 import json
 import logging
 import mimetypes
 import time
+import uuid
 from asyncio import Event
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -37,6 +40,27 @@ from .models import AssetRef, DispatchEnvelope
 from .workflow import WorkflowLoader, build_workflow_payload, find_save_image_nodes
 
 LOGGER = logging.getLogger(__name__)
+
+
+SYMLINK_ERROR_CODES: Set[int] = {
+    code
+    for code in (
+        errno.EPERM,
+        errno.EACCES,
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+        errno.EROFS,
+    )
+    if code is not None
+}
+
+
+class SymlinkCreationUnsupported(RuntimeError):
+    def __init__(self, directory: Path, cause: OSError) -> None:
+        message = f"Symlinks are not supported in {directory}: {cause}"
+        super().__init__(message)
+        self.directory = directory
+        self.cause = cause
 
 
 @dataclass
@@ -141,6 +165,7 @@ class GPUAgent:
         self._lock = asyncio.Lock()
         self._cancel_handle: Optional[CancellationHandle] = None
         self._runtime: Dict[str, JobRuntimeState] = {}
+        self._symlink_support: Dict[Path, bool] = {}
 
     def is_busy(self) -> bool:
         return self._lock.locked()
@@ -412,6 +437,70 @@ class GPUAgent:
         if delay:
             await asyncio.sleep(delay)
 
+    def _supports_symlinks(self, directory: Path) -> bool:
+        resolved = directory.resolve()
+        if resolved in self._symlink_support:
+            return self._symlink_support[resolved]
+        directory.mkdir(parents=True, exist_ok=True)
+        token = uuid.uuid4().hex
+        target = directory / f".vs-symlink-probe-target-{token}"
+        link = directory / f".vs-symlink-probe-link-{token}"
+        try:
+            target.write_text("probe", encoding="utf-8")
+            link.symlink_to(target)
+        except OSError as exc:  # noqa: BLE001
+            winerror = getattr(exc, "winerror", None)
+            if exc.errno in SYMLINK_ERROR_CODES or winerror in {1314}:  # 1314: ERROR_PRIVILEGE_NOT_HELD
+                LOGGER.warning(
+                    "Symlinks appear to be unsupported in %s (%s); copying assets instead.",
+                    directory,
+                    exc,
+                )
+                self._symlink_support[resolved] = False
+                return False
+            raise
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                link.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                target.unlink()
+        self._symlink_support[resolved] = True
+        return True
+
+    def _materialize_without_symlink(
+        self,
+        pretty_path: Path,
+        cache_dir: Path,
+        cache_name: str,
+        source_name: str,
+        asset: AssetRef,
+        asset_kind: str,
+    ) -> Tuple[Path, bool, bool]:
+        pretty_path.parent.mkdir(parents=True, exist_ok=True)
+        if pretty_path.is_symlink():
+            pretty_path.unlink(missing_ok=True)
+        created = not pretty_path.exists()
+        downloaded = False
+        if created:
+            candidates = [cache_dir / cache_name, cache_dir / source_name]
+            for candidate in candidates:
+                if candidate.exists():
+                    try:
+                        candidate.replace(pretty_path)
+                        LOGGER.debug(
+                            "Migrated cached %s %s into %s", asset_kind, candidate, pretty_path
+                        )
+                        break
+                    except Exception:  # noqa: BLE001
+                        LOGGER.debug(
+                            "Failed to migrate cached %s %s into %s", asset_kind, candidate, pretty_path, exc_info=True
+                        )
+            if not pretty_path.exists():
+                LOGGER.info("Downloading %s %s", asset_kind, asset.key)
+                self.minio.download_to_path(asset.bucket, asset.key, pretty_path)
+                downloaded = True
+        return pretty_path, downloaded, created
+
     def _ensure_base_model(self, base_model: AssetRef) -> ResolvedAsset:
         base_dir = self.config.paths.base_models
         cache_dir = base_dir / "cache"
@@ -422,9 +511,14 @@ class GPUAgent:
         display_name = self._resolve_display_name(base_model, cache_name)
         pretty_path = base_dir / display_name
 
+        use_symlink = self._supports_symlinks(base_dir)
+
         cache_path = (
             pretty_path
-            if pretty_path.exists() and pretty_path.is_file() and not pretty_path.is_symlink()
+            if not use_symlink
+            and pretty_path.exists()
+            and pretty_path.is_file()
+            and not pretty_path.is_symlink()
             else cache_dir / cache_name
         )
         legacy_cache = cache_dir / source_name
@@ -440,16 +534,54 @@ class GPUAgent:
             self.minio.download_to_path(base_model.bucket, base_model.key, cache_path)
             downloaded = True
 
-        symlink_path, created = self._ensure_symlink(pretty_path, cache_path, base_model.key)
-        comfy_name = normalize_name(symlink_path.name)
-        return ResolvedAsset(
-            asset=base_model,
-            cache_path=cache_path,
-            comfy_name=comfy_name,
-            symlink_path=symlink_path,
-            downloaded=downloaded,
-            link_created=created,
-        )
+        if not use_symlink:
+            link_path, direct_downloaded, created = self._materialize_without_symlink(
+                pretty_path,
+                cache_dir,
+                cache_name,
+                source_name,
+                base_model,
+                "base model",
+            )
+            comfy_name = normalize_name(link_path.name)
+            return ResolvedAsset(
+                asset=base_model,
+                cache_path=link_path,
+                comfy_name=comfy_name,
+                symlink_path=link_path,
+                downloaded=downloaded or direct_downloaded,
+                link_created=created,
+            )
+
+        try:
+            symlink_path, created = self._ensure_symlink(pretty_path, cache_path, base_model.key)
+            comfy_name = normalize_name(symlink_path.name)
+            return ResolvedAsset(
+                asset=base_model,
+                cache_path=cache_path,
+                comfy_name=comfy_name,
+                symlink_path=symlink_path,
+                downloaded=downloaded,
+                link_created=created,
+            )
+        except SymlinkCreationUnsupported:
+            link_path, direct_downloaded, created = self._materialize_without_symlink(
+                pretty_path,
+                cache_dir,
+                cache_name,
+                source_name,
+                base_model,
+                "base model",
+            )
+            comfy_name = normalize_name(link_path.name)
+            return ResolvedAsset(
+                asset=base_model,
+                cache_path=link_path,
+                comfy_name=comfy_name,
+                symlink_path=link_path,
+                downloaded=downloaded or direct_downloaded,
+                link_created=created,
+            )
 
     def _ensure_loras(self, job: DispatchEnvelope) -> List[ResolvedAsset]:
         resolved: List[ResolvedAsset] = []
@@ -459,6 +591,8 @@ class GPUAgent:
         cache_dir = self.config.paths.loras / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
+        use_symlink = self._supports_symlinks(self.config.paths.loras)
+
         for asset in job.loras:
             source_name = Path(asset.key).name
             cache_name = ensure_extension(source_name)
@@ -467,7 +601,10 @@ class GPUAgent:
             pretty_path = self.config.paths.loras / display_name
             cache_path = (
                 pretty_path
-                if pretty_path.exists() and pretty_path.is_file() and not pretty_path.is_symlink()
+                if not use_symlink
+                and pretty_path.exists()
+                and pretty_path.is_file()
+                and not pretty_path.is_symlink()
                 else cache_dir / cache_name
             )
             legacy_cache = cache_dir / source_name
@@ -482,18 +619,63 @@ class GPUAgent:
                 LOGGER.info("Downloading LoRA %s", asset.key)
                 self.minio.download_to_path(asset.bucket, asset.key, cache_path)
                 downloaded = True
-            symlink_path, created = self._ensure_symlink(pretty_path, cache_path, asset.key)
-            comfy_name = normalize_name(symlink_path.name)
-            resolved.append(
-                ResolvedAsset(
-                    asset=asset,
-                    cache_path=cache_path,
-                    comfy_name=comfy_name,
-                    symlink_path=symlink_path,
-                    downloaded=downloaded,
-                    link_created=created,
+
+            if not use_symlink:
+                link_path, direct_downloaded, created = self._materialize_without_symlink(
+                    pretty_path,
+                    cache_dir,
+                    cache_name,
+                    source_name,
+                    asset,
+                    "LoRA",
                 )
-            )
+                comfy_name = normalize_name(link_path.name)
+                resolved.append(
+                    ResolvedAsset(
+                        asset=asset,
+                        cache_path=link_path,
+                        comfy_name=comfy_name,
+                        symlink_path=link_path,
+                        downloaded=downloaded or direct_downloaded,
+                        link_created=created,
+                    )
+                )
+                continue
+
+            try:
+                symlink_path, created = self._ensure_symlink(pretty_path, cache_path, asset.key)
+                comfy_name = normalize_name(symlink_path.name)
+                resolved.append(
+                    ResolvedAsset(
+                        asset=asset,
+                        cache_path=cache_path,
+                        comfy_name=comfy_name,
+                        symlink_path=symlink_path,
+                        downloaded=downloaded,
+                        link_created=created,
+                    )
+                )
+            except SymlinkCreationUnsupported:
+                use_symlink = False
+                link_path, direct_downloaded, created = self._materialize_without_symlink(
+                    pretty_path,
+                    cache_dir,
+                    cache_name,
+                    source_name,
+                    asset,
+                    "LoRA",
+                )
+                comfy_name = normalize_name(link_path.name)
+                resolved.append(
+                    ResolvedAsset(
+                        asset=asset,
+                        cache_path=link_path,
+                        comfy_name=comfy_name,
+                        symlink_path=link_path,
+                        downloaded=downloaded or direct_downloaded,
+                        link_created=created,
+                    )
+                )
         return resolved
 
     def _resolve_display_name(self, asset: AssetRef, fallback: str) -> str:
@@ -523,7 +705,15 @@ class GPUAgent:
                 new_name = f"{candidate.stem}__{suffix}{candidate.suffix or target.suffix or '.safetensors'}"
                 candidate = candidate.with_name(new_name)
                 continue
-            candidate.symlink_to(target)
+            try:
+                candidate.symlink_to(target)
+            except OSError as exc:  # noqa: BLE001
+                winerror = getattr(exc, "winerror", None)
+                if exc.errno in SYMLINK_ERROR_CODES or winerror in {1314}:
+                    resolved_parent = candidate.parent.resolve()
+                    self._symlink_support[resolved_parent] = False
+                    raise SymlinkCreationUnsupported(resolved_parent, exc) from exc
+                raise
             return candidate, True
 
     def _build_lora_filename_lookup(self, job: DispatchEnvelope) -> Dict[str, str]:

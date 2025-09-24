@@ -978,3 +978,8 @@
 - **General**: Delivered `.safetensors` LoRA adapters to ComfyUI under their original upload names so hashed MinIO keys no longer break loader discovery.
 - **Technical Changes**: Taught the backend dispatcher to include `displayName`/`originalName` metadata for base models and LoRAs, look up stored original filenames, and fall back to deterministic `.safetensors` labels; updated the GPU agent to apply those names when caching, migrate legacy downloads, ensure cache files carry an extension, and clean up stale symlinks; refreshed the READMEs to document the restored naming flow.
 - **Data Changes**: None.
+
+## 184 – [Fix] GPU agent symlink fallback
+- **General**: Guaranteed ComfyUI still sees cached checkpoints and LoRAs when the GPU worker mounts model directories from filesystems that disallow symlinks.
+- **Technical Changes**: Detected per-directory symlink support in the GPU agent, fell back to copying cached assets into the ComfyUI tree when links fail, migrated existing caches into place, and refreshed both READMEs to document the new behaviour.
+- **Data Changes**: None.
