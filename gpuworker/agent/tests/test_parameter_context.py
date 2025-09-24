@@ -163,6 +163,21 @@ class ParameterContextTests(unittest.TestCase):
         with self.assertRaises(ValidationFailure):
             self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
 
+    def test_sampler_and_scheduler_default_to_config_values(self) -> None:
+        original_defaults = dict(self.agent.config.workflow_defaults)
+        try:
+            self.agent.config.workflow_defaults = {"sampler": "k_euler", "scheduler": "normal"}
+            job = self._build_job()
+            job.parameters.extra.pop("sampler", None)
+            job.parameters.extra.pop("scheduler", None)
+
+            context = self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
+
+            self.assertEqual(context["sampler"], "k_euler")
+            self.assertEqual(context["scheduler"], "normal")
+        finally:
+            self.agent.config.workflow_defaults = original_defaults
+
     def test_workflow_defaults_do_not_override_resolved_values(self) -> None:
         original_defaults = dict(self.agent.config.workflow_defaults)
         try:
