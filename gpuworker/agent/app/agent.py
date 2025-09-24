@@ -180,6 +180,7 @@ class GPUAgent:
         "sampler",
         "scheduler",
     }
+    _RESERVED_KEYS_WITH_DEFAULTS: Set[str] = {"sampler", "scheduler"}
 
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
@@ -1209,14 +1210,14 @@ class GPUAgent:
         context.update(primary_lora_context)
         defaults = self.config.workflow_defaults or {}
         for key, value in defaults.items():
-            if key in self._RESERVED_DEFAULT_KEYS:
+            if key in self._RESERVED_DEFAULT_KEYS and key not in self._RESERVED_KEYS_WITH_DEFAULTS:
                 continue
             if key not in context and value is not None:
                 context[key] = value
         for key, value in extra_payload.items():
             if key in {"loras", "primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"}:
                 continue
-            if key in self._RESERVED_DEFAULT_KEYS and key not in {"sampler", "scheduler"}:
+            if key in self._RESERVED_DEFAULT_KEYS and key not in self._RESERVED_KEYS_WITH_DEFAULTS:
                 continue
             context[key] = value
         self._validate_parameter_context(context)

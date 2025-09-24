@@ -1032,3 +1032,8 @@
 - **General**: Ensured every on-site generation request captures the chosen sampler and scheduler so GPU jobs survive the agent's required-parameter validation.
 - **Technical Changes**: Added sampler/scheduler columns to `GeneratorRequest`, trimmed/normalized the API payload, passed the values through the dispatcher, and refreshed the React wizard with dropdown selectors plus review/history displays that mirror the GPU contract.
 - **Data Changes**: Backfilled existing generator requests with the default `dpmpp_2m_sde_gpu` sampler and `karras` scheduler while keeping future rows non-null by default.
+
+## 195 – [Fix] GPU sampler fallback (commit TBD)
+- **General**: Restored GPU jobs that failed when sampler and scheduler values only lived in the worker defaults.
+- **Technical Changes**: Allowed reserved workflow defaults to populate sampler and scheduler bindings, added coverage for the fallback behaviour, and refreshed the README to explain the configuration path.
+- **Data Changes**: None; runtime validation only.
