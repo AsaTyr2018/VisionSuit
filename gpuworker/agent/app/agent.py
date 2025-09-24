@@ -169,6 +169,18 @@ class JobRuntimeState:
 
 
 class GPUAgent:
+    _RESERVED_DEFAULT_KEYS: Set[str] = {
+        "prompt",
+        "negative_prompt",
+        "seed",
+        "steps",
+        "cfg_scale",
+        "width",
+        "height",
+        "sampler",
+        "scheduler",
+    }
+
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self.minio = MinioManager(config)
@@ -257,6 +269,8 @@ class GPUAgent:
             workflow_payload = build_workflow_payload(self.workflow_loader, job, resolved_params)
             applied_loras = self._apply_lora_chain(workflow_payload, resolved_loras, resolved_params)
             self._synchronize_lora_context(job, resolved_params, resolved_loras, applied_loras)
+            self._validate_workflow_bindings(job, workflow_payload, resolved_params)
+            self._validate_prompt_connections(workflow_payload)
             save_nodes = find_save_image_nodes(workflow_payload)
             await self._ensure_lora_visibility(resolved_loras)
             await self._persist_applied_workflow(job_log, job, workflow_payload)
@@ -297,7 +311,7 @@ class GPUAgent:
                 {"prompt_id": prompt_id},
             )
 
-            timeout = self._compute_timeout(job, workflow_payload)
+            timeout = self._compute_timeout(job, workflow_payload, resolved_params)
             history = await self.comfyui.wait_for_completion(
                 prompt_id,
                 timeout=timeout,
@@ -1086,38 +1100,25 @@ class GPUAgent:
             return ""
         return str(value).strip()
 
-    def _default_steps(self) -> int:
-        fallback = self._as_float(self.config.workflow_defaults.get("steps"))
-        if fallback is not None:
-            candidate = int(round(fallback))
-            if candidate > 0:
-                return candidate
-        return 28
-
-    def _default_cfg(self) -> float:
-        for key in ("cfg_scale", "cfg"):
-            candidate = self._as_float(self.config.workflow_defaults.get(key))
-            if candidate is not None:
-                return round(candidate, 2)
-        return 7.5
-
-    def _default_resolution(self) -> Tuple[int, int]:
-        width = self._normalize_positive_int(self.config.workflow_defaults.get("width"), 1024)
-        height = self._normalize_positive_int(self.config.workflow_defaults.get("height"), 1024)
-        return width, height
-
-    def _normalize_positive_int(self, value: Any, fallback: int) -> int:
-        candidate = self._as_float(value)
-        if candidate is not None:
-            normalized = int(round(candidate))
-            if normalized > 0:
-                return normalized
-        return fallback
-
-    def _normalize_cfg_scale(self, value: Any) -> float:
+    def _coerce_positive_int(self, value: Any) -> Optional[int]:
         candidate = self._as_float(value)
         if candidate is None:
-            return self._default_cfg()
+            return None
+        normalized = int(round(candidate))
+        if normalized > 0:
+            return normalized
+        return None
+
+    def _require_positive_int(self, value: Any, field: str) -> int:
+        normalized = self._coerce_positive_int(value)
+        if normalized is None:
+            raise ValidationFailure(f"Job parameter '{field}' must be a positive integer")
+        return normalized
+
+    def _require_cfg_scale(self, value: Any) -> float:
+        candidate = self._as_float(value)
+        if candidate is None or candidate <= 0:
+            raise ValidationFailure("Job parameter 'cfgScale' must be a positive number")
         return round(candidate, 2)
 
     def _generate_seed(self) -> int:
@@ -1129,12 +1130,11 @@ class GPUAgent:
             return normalized % 1_000_000_000
         return self._generate_seed()
 
-    def _normalize_resolution(self, resolution: Optional[Resolution]) -> Resolution:
-        fallback_width, fallback_height = self._default_resolution()
+    def _require_resolution(self, resolution: Optional[Resolution]) -> Resolution:
         if resolution is None:
-            return Resolution(width=fallback_width, height=fallback_height)
-        width = self._normalize_positive_int(resolution.width, fallback_width)
-        height = self._normalize_positive_int(resolution.height, fallback_height)
+            raise ValidationFailure("Job parameter 'resolution' must include width and height values")
+        width = self._require_positive_int(resolution.width, "resolution.width")
+        height = self._require_positive_int(resolution.height, "resolution.height")
         return Resolution(width=width, height=height)
 
     def _slugify_component(self, value: str, fallback: str, *, length: int = 32) -> str:
@@ -1176,10 +1176,10 @@ class GPUAgent:
     ) -> Dict[str, object]:
         prompt = self._sanitize_text(job.parameters.prompt)
         negative = self._sanitize_text(job.parameters.negativePrompt)
-        steps = self._normalize_positive_int(job.parameters.steps, self._default_steps())
-        cfg_scale = self._normalize_cfg_scale(job.parameters.cfgScale)
+        steps = self._require_positive_int(job.parameters.steps, "steps")
+        cfg_scale = self._require_cfg_scale(job.parameters.cfgScale)
         seed = self._normalize_seed_value(job.parameters.seed)
-        resolution = self._normalize_resolution(job.parameters.resolution)
+        resolution = self._require_resolution(job.parameters.resolution)
 
         job.parameters.prompt = prompt
         job.parameters.negativePrompt = negative
@@ -1207,16 +1207,155 @@ class GPUAgent:
             context["loras_metadata"] = lora_metadata
         primary_lora_context = self._derive_primary_lora_context(loras, lora_metadata)
         context.update(primary_lora_context)
-        context.update(self.config.workflow_defaults)
-        sampler = str(context.get("sampler") or self.config.workflow_defaults.get("sampler") or "dpmpp_2m")
-        scheduler = str(context.get("scheduler") or self.config.workflow_defaults.get("scheduler") or "karras")
-        context["sampler"] = sampler
-        context["scheduler"] = scheduler
+        defaults = self.config.workflow_defaults or {}
+        for key, value in defaults.items():
+            if key in self._RESERVED_DEFAULT_KEYS:
+                continue
+            if key not in context and value is not None:
+                context[key] = value
         for key, value in extra_payload.items():
             if key in {"loras", "primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"}:
                 continue
+            if key in self._RESERVED_DEFAULT_KEYS and key not in {"sampler", "scheduler"}:
+                continue
             context[key] = value
+        self._validate_parameter_context(context)
         return {key: value for key, value in context.items() if value is not None}
+
+    def _validate_parameter_context(self, context: Dict[str, Any]) -> None:
+        errors: List[str] = []
+
+        for key in ("steps", "width", "height"):
+            normalized = self._coerce_positive_int(context.get(key))
+            if normalized is None:
+                errors.append(key)
+            else:
+                context[key] = normalized
+
+        cfg_value = self._as_float(context.get("cfg_scale"))
+        if cfg_value is None or cfg_value <= 0:
+            errors.append("cfg_scale")
+        else:
+            context["cfg_scale"] = round(cfg_value, 2)
+
+        for key in ("sampler", "scheduler"):
+            value = context.get(key)
+            if isinstance(value, str):
+                trimmed = value.strip()
+                if trimmed:
+                    context[key] = trimmed
+                    continue
+            errors.append(key)
+
+        if errors:
+            missing = ", ".join(sorted(errors))
+            raise ValidationFailure(
+                f"Missing or invalid required workflow parameters: {missing}"
+            )
+
+    def _values_match(self, expected: Any, actual: Any) -> bool:
+        if isinstance(expected, int):
+            numeric = self._as_float(actual)
+            if numeric is None:
+                return False
+            return abs(numeric - expected) < 0.5
+        if isinstance(expected, float):
+            numeric = self._as_float(actual)
+            if numeric is None:
+                return False
+            return abs(numeric - expected) <= 1e-3
+        if isinstance(expected, str):
+            actual_str = str(actual or "").strip()
+            return actual_str == expected.strip()
+        return actual == expected
+
+    def _resolve_workflow_value(
+        self,
+        workflow: Dict[str, Any],
+        node_id: int,
+        path: str,
+        parameter: str,
+    ) -> Any:
+        node = workflow.get(str(node_id))
+        if not isinstance(node, dict):
+            node = workflow.get(node_id)
+        if not isinstance(node, dict):
+            raise ValidationFailure(f"Workflow node {node_id} missing for parameter '{parameter}'")
+        target: Any = node
+        for part in path.split("."):
+            if isinstance(target, dict) and part in target:
+                target = target[part]
+            else:
+                raise ValidationFailure(
+                    f"Workflow node {node_id} missing path '{path}' for parameter '{parameter}'"
+                )
+        return target
+
+    def _validate_workflow_bindings(
+        self,
+        job: DispatchEnvelope,
+        workflow: Dict[str, Any],
+        resolved_params: Dict[str, Any],
+    ) -> None:
+        if not job.workflowParameters:
+            return
+
+        mismatches: List[str] = []
+        for binding in job.workflowParameters:
+            parameter = binding.parameter
+            if parameter not in resolved_params:
+                continue
+            try:
+                actual = self._resolve_workflow_value(
+                    workflow, binding.node, binding.path, parameter
+                )
+            except ValidationFailure as exc:
+                mismatches.append(str(exc))
+                continue
+            expected = resolved_params[parameter]
+            if not self._values_match(expected, actual):
+                mismatches.append(
+                    f"Parameter '{parameter}' resolved to {expected!r} but workflow has {actual!r} on node {binding.node} ({binding.path})"
+                )
+
+        if mismatches:
+            raise ValidationFailure("; ".join(mismatches))
+
+    def _validate_prompt_connections(self, workflow: Dict[str, Any]) -> None:
+        lookup: Dict[str, Dict[str, Any]] = {
+            str(node_id): node
+            for node_id, node in workflow.items()
+            if isinstance(node, dict)
+        }
+        issues: List[str] = []
+        for node_id, node in lookup.items():
+            class_type = str(node.get("class_type") or "").lower()
+            if class_type != "ksampler":
+                continue
+            inputs = node.get("inputs")
+            if not isinstance(inputs, dict):
+                issues.append(f"KSampler node {node_id} missing inputs map")
+                continue
+            for key in ("positive", "negative"):
+                ref = self._as_connection_ref(inputs.get(key))
+                if not ref:
+                    issues.append(f"KSampler node {node_id} missing '{key}' connection")
+                    continue
+                target_id, _ = ref
+                target = lookup.get(str(target_id))
+                if not isinstance(target, dict):
+                    issues.append(
+                        f"KSampler node {node_id} {key} input targets unknown node {target_id}"
+                    )
+                    continue
+                target_type = str(target.get("class_type") or "").lower()
+                if "cliptextencode" not in target_type:
+                    issues.append(
+                        f"KSampler node {node_id} {key} input targets non-CLIP node {target_id} ({target.get('class_type')})"
+                    )
+
+        if issues:
+            raise ValidationFailure("; ".join(issues))
 
     def _extract_lora_metadata(self, extra: Dict[str, Any]) -> List[Dict[str, Any]]:
         entries = extra.get("loras") if isinstance(extra, dict) else None
@@ -1869,17 +2008,19 @@ class GPUAgent:
                         return
                     await asyncio.sleep(backoff * attempt)
 
-    def _compute_timeout(self, job: DispatchEnvelope, workflow: Dict[str, Any]) -> float:
+    def _compute_timeout(
+        self,
+        job: DispatchEnvelope,
+        workflow: Dict[str, Any],
+        resolved_params: Dict[str, Any],
+    ) -> float:
         base_timeout = float(self.config.comfyui.timeout_seconds)
         per_step = float(self.config.comfyui.per_step_timeout_seconds)
-        steps = job.parameters.steps
-        if steps is None:
-            extra_steps = job.parameters.extra.get("steps") if job.parameters.extra else None
-            if isinstance(extra_steps, (int, float)):
-                steps = int(extra_steps)
-        if steps is None:
-            steps = int(self.config.workflow_defaults.get("steps", 30))
-        timeout = base_timeout + max(0, int(steps)) * per_step
+        steps_value = resolved_params.get("steps")
+        steps = steps_value if isinstance(steps_value, int) else None
+        if steps is None or steps <= 0:
+            raise ValidationFailure("Resolved workflow parameters must include a positive 'steps' value")
+        timeout = base_timeout + steps * per_step
         if self._workflow_has_low_denoise(workflow):
             timeout *= float(self.config.comfyui.img2img_timeout_multiplier)
         return timeout

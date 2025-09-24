@@ -19,8 +19,8 @@
         1
       ],
       "lora_name": "",
-      "strength_model": 0.75,
-      "strength_clip": 0.75
+      "strength_model": 0.0,
+      "strength_clip": 0.0
     }
   },
   "3": {
@@ -30,12 +30,12 @@
         "2",
         1
       ],
-      "width": 1024,
-      "height": 1024,
+      "width": 0,
+      "height": 0,
       "crop_w": 0,
       "crop_h": 0,
-      "target_width": 1024,
-      "target_height": 1024,
+      "target_width": 0,
+      "target_height": 0,
       "text_g": "",
       "text_l": ""
     }
@@ -47,12 +47,12 @@
         "2",
         1
       ],
-      "width": 1024,
-      "height": 1024,
+      "width": 0,
+      "height": 0,
       "crop_w": 0,
       "crop_h": 0,
-      "target_width": 1024,
-      "target_height": 1024,
+      "target_width": 0,
+      "target_height": 0,
       "text_g": "",
       "text_l": ""
     }
@@ -60,8 +60,8 @@
   "5": {
     "class_type": "EmptyLatentImage",
     "inputs": {
-      "width": 1024,
-      "height": 1024,
+      "width": 0,
+      "height": 0,
       "batch_size": 1
     }
   },
@@ -84,11 +84,11 @@
         "5",
         0
       ],
-      "seed": 123456789,
-      "steps": 28,
-      "cfg": 7.5,
-      "sampler_name": "dpmpp_2m_sde_gpu",
-      "scheduler": "karras",
+      "seed": 0,
+      "steps": 0,
+      "cfg": 0,
+      "sampler_name": "",
+      "scheduler": "",
       "denoise": 1.0
     }
   },

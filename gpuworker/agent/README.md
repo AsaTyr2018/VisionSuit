@@ -82,7 +82,7 @@ The script performs a `git pull` from the directory that originally cloned Visio
 - `persistent_model_keys` – Keys that should never be deleted after download (typically base checkpoints).
 - `cleanup.*` – Toggle removal of temporary LoRAs or ad-hoc models after each job.
 - `callbacks.*` – Optional `base_url` override plus TLS verification, timeout, and retry policy for VisionSIOt callback URLs.
-- `workflow_defaults` – Additional values injected into the workflow parameter context when building prompts.
+- `workflow_defaults` – Optional metadata appended to the workflow parameter context when a dispatch omits the value. Required sampling fields (`steps`, `cfg_scale`, `sampler`, `scheduler`, `width`, `height`, and `seed`) must come directly from the generator request and cannot be provided here.
 
 Set `callbacks.base_url` when the backend publishes relative callback paths or runs behind a reverse proxy so the agent rewrites those hooks to an externally reachable host instead of the default `http://127.0.0.1`. The override now applies even when VisionSuit supplies loopback-only absolute URLs, ensuring completion and failure events land on the control plane regardless of how the backend reports its callback endpoints.
 
@@ -122,8 +122,12 @@ The agent exposes lightweight HTTP endpoints:
     "negativePrompt": "lowres, blurry",
     "seed": 987654321,
     "cfgScale": 7.5,
-    "steps": 28,
-    "resolution": { "width": 832, "height": 1216 }
+    "steps": 80,
+    "resolution": { "width": 832, "height": 1216 },
+    "extra": {
+      "sampler": "dpmpp_2m_sde_gpu",
+      "scheduler": "karras"
+    }
   },
   "workflowParameters": [
     { "parameter": "base_model_path", "node": 1, "path": "inputs.ckpt_name" },
@@ -159,6 +163,8 @@ The agent exposes lightweight HTTP endpoints:
   }
 }
 ```
+
+The dispatch payload must carry the sampler, scheduler, steps, CFG scale, and dimensions shown above. The agent validates the resolved parameter context and the mutated workflow graph before submitting to ComfyUI, raising a validation error if any of those fields are missing or land on the wrong node.
 
 - `workflowOverrides` can be supplied to patch nodes directly if a value is not tied to a named parameter.
 - Provide `workflow.bucket` when the workflow JSON lives in a different MinIO bucket than the base model entry.

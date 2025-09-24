@@ -3,12 +3,13 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from gpuworker.agent.app.agent import GPUAgent, ResolvedAsset
+from gpuworker.agent.app.agent import GPUAgent, ResolvedAsset, ValidationFailure
 from gpuworker.agent.app.models import (
     AssetRef,
     DispatchEnvelope,
     JobParameters,
     OutputSpec,
+    Resolution,
     UserContext,
     WorkflowParameterBinding,
     WorkflowRef,
@@ -25,7 +26,7 @@ class ParameterContextTests(unittest.TestCase):
     def setUp(self) -> None:
         self.agent = GPUAgent.__new__(GPUAgent)
         self.agent.config = SimpleNamespace(
-            workflow_defaults={"sampler": "dpmpp_2m_sde_gpu", "scheduler": "karras"}
+            workflow_defaults={}
         )
         self.base_asset_ref = AssetRef(bucket="models", key="checkpoints/base.safetensors")
         self.base_resolved = ResolvedAsset(
@@ -66,7 +67,16 @@ class ParameterContextTests(unittest.TestCase):
         )
 
     def _build_job(self, extra: dict | None = None, loras: list[AssetRef] | None = None) -> DispatchEnvelope:
-        parameters = JobParameters(prompt="Test prompt", extra=extra or {})
+        payload_extra = {"sampler": "dpmpp_2m_sde_gpu", "scheduler": "karras"}
+        if extra:
+            payload_extra.update(extra)
+        parameters = JobParameters(
+            prompt="Test prompt",
+            steps=60,
+            cfgScale=7.5,
+            resolution=Resolution(width=1024, height=1024),
+            extra=payload_extra,
+        )
         return DispatchEnvelope(
             jobId="job-1",
             user=UserContext(id="user-1", username="tester"),
@@ -138,6 +148,54 @@ class ParameterContextTests(unittest.TestCase):
         self.assertEqual(context["primary_lora_strength_model"], 1.0)
         self.assertEqual(context["primary_lora_strength_clip"], 1.0)
         self.assertNotIn("loras_metadata", context)
+
+    def test_missing_sampler_raises_validation_failure(self) -> None:
+        job = self._build_job()
+        job.parameters.extra.pop("sampler", None)
+
+        with self.assertRaises(ValidationFailure):
+            self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
+
+    def test_missing_scheduler_raises_validation_failure(self) -> None:
+        job = self._build_job()
+        job.parameters.extra.pop("scheduler", None)
+
+        with self.assertRaises(ValidationFailure):
+            self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
+
+    def test_workflow_defaults_do_not_override_resolved_values(self) -> None:
+        original_defaults = dict(self.agent.config.workflow_defaults)
+        try:
+            self.agent.config.workflow_defaults = {
+                "steps": 30,
+                "cfg_scale": 4.5,
+                "primary_lora_name": "default-lora.safetensors",
+                "primary_lora_strength_model": 0.25,
+                "primary_lora_strength_clip": 0.25,
+                "prompt": "Default prompt",
+                "negative_prompt": "default negative",
+                "sampler": "heun",
+                "scheduler": "exponential",
+            }
+
+            job = self._build_job()
+            job.parameters.steps = 80
+            job.parameters.cfgScale = 9.5
+            job.parameters.negativePrompt = "shallow depth of field"
+
+            context = self.agent._build_parameter_context(job, self.base_resolved, [self.lora_resolved])
+
+            self.assertEqual(context["steps"], 80)
+            self.assertEqual(context["cfg_scale"], 9.5)
+            self.assertEqual(context["prompt"], "Test prompt")
+            self.assertEqual(context["negative_prompt"], "shallow depth of field")
+            self.assertEqual(context["primary_lora_name"], "my-lora.safetensors")
+            self.assertEqual(context["primary_lora_strength_model"], 1.0)
+            self.assertEqual(context["primary_lora_strength_clip"], 1.0)
+            self.assertEqual(context["sampler"], "dpmpp_2m_sde_gpu")
+            self.assertEqual(context["scheduler"], "karras")
+        finally:
+            self.agent.config.workflow_defaults = original_defaults
 
     def test_apply_lora_chain_without_loras_removes_loader(self) -> None:
         job = self._build_job(loras=[])
