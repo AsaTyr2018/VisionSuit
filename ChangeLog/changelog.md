@@ -998,3 +998,8 @@
 - **General**: Guaranteed the GPU agent always presents the manifest-named primary LoRA to ComfyUI, even when repeated jobs reuse the same filename.
 - **Technical Changes**: Added a cache-rename stage for the primary adapter, taught non-symlink materialization and symlink creation to overwrite existing files when the manifest demands a specific name, and covered the new behaviour with unit tests plus README guidance.
 - **Data Changes**: None; only temporary cache filenames and symlinks change.
+
+## 188 – [Fix] Direct LoRA staging for ComfyUI
+- **General**: Ensured dispatched LoRAs appear where ComfyUI expects them by delivering downloads straight into the configured `models/loras` directory instead of a hidden cache folder.
+- **Technical Changes**: Pointed the GPU agent's LoRA materialisation flow at the primary directory, migrated any legacy `cache/` contents on the fly, refreshed the supporting unit tests, and updated the agent README to describe the direct staging behaviour.
+- **Data Changes**: None.
