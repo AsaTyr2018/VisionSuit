@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Fix] Automated Node.js provisioning (commit TBD)
+- **Type**: Normal Change
+- **Reason**: The installer aborted on fresh systems without Node.js even though the setup flow is expected to prepare every prerequisite automatically.
+- **Changes**: Added an `ensure_node_and_npm` helper that provisions Node.js 18 LTS via NodeSource on Debian/Ubuntu or Homebrew on macOS, updated the README prerequisites, and confirmed npm availability before continuing.
+
 ## 033 – [Addition] Adult prompt keyword safety
 - **General**: Introduced configurable prompt keywords so adult detection inspects metadata instead of relying on user-assigned tags.
 - **Technical Changes**: Added the `AdultSafetyKeyword` Prisma model and migration, exposed keyword CRUD endpoints with updated backend detection logic, refreshed the admin safety panel UI plus API client and styles for keyword management, and documented the workflow in the README.

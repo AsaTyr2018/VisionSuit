@@ -67,7 +67,7 @@ For real-time assistance, join the [VisionSuit Support Discord](https://discord.
 
 Ensure the following tools are available on the target host:
 
-- Node.js 22 LTS (includes npm)
+- Node.js 22 LTS (includes npm). The installer offers to provision Node.js 18 LTS automatically when it detects `apt-get` or Homebrew.
 - Python 3 (utility scripts used by the installer)
 - Docker Engine with a running daemon
 - Docker Compose plugin or the legacy `docker-compose` binary

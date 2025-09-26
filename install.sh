@@ -512,8 +512,69 @@ create_env_if_missing() {
   fi
 }
 
-require_command node
-require_command npm
+ensure_node_and_npm() {
+  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+    return
+  fi
+
+  info "Node.js (including npm) is required for the installation."
+
+  local installer=""
+  if command -v apt-get >/dev/null 2>&1; then
+    installer="apt"
+  elif command -v brew >/dev/null 2>&1; then
+    installer="brew"
+  fi
+
+  if [ -z "$installer" ]; then
+    echo "Fehler: Node.js ist nicht installiert und das Skript kann es auf diesem System nicht automatisch bereitstellen." >&2
+    echo "Bitte installiere Node.js 18+ (inklusive npm) und starte das Skript erneut." >&2
+    exit 1
+  fi
+
+  if [ "$installer" = "apt" ]; then
+    if ! confirm "Node.js fehlt. Soll Node.js 18 LTS jetzt über NodeSource installiert werden?"; then
+      echo "Installation abgebrochen, da Node.js benötigt wird." >&2
+      exit 1
+    fi
+
+    local sudo_cmd=""
+    if [ "$(id -u)" -ne 0 ]; then
+      if command -v sudo >/dev/null 2>&1; then
+        sudo_cmd="sudo"
+      else
+        echo "Fehler: Für die Installation von Node.js werden Root-Rechte oder sudo benötigt." >&2
+        exit 1
+      fi
+    fi
+
+    info "Installing Node.js 18 LTS via NodeSource"
+    $sudo_cmd apt-get update
+    $sudo_cmd apt-get install -y ca-certificates curl gnupg
+    $sudo_cmd mkdir -p /etc/apt/keyrings
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | $sudo_cmd tee /etc/apt/keyrings/nodesource.gpg >/dev/null
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | $sudo_cmd tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+    $sudo_cmd apt-get update
+    $sudo_cmd apt-get install -y nodejs
+  elif [ "$installer" = "brew" ]; then
+    if ! confirm "Node.js fehlt. Soll Node.js jetzt über Homebrew installiert werden?"; then
+      echo "Installation abgebrochen, da Node.js benötigt wird." >&2
+      exit 1
+    fi
+
+    info "Installing Node.js via Homebrew"
+    brew install node
+  fi
+
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "Fehler: Die automatische Installation von Node.js ist fehlgeschlagen." >&2
+    exit 1
+  fi
+
+  success "Node.js $(node --version) und npm $(npm --version) bereitgestellt."
+}
+
+ensure_node_and_npm
 require_command python3
 ensure_docker_requirements
 
