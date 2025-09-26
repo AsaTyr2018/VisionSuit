@@ -221,7 +221,7 @@ The script authenticates with `POST /api/auth/login`, seeds the gallery by uploa
 
 ### Windows (PowerShell)
 
-1. Edit `ServerBaseUrl` and `ServerUsername` at the top of `scripts/bulk_import_windows.ps1` (or pass overrides via parameters). The base URL must point directly at your VisionSuit deployment; the script never rewrites it to localhost.
+1. Edit `ServerBaseUrl` and `ServerUsername` at the top of `scripts/bulk_import_windows.ps1` (or pass overrides via parameters). The base URL must point directly at your VisionSuit deployment; the script never rewrites it to localhost, but it now normalizes duplicate `/api` segments so you can paste either the site root or the API endpoint without breaking health checks.
 2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. Enter the administrator password when prompted or expose it via `VISIONSUIT_PASSWORD`. On startup the helper calls `/api/meta/status` to verify that the public VisionSuit services, MinIO backend, and GPU agent are reachable before any files leave the machine.
 3. Run the importer with optional overrides for the source folders:
 

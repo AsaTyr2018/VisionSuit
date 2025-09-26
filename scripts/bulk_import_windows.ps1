@@ -96,8 +96,54 @@ function Get-MimeType {
 
 function ConvertTo-AbsoluteUri {
   param([Uri]$BaseUri, [string]$RelativePath)
-  $trimmed = $RelativePath.TrimStart('/')
-  return [Uri]::new($BaseUri, $trimmed)
+
+  if ([string]::IsNullOrWhiteSpace($RelativePath)) {
+    return $BaseUri
+  }
+
+  $absolute = $null
+  if ([Uri]::TryCreate($RelativePath, [System.UriKind]::Absolute, [ref]$absolute)) {
+    return $absolute
+  }
+
+  $builder = [System.UriBuilder]::new($BaseUri)
+
+  $baseSegments = @()
+  if ($builder.Path -and $builder.Path -ne '/') {
+    $baseSegments = $builder.Path.Trim('/') -split '/', [System.StringSplitOptions]::RemoveEmptyEntries
+  }
+
+  $relativeSegments = $RelativePath.Trim('/') -split '/', [System.StringSplitOptions]::RemoveEmptyEntries
+
+  if ($baseSegments.Length -gt 0 -and $relativeSegments.Length -gt 0) {
+    $lastBase = $baseSegments[$baseSegments.Length - 1]
+    $firstRelative = $relativeSegments[0]
+    if ($lastBase.Equals($firstRelative, [System.StringComparison]::OrdinalIgnoreCase)) {
+      if ($relativeSegments.Length -gt 1) {
+        $relativeSegments = $relativeSegments[1..($relativeSegments.Length - 1)]
+      }
+      else {
+        $relativeSegments = @()
+      }
+    }
+  }
+
+  $allSegments = New-Object System.Collections.Generic.List[string]
+  foreach ($segment in $baseSegments) {
+    if ($segment) { [void]$allSegments.Add($segment) }
+  }
+  foreach ($segment in $relativeSegments) {
+    if ($segment) { [void]$allSegments.Add($segment) }
+  }
+
+  if ($allSegments.Count -eq 0) {
+    $builder.Path = '/'
+  }
+  else {
+    $builder.Path = '/' + ($allSegments -join '/')
+  }
+
+  return $builder.Uri
 }
 
 function Read-MetadataFile {

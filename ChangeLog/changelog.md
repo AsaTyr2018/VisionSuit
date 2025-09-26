@@ -1112,3 +1112,8 @@
 - **Type**: Normal Change
 - **Reason**: The Windows bulk uploader occasionally skipped gallery images and kept processing additional models even when the API never exposed the freshly uploaded asset, leaving curators with partial collections.
 - **Changes**: Sorted LoRA inputs for deterministic processing, added cache-busting verification polls, introduced retry logic with exponential backoff for model and gallery batch uploads, upgraded the safeguard to abort the entire run after any verification failure, hardened the HTTP client against caching, and refreshed the README reliability note with the new behaviour.
+
+## 207 – [Fix] Windows bulk importer health check normalization
+- **Type**: Normal Change
+- **Reason**: The Windows bulk uploader aborted before authenticating when `ServerBaseUrl` already ended in `/api`, doubling the VisionSuit routes during the `/api/meta/status` probe and returning HTTP 404 even though the server was healthy.
+- **Changes**: Taught `ConvertTo-AbsoluteUri` in `scripts/bulk_import_windows.ps1` to deduplicate overlapping path segments and adjusted the README so administrators know they can paste either the site root or API endpoint without tripping the health check.
