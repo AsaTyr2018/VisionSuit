@@ -530,7 +530,7 @@ try {
 
   $uploadUri = ConvertTo-AbsoluteUri -BaseUri $baseUri -RelativePath '/api/uploads'
 
-  $loraFiles = Get-ChildItem -LiteralPath $lorasRoot -Filter '*.safetensors' -Recurse -File | Sort-Object FullName
+  $loraFiles = @(Get-ChildItem -LiteralPath $lorasRoot -Filter '*.safetensors' -Recurse -File | Sort-Object FullName)
   if ($loraFiles.Count -eq 0) {
     Write-Log "No LoRA safetensors found beneath '$lorasRoot'."
     return
@@ -549,9 +549,9 @@ try {
     }
 
     $allowedExtensions = @('.png', '.jpg', '.jpeg', '.webp', '.bmp')
-    $images = Get-ChildItem -LiteralPath $imageFolder -File | Where-Object {
+    $images = @(Get-ChildItem -LiteralPath $imageFolder -File | Where-Object {
       $allowedExtensions -contains ([System.IO.Path]::GetExtension($_.Name).ToLowerInvariant())
-    } | Sort-Object Name
+    } | Sort-Object Name)
     if ($images.Count -eq 0) {
       Write-Log "Skipping '$baseName' because no preview-ready images were found."
       $skipped++
@@ -559,7 +559,7 @@ try {
     }
 
     $preview = Get-Random -InputObject $images
-    $otherImages = $images | Where-Object { $_.FullName -ne $preview.FullName }
+    $otherImages = @($images | Where-Object { $_.FullName -ne $preview.FullName })
 
     $candidateMetadata = @(
       (Join-Path -Path $lora.DirectoryName -ChildPath "$baseName.json")
