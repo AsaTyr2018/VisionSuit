@@ -523,22 +523,35 @@ PY
     continue
   fi
 
-  gallery_slug=$(python3 <<'PY' "$response_file"
+  parsed_slugs=$(python3 <<'PY' "$response_file"
 import json
 import sys
 
 with open(sys.argv[1], 'r', encoding='utf-8') as fh:
     data = json.load(fh)
 
-slug = data.get('gallerySlug')
-print(slug or '')
+asset_slug = data.get('assetSlug') or ''
+gallery_slug = data.get('gallerySlug') or ''
+
+print(asset_slug)
+print(gallery_slug)
 PY
 ) || {
-    log "Upload succeeded for '$title' but gallery slug could not be parsed."
+    log "Upload succeeded for '$title' but response parsing failed."
     skip_count=$((skip_count + 1))
     rm -f "$response_file"
     continue
   }
+
+  asset_slug=$(printf '%s\n' "$parsed_slugs" | sed -n '1p')
+  gallery_slug=$(printf '%s\n' "$parsed_slugs" | sed -n '2p')
+
+  if [ -z "$asset_slug" ]; then
+    log "Upload succeeded for '$title' but no asset slug was returned."
+    skip_count=$((skip_count + 1))
+    rm -f "$response_file"
+    continue
+  fi
 
   if [ -z "$gallery_slug" ]; then
     log "Upload succeeded for '$title' but gallery information was missing."
@@ -547,7 +560,7 @@ PY
     continue
   fi
 
-  log "Model upload complete for '$title' (source '$base_name'). Gallery slug: $gallery_slug."
+  log "Model upload complete for '$title' (source '$base_name'). Asset slug: $asset_slug. Gallery slug: $gallery_slug."
   rm -f "$response_file"
 
   total_images=${#other_images[@]}

@@ -786,12 +786,12 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
     }
   }
 
-  if ($otherImages.Count -eq 0) {
-    if (-not (Test-ModelAssetPresence -HttpClient $httpClient -ApiBase $apiBase -AssetSlug $assetSlug -Title $profile.Title)) {
-      $skipCount++
-      return
-    }
+  if (-not (Test-ModelAssetPresence -HttpClient $httpClient -ApiBase $apiBase -AssetSlug $assetSlug -Title $profile.Title)) {
+    $skipCount++
+    return
+  }
 
+  if ($otherImages.Count -eq 0) {
     $galleryCheck = Test-GalleryPresence -HttpClient $httpClient -ApiBase $apiBase -GallerySlug $gallerySlug -AssetSlug $assetSlug -ExpectedImageIds @() -Title $profile.Title
     if (-not $galleryCheck.Success) {
       $skipCount++
