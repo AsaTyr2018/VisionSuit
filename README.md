@@ -221,19 +221,15 @@ The script authenticates with `POST /api/auth/login`, seeds the gallery by uploa
 
 ### Windows (PowerShell)
 
-1. Edit `$ServerIp`, `$ServerUsername`, and `$ServerPort` at the head of `scripts/bulk_import_windows.ps1`.
-2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. The helper auto-loads the required `System.Net.Http` types so legacy shells work without manual assembly tweaks. Enter your VisionSuit administrator password when prompted or expose it via `VISIONSUIT_PASSWORD`.
+1. Edit `ServerBaseUrl` and `ServerUsername` at the top of `scripts/bulk_import_windows.ps1` (or pass overrides via parameters). The base URL must point directly at your VisionSuit deployment; the script never rewrites it to localhost.
+2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. Enter the administrator password when prompted or expose it via `VISIONSUIT_PASSWORD`. On startup the helper calls `/api/meta/status` to verify that the public VisionSuit services, MinIO backend, and GPU agent are reachable before any files leave the machine.
 3. Run the importer with optional overrides for the source folders:
 
    ```powershell
    pwsh -File .\scripts\bulk_import_windows.ps1 -LorasDirectory .\loras -ImagesDirectory .\images
    ```
 
-The PowerShell helper mirrors the Linux workflow: it authenticates, verifies admin privileges, stages the LoRA with a random preview, and then fans out the remaining renders in twelve-file batches until the entire collection has been imported.
-
-> Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
-
-> Reliability check: Both helpers validate the VisionSuit response before continuing. The Linux/macOS script requires the API to return an asset slug and gallery slug before it uploads follow-up renders, while the Windows helper now sorts every LoRA, retries model and gallery batch uploads with exponential backoff, bypasses HTTP caches when polling, and aborts the entire run the moment verification fails so missed models or renders are never overlooked. The API disables HTTP caching for authenticated `/api` traffic so freshly uploaded assets surface immediately even on clean servers; if either script cannot confirm the expected identifiers it stops instead of silently continuing.
+The PowerShell helper mirrors the Linux workflow: it authenticates, verifies admin privileges, stages the LoRA with a random preview, and then fans out the remaining renders in twelve-file batches until the entire collection has been imported. Health status and upload responses are validated on every step, so the run halts immediately if VisionSuit stops returning the expected asset and gallery identifiers.
 
 #### Metadata overrides and defaults
 

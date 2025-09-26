@@ -1,42 +1,327 @@
 #!/usr/bin/env pwsh
-<#!
+<#
 .SYNOPSIS
   VisionSuit bulk import helper for Windows clients.
 .DESCRIPTION
-  Uploads LoRA safetensors and matching preview images to the VisionSuit API.
-  Configure the connection variables below before running the script.
+  Securely uploads LoRA safetensors and gallery images to the VisionSuit API using
+  the same workflow as the admin upload wizard. The script authenticates against
+  the configured VisionSuit instance, verifies service health via /api/meta/status,
+  and then processes every LoRA file found in the supplied directory tree. For
+  each LoRA the script uploads the model file plus one random preview image
+  together, followed by batched uploads of the remaining gallery images.
+
+  The directory layout mirrors the Linux helper:
+    ./loras/<lora-name>.safetensors
+    ./images/<lora-name>/*.png
+
+  Optional metadata overrides can live next to the safetensors file
+  (<lora-name>.json), in the root LoRA directory, or inside the image folder as
+  metadata.json. Defaults can also be supplied via VISIONSUIT_* environment
+  variables (see parameters below).
 #>
 
+[CmdletBinding()]
 param(
-  [string]$ServerIp = "192.168.1.10",
+  [Parameter()]
+  [ValidateNotNullOrEmpty()]
+  [string]$ServerBaseUrl = "https://visionsuit.local",
+
+  [Parameter()]
+  [ValidateNotNullOrEmpty()]
   [string]$ServerUsername = "admin@example.com",
-  [int]$ServerPort = 4000,
+
+  [Parameter()]
+  [ValidateNotNullOrEmpty()]
   [string]$LorasDirectory = "./loras",
+
+  [Parameter()]
+  [ValidateNotNullOrEmpty()]
   [string]$ImagesDirectory = "./images",
+
+  [Parameter()]
   [string]$DefaultVisibility,
+
+  [Parameter()]
   [string]$DefaultGalleryMode,
+
+  [Parameter()]
   [string]$DefaultCategory,
+
+  [Parameter()]
   [string]$DefaultDescription,
+
+  [Parameter()]
   [string[]]$DefaultTags = @(),
+
+  [Parameter()]
   [string]$DefaultTargetGallery,
-  [string]$DefaultTrigger
+
+  [Parameter()]
+  [string]$DefaultTrigger,
+
+  [Parameter()]
+  [int]$ImageBatchSize = 12
 )
 
-$script:ImportFatalError = $false
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Write-Log {
+  param([string]$Message)
+  $timestamp = (Get-Date).ToUniversalTime().ToString('s') + 'Z'
+  Write-Host "[$timestamp] $Message"
+}
+
+function Resolve-ExistingDirectory {
+  param([string]$Path, [string]$Description)
+  $resolved = Resolve-Path -Path $Path -ErrorAction Stop
+  if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
+    throw "${Description} directory '${Path}' was not found."
+  }
+  return $resolved.ProviderPath
+}
+
+function Get-MimeType {
+  param([string]$Path)
+  switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
+    '.png' { return 'image/png' }
+    '.jpg' { return 'image/jpeg' }
+    '.jpeg' { return 'image/jpeg' }
+    '.webp' { return 'image/webp' }
+    '.bmp' { return 'image/bmp' }
+    '.gif' { return 'image/gif' }
+    default { return 'application/octet-stream' }
+  }
+}
+
+function ConvertTo-AbsoluteUri {
+  param([Uri]$BaseUri, [string]$RelativePath)
+  $trimmed = $RelativePath.TrimStart('/')
+  return [Uri]::new($BaseUri, $trimmed)
+}
+
+function Read-MetadataFile {
+  param([string]$Path)
+  try {
+    $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+    if (-not $raw) {
+      return @{}
+    }
+    $json = $raw | ConvertFrom-Json -ErrorAction Stop
+    if ($json -is [System.Collections.IDictionary]) {
+      return @{} + $json
+    }
+    Write-Log "Metadata file '$Path' must contain a JSON object. Skipping overrides."
+    return @{}
+  }
+  catch {
+    Write-Log "Metadata file '$Path' is not valid JSON: $($_.Exception.Message)."
+    return $null
+  }
+}
+
+function Normalize-String {
+  param($Value)
+  if ($null -eq $Value) {
+    return ''
+  }
+  if ($Value -is [string]) {
+    return $Value.Trim()
+  }
+  return ($Value.ToString()).Trim()
+}
+
+function Normalize-Visibility {
+  param([string]$Visibility, [System.Collections.Generic.List[string]]$Warnings)
+  $normalized = (Normalize-String -Value $Visibility).ToLowerInvariant()
+  if (-not $normalized) {
+    $normalized = 'private'
+  }
+  if ($normalized -ne 'public' -and $normalized -ne 'private') {
+    $Warnings.Add("Visibility '$Visibility' is not supported; falling back to 'private'.")
+    return 'private'
+  }
+  return $normalized
+}
+
+function Normalize-GalleryMode {
+  param([string]$Mode, [string]$Fallback, [System.Collections.Generic.List[string]]$Warnings)
+  $normalized = (Normalize-String -Value $Mode).ToLowerInvariant()
+  if (-not $normalized) {
+    $normalized = $Fallback
+  }
+  if ($normalized -ne 'new' -and $normalized -ne 'existing') {
+    $Warnings.Add("Gallery mode '$Mode' is not supported; falling back to '$Fallback'.")
+    return $Fallback
+  }
+  return $normalized
+}
+
+function Collect-Tags {
+  param(
+    [string[]]$DefaultTags,
+    $MetadataValue
+  )
+  $collected = New-Object System.Collections.Generic.List[string]
+  foreach ($entry in ($DefaultTags | Where-Object { $_ })) {
+    $collected.Add(($entry.ToString()).Trim())
+  }
+  function Append-FromMetadata {
+    param($Value)
+    if ($null -eq $Value) { return }
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+      foreach ($item in $Value) {
+        Append-FromMetadata -Value $item
+      }
+      return
+    }
+    $text = Normalize-String -Value $Value
+    if (-not $text) { return }
+    if ($text.Contains(',')) {
+      foreach ($segment in $text.Split(',', [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        Append-FromMetadata -Value $segment
+      }
+      return
+    }
+    $collected.Add($text)
+  }
+  Append-FromMetadata -Value $MetadataValue
+
+  $seen = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
+  $result = New-Object System.Collections.Generic.List[string]
+  foreach ($entry in $collected) {
+    $trimmed = ($entry ?? '').Trim()
+    if (-not $trimmed) { continue }
+    if ($seen.Add($trimmed)) {
+      $result.Add($trimmed)
+    }
+  }
+  return $result.ToArray()
+}
+
+function Build-UploadProfile {
+  param(
+    [string]$BaseName,
+    [string]$DefaultVisibility,
+    [string]$DefaultGalleryMode,
+    [string]$DefaultTargetGallery,
+    [string]$DefaultDescription,
+    [string]$DefaultCategory,
+    [string]$DefaultTrigger,
+    [string[]]$DefaultTags,
+    [string]$MetadataPath
+  )
+
+  $metadata = @{}
+  if ($MetadataPath) {
+    $loaded = Read-MetadataFile -Path $MetadataPath
+    if ($null -eq $loaded) {
+      return $null
+    }
+    $metadata = $loaded
+  }
+
+  $warnings = New-Object System.Collections.Generic.List[string]
+
+  $title = Normalize-String -Value ($metadata.title)
+  if (-not $title) { $title = $BaseName }
+
+  $description = Normalize-String -Value ($metadata.description)
+  if (-not $description) { $description = Normalize-String -Value $DefaultDescription }
+
+  $visibilitySource = Normalize-String -Value ($metadata.visibility)
+  if (-not $visibilitySource) { $visibilitySource = Normalize-String -Value $DefaultVisibility }
+  $visibility = Normalize-Visibility -Visibility $visibilitySource -Warnings $warnings
+
+  $fallbackGalleryMode = 'new'
+  if ($DefaultGalleryMode) {
+    $fallbackGalleryMode = (Normalize-String -Value $DefaultGalleryMode).ToLowerInvariant()
+    if ($fallbackGalleryMode -ne 'new' -and $fallbackGalleryMode -ne 'existing') {
+      $fallbackGalleryMode = 'new'
+    }
+  }
+  $galleryModeSource = Normalize-String -Value ($metadata.galleryMode)
+  if (-not $galleryModeSource) { $galleryModeSource = $fallbackGalleryMode }
+  $galleryMode = Normalize-GalleryMode -Mode $galleryModeSource -Fallback $fallbackGalleryMode -Warnings $warnings
+
+  $category = Normalize-String -Value ($metadata.category)
+  if (-not $category) { $category = Normalize-String -Value $DefaultCategory }
+
+  $trigger = Normalize-String -Value ($metadata.trigger)
+  if (-not $trigger) { $trigger = Normalize-String -Value $DefaultTrigger }
+  if (-not $trigger) { $trigger = $BaseName }
+
+  $targetGalleryRaw = Normalize-String -Value ($metadata.targetGallery)
+  if (-not $targetGalleryRaw) { $targetGalleryRaw = Normalize-String -Value $DefaultTargetGallery }
+  if ($targetGalleryRaw -and $targetGalleryRaw.Contains('{title}')) {
+    $targetGalleryRaw = $targetGalleryRaw.Replace('{title}', $title)
+  }
+
+  if ($galleryMode -eq 'new') {
+    if (-not $targetGalleryRaw) {
+      $targetGalleryRaw = "$title Collection"
+    }
+  } elseif (-not $targetGalleryRaw) {
+    $warnings.Add("Gallery mode is 'existing' but no targetGallery was provided.")
+  }
+
+  $tags = Collect-Tags -DefaultTags $DefaultTags -MetadataValue $metadata.tags
+
+  return [pscustomobject]@{
+    Title = $title
+    Description = $description
+    Visibility = $visibility
+    GalleryMode = $galleryMode
+    TargetGallery = $targetGalleryRaw
+    Trigger = $trigger
+    Category = $category
+    Tags = $tags
+    MetadataPath = $MetadataPath
+    Warnings = $warnings
+  }
+}
+
+function New-MultipartForm {
+  param(
+    [hashtable]$Fields,
+    [System.Collections.Generic.List[object]]$FileParts
+  )
+
+  $content = [System.Net.Http.MultipartFormDataContent]::new()
+  $streams = New-Object System.Collections.Generic.List[System.IDisposable]
+
+  foreach ($key in $Fields.Keys) {
+    $value = $Fields[$key]
+    if ($null -eq $value -or $value -eq '') { continue }
+    $stringContent = [System.Net.Http.StringContent]::new($value, [System.Text.Encoding]::UTF8)
+    $content.Add($stringContent, $key)
+  }
+
+  foreach ($filePart in $FileParts) {
+    $stream = [System.IO.File]::OpenRead($filePart.Path)
+    $streams.Add($stream)
+    $streamContent = [System.Net.Http.StreamContent]::new($stream)
+    if ($filePart.MimeType) {
+      $streamContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($filePart.MimeType)
+    }
+    $content.Add($streamContent, 'files', [System.IO.Path]::GetFileName($filePart.Path))
+  }
+
+  return [pscustomobject]@{
+    Content = $content
+    Disposables = $streams
+  }
+}
 
 if (-not $PSBoundParameters.ContainsKey('DefaultVisibility') -and $env:VISIONSUIT_VISIBILITY) {
   $DefaultVisibility = $env:VISIONSUIT_VISIBILITY
 }
-if (-not $DefaultVisibility) {
-  $DefaultVisibility = 'private'
-}
+if (-not $DefaultVisibility) { $DefaultVisibility = 'private' }
 
 if (-not $PSBoundParameters.ContainsKey('DefaultGalleryMode') -and $env:VISIONSUIT_GALLERY_MODE) {
   $DefaultGalleryMode = $env:VISIONSUIT_GALLERY_MODE
 }
-if (-not $DefaultGalleryMode) {
-  $DefaultGalleryMode = 'new'
-}
+if (-not $DefaultGalleryMode) { $DefaultGalleryMode = 'new' }
 
 if (-not $PSBoundParameters.ContainsKey('DefaultCategory') -and $env:VISIONSUIT_CATEGORY) {
   $DefaultCategory = $env:VISIONSUIT_CATEGORY
@@ -47,11 +332,9 @@ if (-not $PSBoundParameters.ContainsKey('DefaultDescription') -and $env:VISIONSU
 }
 
 if (-not $PSBoundParameters.ContainsKey('DefaultTags') -and $env:VISIONSUIT_TAGS) {
-  $DefaultTags = $env:VISIONSUIT_TAGS -split ','
-}
-
-if ($DefaultTags) {
-  $DefaultTags = $DefaultTags | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+  $DefaultTags = @(
+    ($env:VISIONSUIT_TAGS -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+  )
 }
 
 if (-not $PSBoundParameters.ContainsKey('DefaultTargetGallery') -and $env:VISIONSUIT_TARGET_GALLERY) {
@@ -62,1040 +345,291 @@ if (-not $PSBoundParameters.ContainsKey('DefaultTrigger') -and $env:VISIONSUIT_T
   $DefaultTrigger = $env:VISIONSUIT_TRIGGER
 }
 
-function Write-Log {
-  param([string]$Message)
-  $timestamp = (Get-Date).ToUniversalTime().ToString("s") + "Z"
-  Write-Host "[$timestamp] $Message"
-}
-
-function Get-PlainPassword {
-  param(
-    [string]$Prompt
-  )
-
-  if ($env:VISIONSUIT_PASSWORD) {
-    return $env:VISIONSUIT_PASSWORD
-  }
-
-  $secure = Read-Host -Prompt $Prompt -AsSecureString
-  if (-not $secure) {
-    return $null
-  }
-
-  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-  try {
-    return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-  }
-  finally {
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
-  }
-}
-
-function Get-MimeType {
-  param([string]$Path)
-
-  switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
-    '.png' { return 'image/png' }
-    '.jpg' { return 'image/jpeg' }
-    '.jpeg' { return 'image/jpeg' }
-    '.webp' { return 'image/webp' }
-    '.bmp' { return 'image/bmp' }
-    default { return 'application/octet-stream' }
-  }
-}
-
-function Get-CacheBypassUri {
-  param([string]$Uri)
-
-  if ([string]::IsNullOrWhiteSpace($Uri)) {
-    return $Uri
-  }
-
-  try {
-    $builder = [System.UriBuilder]::new($Uri)
-  }
-  catch {
-    return $Uri
-  }
-
-  $nonce = [Guid]::NewGuid().ToString('N')
-  $existingQuery = $builder.Query
-  if ([string]::IsNullOrWhiteSpace($existingQuery)) {
-    $builder.Query = "nocache=$nonce"
-  }
-  else {
-    $trimmed = $existingQuery.TrimStart('?')
-    if ([string]::IsNullOrWhiteSpace($trimmed)) {
-      $builder.Query = "nocache=$nonce"
-    }
-    else {
-      $builder.Query = "$trimmed&nocache=$nonce"
-    }
-  }
-
-  return $builder.Uri.AbsoluteUri
-}
-
-function Invoke-FreshGet {
-  param(
-    [System.Net.Http.HttpClient]$HttpClient,
-    [string]$Uri
-  )
-
-  $request = $null
-
-  try {
-    $noCacheUri = Get-CacheBypassUri -Uri $Uri
-    $request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::Get, $noCacheUri)
-
-    if ($request.Headers.CacheControl -eq $null) {
-      $request.Headers.CacheControl = New-Object System.Net.Http.Headers.CacheControlHeaderValue
-    }
-
-    $request.Headers.CacheControl.NoCache = $true
-    $request.Headers.CacheControl.NoStore = $true
-    $request.Headers.Pragma.Clear()
-    $request.Headers.Pragma.Add([System.Net.Http.Headers.NameValueHeaderValue]::new('no-cache'))
-    $request.Headers.TryAddWithoutValidation('Cache-Control', 'no-cache, no-store, must-revalidate') | Out-Null
-    $request.Headers.TryAddWithoutValidation('Pragma', 'no-cache') | Out-Null
-    $request.Headers.TryAddWithoutValidation('Expires', '0') | Out-Null
-    $request.Headers.IfModifiedSince = [Nullable[DateTimeOffset]]::new([DateTimeOffset]::FromUnixTimeSeconds(0))
-
-    return $HttpClient.SendAsync($request).GetAwaiter().GetResult()
-  }
-  finally {
-    if ($request) {
-      $request.Dispose()
-    }
-  }
-}
-
-function Set-ImportFatalError {
-  param([string]$Message)
-
-  if ($Message) {
-    Write-Log $Message
-  }
-
-  $script:ImportFatalError = $true
-}
-
-function Resolve-ImageFolder {
-  param(
-    [string]$BaseName,
-    [string]$ImagesRoot,
-    [string]$LoraDirectory
-  )
-
-  $candidates = @()
-
-  if ($ImagesRoot) {
-    $candidates += (Join-Path -Path $ImagesRoot -ChildPath $BaseName)
-  }
-
-  if ($LoraDirectory) {
-    $candidates += (Join-Path -Path $LoraDirectory -ChildPath $BaseName)
-  }
-
-  foreach ($candidate in ($candidates | Select-Object -Unique)) {
-    if (Test-Path -Path $candidate -PathType Container) {
-      return $candidate
-    }
-  }
-
-  return $null
-}
-
-function Get-BulkUploadProfile {
-  param(
-    [string]$BaseName,
-    [string]$MetadataFile,
-    [string]$DefaultVisibility,
-    [string]$DefaultGalleryMode,
-    [string]$DefaultTargetGallery,
-    [string]$DefaultDescription,
-    [string]$DefaultCategory,
-    [string]$DefaultTrigger,
-    [string[]]$DefaultTags
-  )
-
-  $metadata = @{}
-  $metadataPath = $null
-
-  if ($MetadataFile -and (Test-Path -Path $MetadataFile -PathType Leaf)) {
-    try {
-      $content = Get-Content -Path $MetadataFile -Raw -Encoding UTF8
-      if ($content.Trim().Length -gt 0) {
-        $metadata = $content | ConvertFrom-Json -ErrorAction Stop
-      }
-      else {
-        $metadata = @{}
-      }
-      $metadataPath = (Resolve-Path -Path $MetadataFile -ErrorAction Stop).ProviderPath
-    }
-    catch {
-      throw "Metadata file '$MetadataFile' is not valid JSON: $($_.Exception.Message)"
-    }
-
-    if ($metadata -and ($metadata -isnot [System.Collections.IDictionary]) -and ($metadata -isnot [pscustomobject])) {
-      throw "Metadata file '$MetadataFile' must contain a JSON object."
-    }
-  }
-
-  $warnings = New-Object System.Collections.Generic.List[string]
-
-  $title = $BaseName
-  if ($metadata -and $metadata.PSObject.Properties['title']) {
-    $candidateTitle = [string]$metadata.title
-    if (-not [string]::IsNullOrWhiteSpace($candidateTitle)) {
-      $title = $candidateTitle.Trim()
-    }
-  }
-
-  $description = $null
-  if ($metadata -and $metadata.PSObject.Properties['description']) {
-    $candidateDescription = [string]$metadata.description
-    if (-not [string]::IsNullOrWhiteSpace($candidateDescription)) {
-      $description = $candidateDescription
-    }
-  }
-  if (-not $description -and $DefaultDescription) {
-    $description = $DefaultDescription
-  }
-
-  $visibilityCandidate = if ($metadata -and $metadata.PSObject.Properties['visibility']) { [string]$metadata.visibility } elseif ($DefaultVisibility) { $DefaultVisibility } else { 'private' }
-  if ([string]::IsNullOrWhiteSpace($visibilityCandidate)) {
-    $visibilityCandidate = 'private'
-  }
-  $visibilityNormalized = $visibilityCandidate.Trim().ToLowerInvariant()
-  if ($visibilityNormalized -ne 'public' -and $visibilityNormalized -ne 'private') {
-    $warnings.Add("Visibility '$visibilityCandidate' is not supported; falling back to 'private'.") | Out-Null
-    $visibilityNormalized = 'private'
-  }
-
-  $fallbackGalleryMode = if ([string]::IsNullOrWhiteSpace($DefaultGalleryMode)) { 'new' } else { $DefaultGalleryMode.Trim().ToLowerInvariant() }
-  if ($fallbackGalleryMode -ne 'new' -and $fallbackGalleryMode -ne 'existing') {
-    $fallbackGalleryMode = 'new'
-  }
-
-  $galleryModeCandidate = if ($metadata -and $metadata.PSObject.Properties['galleryMode']) { [string]$metadata.galleryMode } else { $fallbackGalleryMode }
-  if ([string]::IsNullOrWhiteSpace($galleryModeCandidate)) {
-    $galleryModeCandidate = $fallbackGalleryMode
-  }
-  $galleryModeNormalized = $galleryModeCandidate.Trim().ToLowerInvariant()
-  if ($galleryModeNormalized -ne 'new' -and $galleryModeNormalized -ne 'existing') {
-    $warnings.Add("Gallery mode '$galleryModeCandidate' is not supported; falling back to '$fallbackGalleryMode'.") | Out-Null
-    $galleryModeNormalized = $fallbackGalleryMode
-  }
-
-  $category = $null
-  if ($DefaultCategory) {
-    $category = $DefaultCategory
-  }
-  if ($metadata -and $metadata.PSObject.Properties['category']) {
-    $candidateCategory = [string]$metadata.category
-    if (-not [string]::IsNullOrWhiteSpace($candidateCategory)) {
-      $category = $candidateCategory
-    }
-  }
-
-  $trigger = $BaseName
-  if ($DefaultTrigger) {
-    $trigger = $DefaultTrigger
-  }
-  if ($metadata -and $metadata.PSObject.Properties['trigger']) {
-    $candidateTrigger = [string]$metadata.trigger
-    if (-not [string]::IsNullOrWhiteSpace($candidateTrigger)) {
-      $trigger = $candidateTrigger.Trim()
-    }
-  }
-  if ([string]::IsNullOrWhiteSpace($trigger)) {
-    $trigger = $BaseName
-  }
-
-  $targetGallery = $null
-  if ($DefaultTargetGallery) {
-    $targetGallery = $DefaultTargetGallery
-  }
-  if ($metadata -and $metadata.PSObject.Properties['targetGallery']) {
-    $candidateTarget = [string]$metadata.targetGallery
-    if (-not [string]::IsNullOrWhiteSpace($candidateTarget)) {
-      $targetGallery = $candidateTarget
-    }
-  }
-  if ($targetGallery) {
-    $targetGallery = $targetGallery.Replace('{title}', $title)
-  }
-
-  if ($galleryModeNormalized -eq 'new') {
-    if (-not $targetGallery) {
-      $targetGallery = "$title Collection"
-    }
-  }
-  elseif (-not $targetGallery) {
-    throw "Gallery mode is 'existing', but no target gallery slug or title was provided."
-  }
-
-  $tagSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-  $tags = New-Object System.Collections.Generic.List[string]
-
-  foreach ($tag in $DefaultTags) {
-    if ([string]::IsNullOrWhiteSpace($tag)) { continue }
-    $trimmed = $tag.Trim()
-    if ($trimmed.Length -eq 0) { continue }
-    if ($tagSet.Add($trimmed)) { $tags.Add($trimmed) | Out-Null }
-  }
-
-  if ($metadata -and $metadata.PSObject.Properties['tags']) {
-    $metaTags = $metadata.tags
-    if ($metaTags -is [System.Collections.IEnumerable] -and $metaTags -isnot [string]) {
-      foreach ($entry in $metaTags) {
-        if ($null -eq $entry) { continue }
-        $text = [string]$entry
-        if ([string]::IsNullOrWhiteSpace($text)) { continue }
-        $trimmed = $text.Trim()
-        if ($trimmed.Length -eq 0) { continue }
-        if ($tagSet.Add($trimmed)) { $tags.Add($trimmed) | Out-Null }
-      }
-    }
-    else {
-      foreach ($entry in ([string]$metaTags).Split(',', [System.StringSplitOptions]::RemoveEmptyEntries)) {
-        $trimmed = $entry.Trim()
-        if ($trimmed.Length -eq 0) { continue }
-        if ($tagSet.Add($trimmed)) { $tags.Add($trimmed) | Out-Null }
-      }
-    }
-  }
-
-  return [pscustomobject]@{
-    Title = $title
-    Description = $description
-    Visibility = $visibilityNormalized
-    GalleryMode = $galleryModeNormalized
-    TargetGallery = $targetGallery
-    Trigger = $trigger
-    Category = $category
-    Tags = $tags.ToArray()
-    MetadataPath = $metadataPath
-    Warnings = $warnings.ToArray()
-  }
-}
-
-function Test-ModelAssetPresence {
-  param(
-    [System.Net.Http.HttpClient]$HttpClient,
-    [string]$ApiBase,
-    [string]$AssetSlug,
-    [string]$Title
-  )
-
-  if (-not $AssetSlug) {
-    Write-Log "Model verification skipped for '$Title' because the upload response did not expose a slug."
-    return $false
-  }
-
-  $endpoint = "$ApiBase/assets/models"
-  $maxAttempts = 12
-  $delaySeconds = 2
-
-  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-    $response = $null
-
-    try {
-      $response = Invoke-FreshGet -HttpClient $HttpClient -Uri $endpoint
-      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    }
-    catch {
-      Write-Log "Model verification request failed for '$Title' (attempt $attempt/$maxAttempts): $($_.Exception.Message)"
-      if ($attempt -ge $maxAttempts) {
-        return $false
-      }
-
-      Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-      continue
-    }
-
-    try {
-      if (-not $response.IsSuccessStatusCode) {
-        Write-Log "Model verification request returned HTTP $($response.StatusCode) for '$Title': $body"
-        if ($attempt -ge $maxAttempts) {
-          return $false
-        }
-
-        Start-Sleep -Seconds $delaySeconds
-        $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-        continue
-      }
-    }
-    finally {
-      if ($response) {
-        $response.Dispose()
-      }
-    }
-
-    try {
-      $models = $body | ConvertFrom-Json
-    }
-    catch {
-      Write-Log "Model verification parsing failed for '$Title': $($_.Exception.Message)"
-      return $false
-    }
-
-    $list = @()
-    if ($models -is [System.Collections.IEnumerable]) {
-      $list = @($models)
-    }
-    else {
-      $list = @($models)
-    }
-
-    $match = $list | Where-Object {
-      $_ -and $_.PSObject.Properties['slug'] -and ([string]$_.slug).ToLowerInvariant() -eq $AssetSlug.ToLowerInvariant()
-    } | Select-Object -First 1
-
-    if ($match) {
-      Write-Log "Verified model '$Title' (slug '$AssetSlug') is now available via the API."
-      return $true
-    }
-
-    if ($attempt -lt $maxAttempts) {
-      Write-Log "Model '$Title' with slug '$AssetSlug' not visible yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
-      Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-    }
-    else {
-      Write-Log "Model '$Title' with slug '$AssetSlug' was not found in VisionSuit after $maxAttempts verification attempts."
-      return $false
-    }
-  }
-
-  return $false
-}
-
-function Test-GalleryPresence {
-  param(
-    [System.Net.Http.HttpClient]$HttpClient,
-    [string]$ApiBase,
-    [string]$GallerySlug,
-    [string]$AssetSlug,
-    [string[]]$ExpectedImageIds,
-    [string]$Title
-  )
-
-  if (-not $GallerySlug) {
-    Write-Log "Gallery verification skipped for '$Title' because the upload response did not expose a gallery slug."
-    return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
-  }
-
-  $expected = @()
-  if ($ExpectedImageIds) {
-    $expected = $ExpectedImageIds | Where-Object { $_ }
-  }
-
-  $endpoint = "$ApiBase/galleries"
-  $maxAttempts = 12
-  $delaySeconds = 2
-
-  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-    $response = $null
-
-    try {
-      $response = Invoke-FreshGet -HttpClient $HttpClient -Uri $endpoint
-      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    }
-    catch {
-      Write-Log "Gallery verification request failed for '$Title' (attempt $attempt/$maxAttempts): $($_.Exception.Message)"
-      if ($attempt -ge $maxAttempts) {
-        return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
-      }
-
-      Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-      continue
-    }
-
-    $statusCode = $response.StatusCode
-
-    if (-not $response.IsSuccessStatusCode) {
-      Write-Log "Gallery verification request returned HTTP $statusCode for '$Title': $body"
-      if ($attempt -ge $maxAttempts) {
-        if ($response) { $response.Dispose() }
-        return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
-      }
-
-      if ($response) { $response.Dispose() }
-      Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-      continue
-    }
-
-    try {
-      $galleries = $body | ConvertFrom-Json
-    }
-    catch {
-      Write-Log "Gallery verification parsing failed for '$Title': $($_.Exception.Message)"
-      if ($response) { $response.Dispose() }
-      return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
-    }
-
-    if ($response) { $response.Dispose() }
-
-    $list = @()
-    if ($galleries -is [System.Collections.IEnumerable]) {
-      $list = @($galleries)
-    }
-    else {
-      $list = @($galleries)
-    }
-
-    $gallery = $list | Where-Object {
-      $_ -and $_.PSObject.Properties['slug'] -and ([string]$_.slug).ToLowerInvariant() -eq $GallerySlug.ToLowerInvariant()
-    } | Select-Object -First 1
-
-    if (-not $gallery) {
-      if ($attempt -lt $maxAttempts) {
-        Write-Log "Gallery '$GallerySlug' for '$Title' not visible yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
-        Start-Sleep -Seconds $delaySeconds
-        $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-        continue
-      }
-
-      Write-Log "Gallery '$GallerySlug' for '$Title' was not found after $maxAttempts verification attempts."
-      return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
-    }
-
-    $entries = @()
-    if ($gallery.PSObject.Properties['entries']) {
-      $entries = @($gallery.entries)
-    }
-
-    $hasModelEntry = $false
-    foreach ($entry in $entries) {
-      if ($entry -and $entry.PSObject.Properties['asset'] -and $entry.asset -and $entry.asset.PSObject.Properties['slug']) {
-        $slug = [string]$entry.asset.slug
-        if ($slug -and $slug.ToLowerInvariant() -eq $AssetSlug.ToLowerInvariant()) {
-          $hasModelEntry = $true
-          break
-        }
-      }
-    }
-
-    if (-not $hasModelEntry) {
-      if ($attempt -lt $maxAttempts) {
-        Write-Log "Gallery '$GallerySlug' does not list model slug '$AssetSlug' yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
-        Start-Sleep -Seconds $delaySeconds
-        $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-        continue
-      }
-
-      Write-Log "Gallery '$GallerySlug' never exposed model slug '$AssetSlug' for '$Title' after verification retries."
-      return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
-    }
-
-    $galleryImageCount = 0
-    $matched = New-Object System.Collections.Generic.HashSet[string] -ArgumentList ([System.StringComparer]::OrdinalIgnoreCase)
-
-    foreach ($entry in $entries) {
-      if ($entry -and $entry.PSObject.Properties['image'] -and $entry.image) {
-        $galleryImageCount++
-        if ($entry.image.PSObject.Properties['id']) {
-          $imageId = [string]$entry.image.id
-          if ($imageId) {
-            $matched.Add($imageId) | Out-Null
-          }
-        }
-      }
-    }
-
-    $expectedMatches = 0
-    if ($expected.Count -gt 0) {
-      $expectedMatches = ($expected | Where-Object { $matched.Contains($_) }).Count
-
-      if ($expectedMatches -lt $expected.Count) {
-        if ($attempt -lt $maxAttempts) {
-          Write-Log "Gallery '$GallerySlug' is missing $($expected.Count - $expectedMatches) of $($expected.Count) uploaded image(s) (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
-          Start-Sleep -Seconds $delaySeconds
-          $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
-          continue
-        }
-
-        Write-Log "Gallery '$GallerySlug' did not expose all uploaded images for '$Title' after verification retries."
-        return [pscustomobject]@{ Success = $false; MatchedImageCount = $expectedMatches; TotalGalleryImageCount = $galleryImageCount }
-      }
-    }
-
-    if ($expected.Count -eq 0) {
-      Write-Log "Verified gallery '$GallerySlug' contains the uploaded model '$AssetSlug'."
-    }
-    else {
-      Write-Log "Verified gallery '$GallerySlug' contains model '$AssetSlug' and all $expectedMatches uploaded image(s) (total images: $galleryImageCount)."
-    }
-
-    return [pscustomobject]@{ Success = $true; MatchedImageCount = [Math]::Max($expectedMatches, 0); TotalGalleryImageCount = $galleryImageCount }
-  }
-
-  return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+if ($ImageBatchSize -lt 1) {
+  throw 'ImageBatchSize must be at least 1.'
 }
 
 try {
-  $lorasRoot = (Resolve-Path -Path $LorasDirectory -ErrorAction Stop).ProviderPath
-} catch {
-  Write-Log "LoRA directory '$LorasDirectory' was not found."
-  exit 1
+  $baseUri = [Uri]::new($ServerBaseUrl)
+}
+catch {
+  throw "ServerBaseUrl '$ServerBaseUrl' is not a valid absolute URI."
 }
 
-$imagesRoot = $null
-$imagesRootExists = $false
-
-if (Test-Path -Path $ImagesDirectory) {
-  try {
-    $imagesRoot = (Resolve-Path -Path $ImagesDirectory -ErrorAction Stop).ProviderPath
-    $imagesRootExists = $true
-  } catch {
-    $imagesRoot = $null
-  }
-}
-elseif ($PSBoundParameters.ContainsKey('ImagesDirectory')) {
-  Write-Log "Image directory '$ImagesDirectory' was not found."
-  exit 1
-}
-else {
-  Write-Log "Image directory '$ImagesDirectory' was not found. Looking for folders next to each LoRA file instead."
+if (-not $baseUri.IsAbsoluteUri) {
+  throw "ServerBaseUrl '$ServerBaseUrl' must be an absolute URI."
 }
 
-$password = Get-PlainPassword -Prompt "Password for $ServerUsername"
+$lorasRoot = Resolve-ExistingDirectory -Path $LorasDirectory -Description 'LoRA'
+$imagesRoot = Resolve-ExistingDirectory -Path $ImagesDirectory -Description 'Image'
+
+$password = $env:VISIONSUIT_PASSWORD
 if (-not $password) {
-  Write-Log "Password is required to authenticate with VisionSuit."
-  exit 1
-}
-
-$apiBase = "http://$ServerIp`:$ServerPort/api"
-$loginBody = @{ email = $ServerUsername; password = $password } | ConvertTo-Json
-
-try {
-  $loginResponse = Invoke-RestMethod -Method Post -Uri "$apiBase/auth/login" -ContentType 'application/json' -Body $loginBody
-} catch {
-  Write-Log "Login request to VisionSuit API failed: $($_.Exception.Message)"
-  exit 1
-}
-
-$userRole = $null
-if ($loginResponse.user -and $loginResponse.user.PSObject.Properties['role']) {
-  $userRole = [string]$loginResponse.user.role
-}
-
-$detectedRole = if ($userRole) { $userRole } else { 'unknown' }
-
-if (-not $loginResponse.token) {
-  Write-Log "Authentication failed: $($loginResponse | ConvertTo-Json -Depth 5)"
-  exit 1
-}
-
-if (-not $userRole -or $userRole.ToUpperInvariant() -ne 'ADMIN') {
-  Write-Log "Bulk import is restricted to admin accounts. Detected role: '$detectedRole'."
-  exit 1
-}
-
-$token = $loginResponse.token
-$uploadUri = "$apiBase/uploads"
-
-try {
-  Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
-} catch {
-  try {
-    [void][System.Reflection.Assembly]::LoadWithPartialName('System.Net.Http')
-  } catch {
-    Write-Log "Unable to load System.Net.Http: $($_.Exception.Message)"
-    exit 1
+  $secure = Read-Host -Prompt "Password for $ServerUsername" -AsSecureString
+  if (-not $secure) {
+    throw 'Password is required to authenticate with VisionSuit.'
   }
+  $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+  try {
+    $password = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+  }
+  finally {
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+  }
+}
+
+if (-not $password) {
+  throw 'Password is required to authenticate with VisionSuit.'
 }
 
 $handler = [System.Net.Http.HttpClientHandler]::new()
+$handler.AllowAutoRedirect = $true
 $handler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
-$handler.UseCookies = $false
-$httpClient = [System.Net.Http.HttpClient]::new($handler)
-$httpClient.Timeout = [TimeSpan]::FromSeconds(300)
-$httpClient.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $token)
-$httpClient.DefaultRequestHeaders.CacheControl = New-Object System.Net.Http.Headers.CacheControlHeaderValue
-$httpClient.DefaultRequestHeaders.CacheControl.NoCache = $true
-$httpClient.DefaultRequestHeaders.CacheControl.NoStore = $true
-$httpClient.DefaultRequestHeaders.Pragma.Clear()
-$httpClient.DefaultRequestHeaders.Pragma.Add([System.Net.Http.Headers.NameValueHeaderValue]::new('no-cache'))
+$client = [System.Net.Http.HttpClient]::new($handler)
+$client.BaseAddress = $baseUri
+$client.Timeout = [TimeSpan]::FromMinutes(10)
+$client.DefaultRequestHeaders.Accept.Clear()
+$client.DefaultRequestHeaders.Accept.Add([System.Net.Http.Headers.MediaTypeWithQualityHeaderValue]::new('application/json'))
 
-Write-Log "Authenticated as $ServerUsername (role: $userRole). Starting bulk upload via VisionSuit API."
-
-$uploadCount = 0
-$skipCount = 0
-
-$loras = Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | Sort-Object FullName
-
-foreach ($loraFile in $loras) {
-  if ($script:ImportFatalError) {
-    break
-  }
-
-  $baseName = [System.IO.Path]::GetFileNameWithoutExtension($loraFile.Name)
-  $imageFolder = Resolve-ImageFolder -BaseName $baseName -ImagesRoot $imagesRoot -LoraDirectory $loraFile.DirectoryName
-
-  if (-not $imageFolder) {
-    if ($imagesRootExists) {
-      Write-Log "Skipping '$baseName' because no matching image folder was found under '$imagesRoot'."
+try {
+  $statusUri = ConvertTo-AbsoluteUri -BaseUri $baseUri -RelativePath '/api/meta/status'
+  Write-Log "Checking VisionSuit service health at $($statusUri.AbsoluteUri)"
+  $statusResponse = $client.GetAsync($statusUri).GetAwaiter().GetResult()
+  try {
+    if (-not $statusResponse.IsSuccessStatusCode) {
+      $statusBody = $statusResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      throw "Service status check failed (HTTP $($statusResponse.StatusCode)): $statusBody"
+    }
+    $statusJson = $statusResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($statusJson.services) {
+      foreach ($serviceName in $statusJson.services.PSObject.Properties.Name) {
+        $service = $statusJson.services.$serviceName
+        Write-Log "Service '$serviceName' status: $($service.status) – $($service.message)"
+      }
     }
     else {
-      Write-Log "Skipping '$baseName' because matching image folder '$baseName' was not found next to the LoRA file."
+      Write-Log 'VisionSuit status endpoint responded without service breakdown.'
     }
-    $skipCount++
-    continue
+  }
+  finally {
+    $statusResponse.Dispose()
   }
 
-  $imageFiles = Get-ChildItem -Path $imageFolder -File |
-    Where-Object { '.png', '.jpg', '.jpeg', '.webp', '.bmp' -contains [System.IO.Path]::GetExtension($_.Name).ToLowerInvariant() } |
-    Sort-Object FullName
-  if (-not $imageFiles) {
-    Write-Log "Skipping '$baseName' because no preview-ready images were found."
-    $skipCount++
-    continue
-  }
-
-  $preview = Get-Random -InputObject $imageFiles
-  $otherImages = $imageFiles | Where-Object { $_.FullName -ne $preview.FullName }
-
-  $metadataCandidates = @()
-  $candidateFromFile = Join-Path -Path $loraFile.DirectoryName -ChildPath "$baseName.json"
-  $metadataCandidates += $candidateFromFile
-  $candidateFromRoot = Join-Path -Path $lorasRoot -ChildPath "$baseName.json"
-  if ($candidateFromRoot -ne $candidateFromFile) {
-    $metadataCandidates += $candidateFromRoot
-  }
-  $imagesMetadata = Join-Path -Path $imageFolder -ChildPath 'metadata.json'
-  $metadataCandidates += $imagesMetadata
-
-  $metadataFile = $metadataCandidates | Where-Object { Test-Path -Path $_ -PathType Leaf } | Select-Object -First 1
-
+  $loginUri = ConvertTo-AbsoluteUri -BaseUri $baseUri -RelativePath '/api/auth/login'
+  $loginPayload = @{ email = $ServerUsername; password = $password } | ConvertTo-Json -Compress
+  $loginContent = New-Object System.Net.Http.StringContent($loginPayload, [System.Text.Encoding]::UTF8, 'application/json')
+  Write-Log "Authenticating as $ServerUsername at $($loginUri.AbsoluteUri)"
   try {
-    $profile = Get-BulkUploadProfile -BaseName $baseName -MetadataFile $metadataFile -DefaultVisibility $DefaultVisibility -DefaultGalleryMode $DefaultGalleryMode -DefaultTargetGallery $DefaultTargetGallery -DefaultDescription $DefaultDescription -DefaultCategory $DefaultCategory -DefaultTrigger $DefaultTrigger -DefaultTags $DefaultTags
+    $loginResponse = $client.PostAsync($loginUri, $loginContent).GetAwaiter().GetResult()
+    if (-not $loginResponse.IsSuccessStatusCode) {
+      $loginBody = $loginResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      throw "Authentication failed (HTTP $($loginResponse.StatusCode)): $loginBody"
+    }
+    $loginJson = $loginResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    $token = $loginJson.token
+    $role = $loginJson.user.role
+    if (-not $token) {
+      throw 'No access token returned by VisionSuit.'
+    }
+    if ($role -ne 'ADMIN') {
+      throw "Bulk import is restricted to admin accounts. Detected role: '${role}'"
+    }
+    $client.DefaultRequestHeaders.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $token)
+    Write-Log "Authenticated successfully as $ServerUsername (role: $role)."
   }
-  catch {
-    Write-Log "Skipping '$baseName' because $($_.Exception.Message)"
-    $skipCount++
-    continue
+  finally {
+    if ($loginResponse) { $loginResponse.Dispose() }
+    $loginContent.Dispose()
   }
 
-  if ($profile.MetadataPath) {
-    Write-Log "Loaded metadata overrides from $($profile.MetadataPath)."
+  $uploadUri = ConvertTo-AbsoluteUri -BaseUri $baseUri -RelativePath '/api/uploads'
+
+  $loraFiles = Get-ChildItem -LiteralPath $lorasRoot -Filter '*.safetensors' -Recurse -File | Sort-Object FullName
+  if ($loraFiles.Count -eq 0) {
+    Write-Log "No LoRA safetensors found beneath '$lorasRoot'."
+    return
   }
 
-  if ($profile.Warnings) {
+  $uploaded = 0
+  $skipped = 0
+
+  foreach ($lora in $loraFiles) {
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($lora.Name)
+    $imageFolder = Join-Path -Path $imagesRoot -ChildPath $baseName
+    if (-not (Test-Path -LiteralPath $imageFolder -PathType Container)) {
+      Write-Log "Skipping '$baseName' because matching image folder '$imageFolder' is missing."
+      $skipped++
+      continue
+    }
+
+    $allowedExtensions = @('.png', '.jpg', '.jpeg', '.webp', '.bmp')
+    $images = Get-ChildItem -LiteralPath $imageFolder -File | Where-Object {
+      $allowedExtensions -contains ([System.IO.Path]::GetExtension($_.Name).ToLowerInvariant())
+    } | Sort-Object Name
+    if ($images.Count -eq 0) {
+      Write-Log "Skipping '$baseName' because no preview-ready images were found."
+      $skipped++
+      continue
+    }
+
+    $preview = Get-Random -InputObject $images
+    $otherImages = $images | Where-Object { $_.FullName -ne $preview.FullName }
+
+    $candidateMetadata = @(
+      Join-Path -Path $lora.DirectoryName -ChildPath "$baseName.json",
+      Join-Path -Path $lorasRoot -ChildPath "$baseName.json",
+      Join-Path -Path $imageFolder -ChildPath 'metadata.json'
+    ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    $metadataPath = $null
+    foreach ($candidate in $candidateMetadata) {
+      $metadataPath = $candidate
+      break
+    }
+
+    $profile = Build-UploadProfile -BaseName $baseName -DefaultVisibility $DefaultVisibility -DefaultGalleryMode $DefaultGalleryMode -DefaultTargetGallery $DefaultTargetGallery -DefaultDescription $DefaultDescription -DefaultCategory $DefaultCategory -DefaultTrigger $DefaultTrigger -DefaultTags $DefaultTags -MetadataPath $metadataPath
+    if ($null -eq $profile) {
+      Write-Log "Skipping '$baseName' because metadata parsing failed."
+      $skipped++
+      continue
+    }
+
+    if ($profile.MetadataPath) {
+      Write-Log "Loaded metadata overrides from $($profile.MetadataPath)"
+    }
     foreach ($warning in $profile.Warnings) {
-      if ($warning) {
-        Write-Log "Metadata warning for '$baseName': $warning"
-      }
-    }
-  }
-
-  Write-Log "Uploading '$($profile.Title)' (source '$baseName') with preview '$($preview.Name)'."
-
-  $gallerySlug = $null
-  $assetSlug = $null
-  $uploadedImageIds = New-Object System.Collections.Generic.List[string]
-  $maxModelAttempts = 3
-  $modelUploaded = $false
-  $modelDelay = 2
-
-  for ($attempt = 1; $attempt -le $maxModelAttempts -and -not $modelUploaded; $attempt++) {
-    $form = New-Object System.Net.Http.MultipartFormDataContent
-    $form.Add((New-Object System.Net.Http.StringContent('lora')), 'assetType')
-    $form.Add((New-Object System.Net.Http.StringContent('asset')), 'context')
-    $form.Add((New-Object System.Net.Http.StringContent($profile.Title)), 'title')
-    $form.Add((New-Object System.Net.Http.StringContent($profile.Visibility)), 'visibility')
-    $form.Add((New-Object System.Net.Http.StringContent($profile.GalleryMode)), 'galleryMode')
-    $form.Add((New-Object System.Net.Http.StringContent($profile.TargetGallery)), 'targetGallery')
-    $form.Add((New-Object System.Net.Http.StringContent($profile.Trigger)), 'trigger')
-
-    if ($profile.Description) {
-      $form.Add((New-Object System.Net.Http.StringContent($profile.Description)), 'description')
+      Write-Log "Metadata warning for '$baseName': $warning"
     }
 
-    if ($profile.Category) {
-      $form.Add((New-Object System.Net.Http.StringContent($profile.Category)), 'category')
+    if ($profile.GalleryMode -eq 'existing' -and -not $profile.TargetGallery) {
+      Write-Log "Skipping '$baseName' because gallery mode is 'existing' without target gallery."
+      $skipped++
+      continue
     }
 
-    if ($profile.Tags) {
-      foreach ($tag in $profile.Tags) {
-        if ($tag) {
-          $form.Add((New-Object System.Net.Http.StringContent($tag)), 'tags')
-        }
-      }
+    $fields = @{
+      'assetType'    = 'lora'
+      'context'      = 'asset'
+      'title'        = $profile.Title
+      'visibility'   = $profile.Visibility
+      'galleryMode'  = $profile.GalleryMode
+      'targetGallery'= $profile.TargetGallery
+      'trigger'      = $profile.Trigger
     }
+    if ($profile.Description) { $fields['description'] = $profile.Description }
+    if ($profile.Category) { $fields['category'] = $profile.Category }
 
-    $disposables = @()
+    $fileParts = New-Object System.Collections.Generic.List[object]
+    $fileParts.Add(@{ Path = $lora.FullName; MimeType = 'application/octet-stream' })
+    $fileParts.Add(@{ Path = $preview.FullName; MimeType = Get-MimeType -Path $preview.FullName })
 
+    $multipart = New-MultipartForm -Fields $fields -FileParts $fileParts
+    $response = $null
     try {
-      $modelStream = [System.IO.File]::OpenRead($loraFile.FullName)
-      $disposables += $modelStream
-      $modelContent = New-Object System.Net.Http.StreamContent($modelStream)
-      $modelContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse('application/octet-stream')
-      $form.Add($modelContent, 'files', $loraFile.Name)
-
-      $previewStream = [System.IO.File]::OpenRead($preview.FullName)
-      $disposables += $previewStream
-      $previewContent = New-Object System.Net.Http.StreamContent($previewStream)
-      $previewMime = Get-MimeType -Path $preview.FullName
-      $previewContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($previewMime)
-      $form.Add($previewContent, 'files', $preview.Name)
-
-      $response = $httpClient.PostAsync($uploadUri, $form).GetAwaiter().GetResult()
-      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-
-      if ($response.IsSuccessStatusCode) {
-        try {
-          $parsed = $body | ConvertFrom-Json
-        }
-        catch {
-          Write-Log "Model upload succeeded for '$($profile.Title)' but response parsing failed: $($_.Exception.Message)"
-          continue
-        }
-
-        if ($parsed -and $parsed.PSObject.Properties['assetSlug']) {
-          $assetSlug = [string]$parsed.assetSlug
-        }
-
-        if (-not $assetSlug) {
-          Write-Log "Model upload succeeded for '$($profile.Title)' but no asset slug was returned."
-          continue
-        }
-
-        $gallerySlug = $parsed.gallerySlug
-        if (-not $gallerySlug) {
-          Write-Log "Model upload succeeded for '$($profile.Title)' but gallery information was missing."
-          continue
-        }
-
-        Write-Log "Model upload complete for '$($profile.Title)'. Gallery slug: $gallerySlug. Asset slug: $assetSlug."
-        $modelUploaded = $true
+      foreach ($tag in $profile.Tags) {
+        $tagContent = [System.Net.Http.StringContent]::new($tag, [System.Text.Encoding]::UTF8)
+        $multipart.Content.Add($tagContent, 'tags')
       }
-      else {
-        Write-Log "Upload failed for '$($profile.Title)' (HTTP $($response.StatusCode)): $body"
+
+      Write-Log "Uploading '$($profile.Title)' with preview '$(Split-Path -Leaf $preview.FullName)'."
+      $response = $client.PostAsync($uploadUri, $multipart.Content).GetAwaiter().GetResult()
+      $bodyText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      if (-not $response.IsSuccessStatusCode) {
+        Write-Log "Upload failed for '$($profile.Title)' (HTTP $($response.StatusCode)): $bodyText"
+        $skipped++
+        continue
       }
-    }
-    catch {
-      Write-Log "Upload request failed for '$($profile.Title)' (attempt $attempt/$maxModelAttempts): $($_.Exception.Message)"
+      $uploadResult = $bodyText | ConvertFrom-Json
+      $assetSlug = $uploadResult.assetSlug
+      $gallerySlug = $uploadResult.gallerySlug
+      if (-not $assetSlug) {
+        Write-Log "Upload succeeded for '$($profile.Title)' but asset slug was missing."
+        $skipped++
+        continue
+      }
+      if (-not $gallerySlug) {
+        Write-Log "Upload succeeded for '$($profile.Title)' but gallery slug was missing."
+        $skipped++
+        continue
+      }
+      Write-Log "Model upload complete for '$($profile.Title)'. Asset slug: $assetSlug. Gallery slug: $gallerySlug."
+
+      if ($otherImages.Count -gt 0) {
+        $batchIndex = 0
+        $galleryFields = @{
+          'assetType'    = 'image'
+          'context'      = 'gallery'
+          'title'        = $profile.Title
+          'visibility'   = $profile.Visibility
+          'galleryMode'  = 'existing'
+          'targetGallery'= $gallerySlug
+        }
+        if ($profile.Description) { $galleryFields['description'] = $profile.Description }
+        if ($profile.Category) { $galleryFields['category'] = $profile.Category }
+
+        $otherImageArray = @($otherImages)
+        $batchFailed = $false
+        for ($start = 0; $start -lt $otherImageArray.Count; $start += $ImageBatchSize) {
+          $endIndex = [Math]::Min($start + $ImageBatchSize - 1, $otherImageArray.Count - 1)
+          if ($endIndex -lt $start) {
+            continue
+          }
+          $chunk = if ($start -eq $endIndex) {
+            @($otherImageArray[$start])
+          } else {
+            $otherImageArray[$start..$endIndex]
+          }
+
+        $batchParts = New-Object System.Collections.Generic.List[object]
+          foreach ($img in $chunk) {
+            $batchParts.Add(@{ Path = $img.FullName; MimeType = Get-MimeType -Path $img.FullName })
+          }
+
+          $batchContent = New-MultipartForm -Fields $galleryFields -FileParts $batchParts
+          $batchResponse = $null
+          try {
+            foreach ($tag in $profile.Tags) {
+              $tagContent = [System.Net.Http.StringContent]::new($tag, [System.Text.Encoding]::UTF8)
+              $batchContent.Content.Add($tagContent, 'tags')
+            }
+
+            $batchIndex++
+            $batchResponse = $client.PostAsync($uploadUri, $batchContent.Content).GetAwaiter().GetResult()
+            $batchBody = $batchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            if (-not $batchResponse.IsSuccessStatusCode) {
+              Write-Log "Image batch $batchIndex failed for '$($profile.Title)' (HTTP $($batchResponse.StatusCode)): $batchBody"
+              $skipped++
+              $batchFailed = $true
+              break
+            }
+            Write-Log "Uploaded image batch $batchIndex for '$($profile.Title)' ($($chunk.Count) image(s))."
+          }
+          finally {
+            $batchContent.Content.Dispose()
+            foreach ($item in $batchContent.Disposables) { $item.Dispose() }
+            if ($batchResponse) { $batchResponse.Dispose() }
+          }
+
+          if ($batchFailed) {
+            break
+          }
+        }
+
+        if ($batchFailed) {
+          continue
+        }
+      }
+
+      $uploaded++
     }
     finally {
-      foreach ($item in $disposables) {
-        if ($item -is [System.IDisposable]) {
-          $item.Dispose()
-        }
-      }
-
-      if ($form -is [System.IDisposable]) {
-        $form.Dispose()
-      }
-    }
-
-    if (-not $modelUploaded -and $attempt -lt $maxModelAttempts) {
-      Write-Log "Retrying model upload for '$($profile.Title)' in $modelDelay second(s) (attempt $($attempt + 1)/$maxModelAttempts)."
-      Start-Sleep -Seconds $modelDelay
-      $modelDelay = [Math]::Min($modelDelay * 2, 12)
+      if ($response) { $response.Dispose() }
+      $multipart.Content.Dispose()
+      foreach ($item in $multipart.Disposables) { $item.Dispose() }
     }
   }
 
-  if (-not $modelUploaded) {
-    $skipCount++
-    Set-ImportFatalError "Model upload failed for '$($profile.Title)' after $maxModelAttempts attempt(s); aborting bulk run."
-    break
-  }
-
-  if (-not (Test-ModelAssetPresence -HttpClient $httpClient -ApiBase $apiBase -AssetSlug $assetSlug -Title $profile.Title)) {
-    $skipCount++
-    Set-ImportFatalError "Verification failed: model '$($profile.Title)' with slug '$assetSlug' did not appear in VisionSuit; aborting bulk run."
-    break
-  }
-
-  if ($otherImages.Count -eq 0) {
-    $galleryCheck = Test-GalleryPresence -HttpClient $httpClient -ApiBase $apiBase -GallerySlug $gallerySlug -AssetSlug $assetSlug -ExpectedImageIds @() -Title $profile.Title
-    if (-not $galleryCheck.Success) {
-      $skipCount++
-      Set-ImportFatalError "Verification failed: gallery '$gallerySlug' for '$($profile.Title)' did not stabilise after preview upload; aborting bulk run."
-      break
-    }
-
-    $uploadCount++
-    Write-Log "No additional images found for '$($profile.Title)'; preview upload verified (gallery images: $($galleryCheck.TotalGalleryImageCount))."
-    continue
-  }
-
-  $maxBatch = 12
-  $totalImages = $otherImages.Count
-  $processedImages = 0
-  $batchIndex = 1
-  $batchAbort = $false
-
-  for ($start = 0; $start -lt $totalImages; $start += $maxBatch) {
-    if ($script:ImportFatalError) {
-      break
-    }
-
-    $end = [Math]::Min($start + $maxBatch - 1, $totalImages - 1)
-    if ($end -lt $start) {
-      break
-    }
-
-    $chunk = $otherImages[$start..$end]
-    if ($chunk -isnot [System.Array]) {
-      $chunk = @($chunk)
-    }
-
-    $chunkSuccess = $false
-    $chunkDelay = 2
-    $maxChunkAttempts = 3
-
-    for ($chunkAttempt = 1; $chunkAttempt -le $maxChunkAttempts -and -not $chunkSuccess; $chunkAttempt++) {
-      $chunkForm = New-Object System.Net.Http.MultipartFormDataContent
-      $chunkForm.Add((New-Object System.Net.Http.StringContent('image')), 'assetType')
-      $chunkForm.Add((New-Object System.Net.Http.StringContent('gallery')), 'context')
-      $chunkForm.Add((New-Object System.Net.Http.StringContent($profile.Title)), 'title')
-      $chunkForm.Add((New-Object System.Net.Http.StringContent($profile.Visibility)), 'visibility')
-      $chunkForm.Add((New-Object System.Net.Http.StringContent('existing')), 'galleryMode')
-      $chunkForm.Add((New-Object System.Net.Http.StringContent($gallerySlug)), 'targetGallery')
-
-      if ($profile.Description) {
-        $chunkForm.Add((New-Object System.Net.Http.StringContent($profile.Description)), 'description')
-      }
-
-      if ($profile.Category) {
-        $chunkForm.Add((New-Object System.Net.Http.StringContent($profile.Category)), 'category')
-      }
-
-      if ($profile.Tags) {
-        foreach ($tag in $profile.Tags) {
-          if ($tag) {
-            $chunkForm.Add((New-Object System.Net.Http.StringContent($tag)), 'tags')
-          }
-        }
-      }
-
-      $chunkDisposables = @()
-
-      try {
-        foreach ($image in $chunk) {
-          $imageStream = [System.IO.File]::OpenRead($image.FullName)
-          $chunkDisposables += $imageStream
-          $imageContent = New-Object System.Net.Http.StreamContent($imageStream)
-          $mime = Get-MimeType -Path $image.FullName
-          $imageContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($mime)
-          $chunkForm.Add($imageContent, 'files', $image.Name)
-        }
-
-        $chunkResponse = $httpClient.PostAsync($uploadUri, $chunkForm).GetAwaiter().GetResult()
-        $chunkBody = $chunkResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-
-        if ($chunkResponse.IsSuccessStatusCode) {
-          try {
-            $chunkParsed = $chunkBody | ConvertFrom-Json
-          }
-          catch {
-            Write-Log "Image batch $batchIndex succeeded for '$($profile.Title)' but response parsing failed: $($_.Exception.Message)"
-            $chunkParsed = $null
-          }
-
-          if (-not ($chunkParsed -and $chunkParsed.PSObject.Properties['imageIds'])) {
-            Write-Log "Image batch $batchIndex succeeded for '$($profile.Title)' but did not return image identifiers."
-          }
-          else {
-            $chunkIds = @($chunkParsed.imageIds)
-            if (-not $chunkIds -or $chunkIds.Count -eq 0) {
-              Write-Log "Image batch $batchIndex succeeded for '$($profile.Title)' but returned an empty image identifier list."
-            }
-            else {
-              if ($chunkIds.Count -lt $chunk.Count) {
-                Write-Log "Image batch $batchIndex for '$($profile.Title)' returned fewer IDs ($($chunkIds.Count)) than files uploaded ($($chunk.Count))."
-              }
-              else {
-                foreach ($id in $chunkIds) {
-                  if ($id) {
-                    [void]$uploadedImageIds.Add([string]$id)
-                  }
-                }
-
-                $processedImages += $chunk.Count
-                Write-Log "Uploaded image batch $batchIndex for '$($profile.Title)' ($($chunk.Count) image(s))."
-                $chunkSuccess = $true
-              }
-            }
-          }
-        }
-        else {
-          Write-Log "Image batch $batchIndex failed for '$($profile.Title)' (HTTP $($chunkResponse.StatusCode)): $chunkBody"
-        }
-      }
-      catch {
-        Write-Log "Image batch $batchIndex failed for '$($profile.Title)' (attempt $chunkAttempt/$maxChunkAttempts): $($_.Exception.Message)"
-      }
-      finally {
-        foreach ($item in $chunkDisposables) {
-          if ($item -is [System.IDisposable]) {
-            $item.Dispose()
-          }
-        }
-
-        if ($chunkForm -is [System.IDisposable]) {
-          $chunkForm.Dispose()
-        }
-      }
-
-      if (-not $chunkSuccess -and $chunkAttempt -lt $maxChunkAttempts) {
-        Write-Log "Retrying image batch $batchIndex for '$($profile.Title)' in $chunkDelay second(s) (attempt $($chunkAttempt + 1)/$maxChunkAttempts)."
-        Start-Sleep -Seconds $chunkDelay
-        $chunkDelay = [Math]::Min($chunkDelay * 2, 12)
-      }
-    }
-
-    if (-not $chunkSuccess) {
-      $skipCount++
-      Set-ImportFatalError "Image batch $batchIndex for '$($profile.Title)' failed after $maxChunkAttempts attempt(s); aborting bulk run."
-      $batchAbort = $true
-      break
-    }
-
-    $batchIndex++
-  }
-
-  if ($script:ImportFatalError -or $batchAbort) {
-    break
-  }
-
-  $expectedImageIds = @($uploadedImageIds.ToArray())
-
-  if (-not (Test-ModelAssetPresence -HttpClient $httpClient -ApiBase $apiBase -AssetSlug $assetSlug -Title $profile.Title)) {
-    $skipCount++
-    Set-ImportFatalError "Verification failed after gallery uploads: model '$($profile.Title)' (slug '$assetSlug') disappeared before final check; aborting bulk run."
-    break
-  }
-
-  $galleryVerification = Test-GalleryPresence -HttpClient $httpClient -ApiBase $apiBase -GallerySlug $gallerySlug -AssetSlug $assetSlug -ExpectedImageIds $expectedImageIds -Title $profile.Title
-  if (-not $galleryVerification.Success) {
-    $skipCount++
-    Set-ImportFatalError "Verification failed: gallery '$gallerySlug' for '$($profile.Title)' did not include every uploaded image; aborting bulk run."
-    break
-  }
-
-  $uploadCount++
-  Write-Log "Completed '$($profile.Title)': uploaded model plus $processedImages additional image(s) across $($batchIndex - 1) batch(es); verified $($galleryVerification.MatchedImageCount) new image(s) in gallery holding $($galleryVerification.TotalGalleryImageCount) image(s)."
+  Write-Log "Bulk upload finished. Uploaded: $uploaded. Skipped: $skipped."
 }
-
-if ($httpClient) {
-  $httpClient.Dispose()
+finally {
+  if ($client) { $client.Dispose() }
 }
-
-if ($handler) {
-  $handler.Dispose()
-}
-
-if ($script:ImportFatalError) {
-  Write-Log "Bulk import aborted after $uploadCount upload(s) and $skipCount skip(s)."
-  exit 1
-}
-
-Write-Log "Completed import run: $uploadCount uploaded, $skipCount skipped."
