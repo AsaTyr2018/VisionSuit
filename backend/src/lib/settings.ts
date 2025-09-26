@@ -225,6 +225,10 @@ export const applyAdminSettings = async (settings: AdminSettings) => {
   await updateEnvFile(backendEnvPath, backendUpdates);
   await updateEnvFile(frontendEnvPath, frontendUpdates);
 
+  appConfig.platform.siteTitle = settings.general.siteTitle;
+  appConfig.platform.allowRegistration = settings.general.allowRegistration;
+  appConfig.platform.maintenanceMode = settings.general.maintenanceMode;
+
   return resolveAdminSettings();
 };
 

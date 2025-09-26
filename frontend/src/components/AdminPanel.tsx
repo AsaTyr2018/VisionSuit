@@ -21,6 +21,7 @@ import type {
   AdultSafetyKeyword,
   User,
   AdminSettings,
+  PlatformConfig,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
 import { ImageAssetEditDialog } from './ImageAssetEditDialog';
@@ -110,6 +111,7 @@ interface AdminPanelProps {
   rankingTiersFallback: boolean;
   generatorSettings: GeneratorSettings | null;
   onGeneratorSettingsUpdated?: (settings: GeneratorSettings) => void;
+  onPlatformConfigUpdated?: (config: PlatformConfig) => void;
 }
 
 type AdminTab =
@@ -382,6 +384,7 @@ export const AdminPanel = ({
   rankingTiersFallback,
   generatorSettings,
   onGeneratorSettingsUpdated,
+  onPlatformConfigUpdated,
 }: AdminPanelProps) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -994,6 +997,17 @@ export const AdminPanel = ({
           ? 'Settings saved. Restart the backend, frontend, and GPU worker to apply connection changes.'
           : 'Settings saved successfully.',
       });
+
+      if (onPlatformConfigUpdated) {
+        try {
+          const platform = await api.getPlatformConfig();
+          onPlatformConfigUpdated(platform);
+        } catch (configError) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Failed to refresh platform config after settings update', configError);
+          }
+        }
+      }
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Failed to update settings.';
       setStatus({ type: 'error', message });

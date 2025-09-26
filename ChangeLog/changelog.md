@@ -1137,3 +1137,8 @@
 - **Reason**: Visitors could still open the registration dialog even after administrators disabled self-service signups, leading to confusing error toasts instead of a clear closed state.
 - **Changes**: Updated `frontend/src/App.tsx` to keep the **Create account** button visible but disabled whenever registration or maintenance mode is off-limits and surface the corresponding notice. Refreshed the README to call out the locked button behaviour so operators know what to expect when closing signups.
 
+## 210 – [Fix] Self-service registration toggle sync
+- **Type**: Normal Change
+- **Reason**: After administrators turned off self-service registration, the backend kept the locked state cached so re-enabling the toggle in the admin panel had no effect until the server restarted.
+- **Changes**: Refreshed `backend/src/lib/settings.ts` to update the runtime platform flags after saving admin settings and had `frontend/src/components/AdminPanel.tsx` reload the platform configuration so the registration toggle immediately applies across the interface.
+
