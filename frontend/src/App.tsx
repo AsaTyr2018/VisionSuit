@@ -783,6 +783,11 @@ export const App = () => {
   const latestModels = useMemo(() => visibleModelAssets.slice(0, 5), [visibleModelAssets]);
   const latestImages = useMemo(() => visibleImageAssets.slice(0, 5), [visibleImageAssets]);
   const showAdultBadges = authUser?.showAdultContent ?? false;
+  const isRegistrationUnavailable =
+    !platformConfig.allowRegistration || platformConfig.maintenanceMode;
+  const registrationLockMessage = platformConfig.maintenanceMode
+    ? 'Maintenance mode is active. Only administrators can sign in.'
+    : 'Registration is currently disabled by administrators.';
 
   const modelTiles = latestModels.map((asset) => {
     const isAuditPlaceholder = isAuditPlaceholderForViewer(
@@ -1218,38 +1223,30 @@ export const App = () => {
                 >
                   Sign in
                 </button>
-                {platformConfig.allowRegistration && !platformConfig.maintenanceMode ? (
-                  <button
-                    type="button"
-                    className="sidebar__auth-button"
-                    onClick={() => {
-                      if (!platformConfig.allowRegistration || platformConfig.maintenanceMode) {
-                        setToast({
-                          type: 'error',
-                          message: platformConfig.maintenanceMode
-                            ? 'Maintenance mode is active. Only administrators can sign in.'
-                            : 'Registration is currently disabled by administrators.',
-                        });
-                        return;
-                      }
-                      setIsRegisterOpen(true);
-                      setRegisterError(null);
-                    }}
-                    disabled={isLoggingIn || isRegistering}
-                  >
-                    Create account
-                  </button>
-                ) : (
+                <button
+                  type="button"
+                  className="sidebar__auth-button"
+                  onClick={() => {
+                    if (isRegistrationUnavailable) {
+                      setToast({ type: 'error', message: registrationLockMessage });
+                      return;
+                    }
+                    setIsRegisterOpen(true);
+                    setRegisterError(null);
+                  }}
+                  disabled={isLoggingIn || isRegistering || isRegistrationUnavailable}
+                >
+                  Create account
+                </button>
+                {isRegistrationUnavailable ? (
                   <p
                     className={`sidebar__auth-note${
                       platformConfig.maintenanceMode ? ' sidebar__auth-note--warning' : ''
                     }`}
                   >
-                    {platformConfig.maintenanceMode
-                      ? 'Maintenance mode active. Only administrators can sign in.'
-                      : 'Registration is currently disabled.'}
+                    {registrationLockMessage}
                   </p>
-                )}
+                ) : null}
               </>
             )}
           </div>
