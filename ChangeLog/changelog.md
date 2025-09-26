@@ -1082,3 +1082,13 @@
 - **Change Type**: Normal Change
 - **Reason**: The Windows bulk uploader could continue batching gallery images before the API exposed the new model, leading to collections with renders but no matching LoRA asset in VisionSuit.
 - **Changes**: Updated `scripts/bulk_import_windows.ps1` to verify the model is visible via the VisionSuit API before scheduling additional image batches and adjusted the README reliability note to highlight the Windows workflow safeguard.
+
+## 202 – [Fix] Windows bulk importer visibility wait extension
+- **Type**: Normal Change
+- **Reason**: The Windows bulk uploader still aborted for successful imports because the API sometimes needs more than 30 seconds to surface a freshly created model, causing the verification loop to fail.
+- **Changes**: Increased the verification retry budget in `scripts/bulk_import_windows.ps1` to ten attempts with capped exponential backoff (roughly 90 seconds) and refreshed the README reliability note to document the longer wait window.
+
+## 203 – [Fix] Authenticated asset queries bypass HTTP caches
+- **Type**: Normal Change
+- **Reason**: Windows bulk imports continued to fail on fresh installations because cached `GET /api/assets/models` responses returned HTTP 304 without the new model payload, preventing the verification loop from ever seeing the uploaded asset.
+- **Changes**: Disabled Express ETags and applied no-store cache headers to all `/api` responses so authenticated clients always receive fresh payloads, and extended the README reliability note to explain the cache-busting behaviour.

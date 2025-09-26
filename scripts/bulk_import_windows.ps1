@@ -317,7 +317,7 @@ function Test-ModelAssetPresence {
   }
 
   $endpoint = "$ApiBase/assets/models"
-  $maxAttempts = 5
+  $maxAttempts = 10
   $delaySeconds = 2
 
   for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
@@ -332,7 +332,7 @@ function Test-ModelAssetPresence {
       }
 
       Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
       continue
     }
 
@@ -343,7 +343,7 @@ function Test-ModelAssetPresence {
       }
 
       Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
       continue
     }
 
@@ -375,7 +375,7 @@ function Test-ModelAssetPresence {
     if ($attempt -lt $maxAttempts) {
       Write-Log "Model '$Title' with slug '$AssetSlug' not visible yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
       Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
     }
     else {
       Write-Log "Model '$Title' with slug '$AssetSlug' was not found in VisionSuit after $maxAttempts verification attempts."
@@ -407,7 +407,7 @@ function Test-GalleryPresence {
   }
 
   $endpoint = "$ApiBase/galleries"
-  $maxAttempts = 5
+  $maxAttempts = 10
   $delaySeconds = 2
 
   for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
@@ -422,7 +422,7 @@ function Test-GalleryPresence {
       }
 
       Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
       continue
     }
 
@@ -433,7 +433,7 @@ function Test-GalleryPresence {
       }
 
       Start-Sleep -Seconds $delaySeconds
-      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
       continue
     }
 
@@ -461,7 +461,7 @@ function Test-GalleryPresence {
       if ($attempt -lt $maxAttempts) {
         Write-Log "Gallery '$GallerySlug' for '$Title' not visible yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
         Start-Sleep -Seconds $delaySeconds
-        $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+        $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
         continue
       }
 
@@ -489,7 +489,7 @@ function Test-GalleryPresence {
       if ($attempt -lt $maxAttempts) {
         Write-Log "Gallery '$GallerySlug' does not list model slug '$AssetSlug' yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
         Start-Sleep -Seconds $delaySeconds
-        $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+        $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
         continue
       }
 
@@ -520,7 +520,7 @@ function Test-GalleryPresence {
         if ($attempt -lt $maxAttempts) {
           Write-Log "Gallery '$GallerySlug' is missing $($expected.Count - $expectedMatches) of $($expected.Count) uploaded image(s) (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
           Start-Sleep -Seconds $delaySeconds
-          $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+          $delaySeconds = [Math]::Min($delaySeconds * 2, 12)
           continue
         }
 
