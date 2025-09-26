@@ -226,13 +226,18 @@ usersRouter.get('/:id/profile', async (req, res, next) => {
     const isAuditView = Boolean(viewer && viewer.role === 'ADMIN' && wantsAudit);
     const isAdmin = viewer?.role === 'ADMIN';
     const includePrivate = isAuditView || isAdmin || viewer?.id === id;
+    const includeRemoved = viewer?.id === id;
     const canViewFlagged = isAdmin || viewer?.id === id;
-    const modelModerationFilter: Prisma.ModelAssetWhereInput = canViewFlagged
-      ? { moderationStatus: { not: ModerationStatus.REMOVED } }
-      : { moderationStatus: ModerationStatus.ACTIVE };
-    const imageModerationFilter: Prisma.ImageAssetWhereInput = canViewFlagged
-      ? { moderationStatus: { not: ModerationStatus.REMOVED } }
-      : { moderationStatus: ModerationStatus.ACTIVE };
+    const modelModerationFilter: Prisma.ModelAssetWhereInput = includeRemoved
+      ? {}
+      : canViewFlagged
+        ? { moderationStatus: { not: ModerationStatus.REMOVED } }
+        : { moderationStatus: ModerationStatus.ACTIVE };
+    const imageModerationFilter: Prisma.ImageAssetWhereInput = includeRemoved
+      ? {}
+      : canViewFlagged
+        ? { moderationStatus: { not: ModerationStatus.REMOVED } }
+        : { moderationStatus: ModerationStatus.ACTIVE };
 
     const likeWhere: Prisma.ImageLikeWhereInput = includePrivate
       ? { image: { ownerId: id } }

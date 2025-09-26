@@ -187,7 +187,12 @@ export const mapGallery = (
     isUnderModeration: hasFlaggedEntry,
     entries: gallery.entries
       .filter((entry) => {
+        const ownsAsset = entry.asset ? entry.asset.ownerId === viewerId : false;
+        const ownsImage = entry.image ? entry.image.ownerId === viewerId : false;
+        const viewerOwnsEntry = ownsAsset || ownsImage;
+
         const adultAllowed =
+          viewerOwnsEntry ||
           allowAdultContent ||
           ((entry.asset ? !entry.asset.isAdult : true) && (entry.image ? !entry.image.isAdult : true));
 
@@ -200,14 +205,14 @@ export const mapGallery = (
         }
 
         const assetVisible = entry.asset
-          ? entry.asset.moderationStatus !== ModerationStatus.REMOVED &&
-            (!entry.asset.isAdult || allowAdultContent) &&
-            (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.asset.ownerId === viewerId)
+          ? (ownsAsset || entry.asset.moderationStatus !== ModerationStatus.REMOVED) &&
+            (!entry.asset.isAdult || allowAdultContent || ownsAsset) &&
+            (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || ownsAsset)
           : false;
         const imageVisible = entry.image
-          ? entry.image.moderationStatus !== ModerationStatus.REMOVED &&
-            (!entry.image.isAdult || allowAdultContent) &&
-            (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.image.ownerId === viewerId)
+          ? (ownsImage || entry.image.moderationStatus !== ModerationStatus.REMOVED) &&
+            (!entry.image.isAdult || allowAdultContent || ownsImage) &&
+            (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || ownsImage)
           : false;
 
         const canViewAsset = assetVisible
@@ -217,20 +222,22 @@ export const mapGallery = (
           ? canViewResource(viewer, entry.image!.ownerId, entry.image!.isPublic, options)
           : false;
 
-        return canViewAsset || canViewImage;
+        return canViewAsset || canViewImage || viewerOwnsEntry;
       })
       .map((entry) => {
         const modelStorage = entry.asset ? resolveStorageLocation(entry.asset.storagePath) : null;
         const modelPreview = entry.asset ? resolveStorageLocation(entry.asset.previewImage) : null;
+        const ownsAsset = entry.asset ? entry.asset.ownerId === viewerId : false;
+        const ownsImage = entry.image ? entry.image.ownerId === viewerId : false;
         const assetVisible = entry.asset
-          ? entry.asset.moderationStatus !== ModerationStatus.REMOVED &&
-            (!entry.asset.isAdult || allowAdultContent) &&
-            (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.asset.ownerId === viewerId)
+          ? (ownsAsset || entry.asset.moderationStatus !== ModerationStatus.REMOVED) &&
+            (!entry.asset.isAdult || allowAdultContent || ownsAsset) &&
+            (entry.asset.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || ownsAsset)
           : false;
         const imageVisible = entry.image
-          ? entry.image.moderationStatus !== ModerationStatus.REMOVED &&
-            (!entry.image.isAdult || allowAdultContent) &&
-            (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || entry.image.ownerId === viewerId)
+          ? (ownsImage || entry.image.moderationStatus !== ModerationStatus.REMOVED) &&
+            (!entry.image.isAdult || allowAdultContent || ownsImage) &&
+            (entry.image.moderationStatus !== ModerationStatus.FLAGGED || isAdmin || ownsImage)
           : false;
         const canViewAsset = assetVisible
           ? canViewResource(viewer, entry.asset!.ownerId, entry.asset!.isPublic, options)

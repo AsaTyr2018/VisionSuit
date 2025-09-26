@@ -1127,3 +1127,8 @@
 - **Reason**: Windows bulk imports failed immediately after authentication because the script passed multiple `-Path` parameters while collecting metadata candidates.
 - **Details**: Updated the candidate metadata collection to evaluate each `Join-Path` call individually so only a single `-Path` parameter is supplied per invocation.
 
+## 208 – [Enhancement] Owner visibility and storage reindexer
+- **Type**: Normal Change
+- **Reason**: Curators could lose track of private or moderated uploads because viewer-facing filters hid their own assets, and administrators needed a recovery tool to reconcile database metadata with MinIO after manual storage edits.
+- **Changes**: Relaxed gallery, asset feed, and profile queries so authenticated owners always see every model, image, and gallery entry they uploaded regardless of moderation status, visibility, or safe-mode settings. Added `backend/scripts/reindexStorage.ts` together with the `npm run storage:reindex` helper to rescan MinIO, recreate missing `StorageObject` rows, and refresh file metadata.
+

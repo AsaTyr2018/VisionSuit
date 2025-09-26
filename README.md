@@ -28,7 +28,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Curators can edit and delete their own models, collections, and images directly from the explorers (each destructive action ships with a “Nicht umkehrbar ist wenn gelöscht wird. weg ist weg.” warning), while administrators continue to see controls for every entry.
 - Manual collection linking lets curators attach their own galleries to models from the detail view, while administrators can pair any collection when moderation requires intervention.
 - Administrators can toggle the On-Site Generator between an **Admin only** preview phase and a **Members & curators** rollout from the Administration → Generator tab, curate the exact database-backed base-model list consumed by the wizard without touching storage manifests, and monitor or cancel running jobs from the active queue when renders stall.
-- Private uploads remain hidden from other curators; the administration workspace now surfaces every model, gallery, and image for admins by default, and the token-aware storage proxy streams private previews directly in the browser for moderation. The **Audit** toggle on curator profiles remains available for targeted spot checks.
+- Private uploads remain hidden from other curators; the administration workspace now surfaces every model, gallery, and image for admins by default, and the token-aware storage proxy streams private previews directly in the browser for moderation. Creators always see their complete upload history regardless of moderation status, visibility, or safe-mode toggles so personal galleries never look incomplete. The **Audit** toggle on curator profiles remains available for targeted spot checks.
 - Signed-in users can open the **Account settings** dialog from the sidebar to adjust profile details or rotate their password in a single modal workflow.
 - Administration workspace now presents models and images in lightweight thumbnail grids with one-click detail pages, inline visibility toggles, ranking controls (weights, tiers, and user resets), persistent bulk tools tuned for six-figure libraries, multi-step onboarding with permission previews, dialog-driven actions to edit assets, upload or rename model versions, remove secondary revisions, **and a dedicated Moderation tab** that lists every flagged asset for approve/remove workflows. Model and image edit dialogs now ship with tabbed flows (details, prompting, metadata, ownership) plus right-rail summaries for instant context, and ranking inputs immediately cache typed values so the tab stays responsive while backend refreshes complete. Image archive filters add a dedicated model picker with type-ahead suggestions sourced from stored metadata so curators can audit renders tied to specific checkpoints in seconds.
 - Flagged models and renders are hidden from members and curators; creators get a lightweight “In Audit” placeholder while administrators continue to see clear previews and can approve or remove them while leaving the required audit note that will power the upcoming notification center.
@@ -278,6 +278,17 @@ Use `scripts/migrate_mylora_to_visionsuit.py` to pull an existing MyLora library
 - Optional `--visibility public` publishes the migrated models instantly; omit it to stage imports as private drafts.
 
 The script logs into MyLora, walks the grid API in batches, downloads each safetensor and its preview images, then creates matching VisionSuit model entries with categories and tags preserved as labels. Existing VisionSuit models are skipped automatically to avoid duplicates when a run is interrupted or repeated.
+
+### Storage reindexer
+
+Run the storage reindexer whenever MinIO and the database fall out of sync (for example after restoring buckets or importing files by hand):
+
+```bash
+cd backend
+npm run storage:reindex
+```
+
+The helper scans every model, model version, gallery cover, image, and curator avatar reference, verifies that the corresponding MinIO object exists, and creates or refreshes matching `StorageObject` entries with the latest size and content-type metadata. Missing objects are reported with the source reference so you can replace or relink files quickly.
 
 ### Backend service
 
