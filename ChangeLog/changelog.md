@@ -638,6 +638,11 @@
 - **Technical Changes**: Introduced `gpuworker/rollback-comfy.sh` to stop the service, remove the checkout, helper binaries, MinIO env file, and dedicated user/group, while updating both READMEs with usage guidance.
 - **Data Changes**: None; the rollback only deletes generated runtime artifacts.
 
+## 120 – [Fix] Windows metadata accessor guard (commit TBD)
+- **Change Type**: Normal Change
+- **Reason**: The Windows bulk import script crashed while processing metadata JSON because dictionary-based overrides do not expose a `title` property.
+- **Changes**: Added a metadata accessor helper that supports dictionaries and `PSCustomObject` instances and updated `Build-UploadProfile` to use it for every override lookup.
+
 ## 120 – [Addition] On-Site Generator access controls & wizard
 - **General**: Introduced a VisionSuit-native On-Site Generator view with a guided prompt builder, LoRA mixer, and per-user request history alongside an admin toggle that controls who can see the feature.
 - **Technical Changes**: Added generator settings/request tables and routes to the backend, wired new API helpers, created the React wizard plus admin configuration tab, and expanded global styling for the generator UI.
