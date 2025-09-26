@@ -232,6 +232,8 @@ The script authenticates with `POST /api/auth/login`, seeds the gallery by uploa
 
 The PowerShell helper mirrors the Linux workflow: it authenticates, verifies admin privileges, stages the LoRA with a random preview, and then fans out the remaining renders in twelve-file batches until the entire collection has been imported. Health status and upload responses are validated on every step, so the run halts immediately if VisionSuit stops returning the expected asset and gallery identifiers.
 
+> **Tip:** Single-model libraries and one-image galleries are supported—the importer now treats lone safetensors and previews as proper collections so you can sanity-check uploads incrementally before scaling to larger batches.
+
 #### Metadata overrides and defaults
 
 The bulk helpers now mirror the fields exposed by the upload wizard: they populate model titles, descriptions, tags, gallery visibility, triggers, and collection targets before any files leave your machine. Each LoRA can ship its own overrides through a JSON descriptor placed either next to the `.safetensors` file (`./loras/model-name.json`) or inside the image directory (`./images/model-name/metadata.json`). Example:

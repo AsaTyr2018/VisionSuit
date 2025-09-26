@@ -1152,3 +1152,8 @@
 - **Reason**: Reviewers needed a faster way to step through gallery images without repeatedly closing the lightbox or targeting small thumbnails.
 - **Changes**: Added swipe, click, and keyboard arrow navigation to the gallery image modal, introduced focus styles for the interactive lightbox surface, and documented the streamlined workflow in the README.
 
+## 212 – [Fix] Windows bulk importer single-item guard
+- **Type**: Normal Change
+- **Reason**: Windows bulk uploads that only included one LoRA or a single preview image crashed because the script attempted to read the `.Count` property from scalar file objects.
+- **Changes**: Wrapped the Windows importer’s file enumerations in arrays so lone safetensors and preview images are counted correctly, and refreshed the README Windows workflow guidance with the single-item support tip.
+
