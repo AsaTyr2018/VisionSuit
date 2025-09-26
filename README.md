@@ -91,6 +91,8 @@ During execution the installer:
 4. Provisions MinIO credentials, configures buckets, and launches the `visionsuit-minio` container.
 5. Offers optional execution of `npm run prisma:migrate`, `npm run seed`, and `npm run create-admin` for initial data.
 
+At launch the installer now asks whether VisionSuit should stay in manual mode or be supervised by systemd. Picking the automatic path writes `/etc/systemd/system/visionsuit-dev.service`, wires in the detected host and port values, reloads systemd, and enables the unit immediately so the stack comes online in the background. Opting for manual control skips the unit creation and prints the exact `HOST=<ip> BACKEND_PORT=<port> FRONTEND_PORT=<port> ./dev-start.sh` command to run whenever you want to launch the stack.
+
 Base checkpoints for the On-Site Generator still live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `backend/.env` with `GENERATOR_BASE_MODEL_BUCKET` and inside `frontend/.env` via `VITE_GENERATOR_BASE_MODEL_BUCKET` so the GPU worker and download proxy continue to line up. After new checkpoints land in the bucket, open **Administration → Generator** and add an entry for each filename so the curated picker exposes only vetted models; the generator now hydrates that list from the corresponding database records automatically. For headless maintenance windows or CI pipelines the helper remains available to pre-seed the catalog explicitly:
 
 Inside the Generator administration view, the segmented **Queue & blocks**, **Failure log**, and **Access & presets** controls keep the maintenance tools organized so you can jump directly to live queue telemetry, error diagnostics, or visibility settings without scrolling.
