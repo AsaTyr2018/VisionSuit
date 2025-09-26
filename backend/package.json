@@ -14,7 +14,8 @@
     "prisma:studio": "prisma studio",
     "seed": "ts-node --transpile-only prisma/seed.ts",
     "create-admin": "ts-node --transpile-only scripts/createAdmin.ts",
-    "generator:sync-base-models": "ts-node --transpile-only scripts/syncGeneratorBaseModels.ts"
+    "generator:sync-base-models": "ts-node --transpile-only scripts/syncGeneratorBaseModels.ts",
+    "storage:reindex": "ts-node --transpile-only scripts/reindexStorage.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",

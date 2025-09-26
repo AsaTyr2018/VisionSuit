@@ -517,36 +517,27 @@ assetsRouter.get('/models', async (req, res, next) => {
     const viewer = req.user;
     const isAdmin = viewer?.role === 'ADMIN';
     const allowAdultContent = isAdmin ? true : viewer?.showAdultContent ?? false;
-    const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
-      ? {}
-      : viewer
-        ? {
-            AND: [
-              { moderationStatus: { not: ModerationStatus.REMOVED } },
-              {
-                OR: [
-                  { ownerId: viewer.id },
-                  {
-                    AND: [
-                      { isPublic: true },
-                      { moderationStatus: ModerationStatus.ACTIVE },
-                    ],
-                  },
-                ],
-              },
-            ],
-          }
-        : {
-            AND: [
-              { isPublic: true },
-              { moderationStatus: ModerationStatus.ACTIVE },
-            ],
-          };
-
     const filters: Prisma.ModelAssetWhereInput[] = [];
 
-    if (Object.keys(visibilityFilter).length > 0) {
-      filters.push(visibilityFilter);
+    if (!isAdmin) {
+      if (viewer) {
+        filters.push({
+          OR: [
+            { ownerId: viewer.id },
+            {
+              AND: [
+                { isPublic: true },
+                { moderationStatus: ModerationStatus.ACTIVE },
+              ],
+            },
+          ],
+        });
+      } else {
+        filters.push({
+          isPublic: true,
+          moderationStatus: ModerationStatus.ACTIVE,
+        });
+      }
     }
 
     if (!allowAdultContent) {
@@ -588,36 +579,27 @@ assetsRouter.get('/images', async (req, res, next) => {
     const viewer = req.user;
     const isAdmin = viewer?.role === 'ADMIN';
     const allowAdultContent = isAdmin ? true : viewer?.showAdultContent ?? false;
-    const visibilityFilter: Prisma.ImageAssetWhereInput = isAdmin
-      ? {}
-      : viewer
-        ? {
-            AND: [
-              { moderationStatus: { not: ModerationStatus.REMOVED } },
-              {
-                OR: [
-                  { ownerId: viewer.id },
-                  {
-                    AND: [
-                      { isPublic: true },
-                      { moderationStatus: ModerationStatus.ACTIVE },
-                    ],
-                  },
-                ],
-              },
-            ],
-          }
-        : {
-            AND: [
-              { isPublic: true },
-              { moderationStatus: ModerationStatus.ACTIVE },
-            ],
-          };
-
     const filters: Prisma.ImageAssetWhereInput[] = [];
 
-    if (Object.keys(visibilityFilter).length > 0) {
-      filters.push(visibilityFilter);
+    if (!isAdmin) {
+      if (viewer) {
+        filters.push({
+          OR: [
+            { ownerId: viewer.id },
+            {
+              AND: [
+                { isPublic: true },
+                { moderationStatus: ModerationStatus.ACTIVE },
+              ],
+            },
+          ],
+        });
+      } else {
+        filters.push({
+          isPublic: true,
+          moderationStatus: ModerationStatus.ACTIVE,
+        });
+      }
     }
 
     if (!allowAdultContent) {
