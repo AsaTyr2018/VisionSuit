@@ -84,8 +84,23 @@ const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
 };
 
 const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) => {
-  const allowAdult = viewer?.showAdultContent ?? false;
-  const filteredByAdult = assets.filter((asset) => allowAdult || !asset.isAdult);
+  const isAdmin = viewer?.role === 'ADMIN';
+  const allowAdult = isAdmin ? true : viewer?.showAdultContent ?? false;
+  const filteredByAdult = assets.filter((asset) => {
+    if (!asset.isAdult) {
+      return true;
+    }
+
+    if (allowAdult) {
+      return true;
+    }
+
+    if (viewer && asset.owner.id === viewer.id) {
+      return true;
+    }
+
+    return false;
+  });
 
   if (!viewer) {
     return filteredByAdult.filter((asset) => asset.moderationStatus !== 'REMOVED');
@@ -109,8 +124,23 @@ const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) 
 };
 
 const filterImageAssetsForViewer = (images: ImageAsset[], viewer?: User | null) => {
-  const allowAdult = viewer?.showAdultContent ?? false;
-  const filteredByAdult = images.filter((image) => allowAdult || !image.isAdult);
+  const isAdmin = viewer?.role === 'ADMIN';
+  const allowAdult = isAdmin ? true : viewer?.showAdultContent ?? false;
+  const filteredByAdult = images.filter((image) => {
+    if (!image.isAdult) {
+      return true;
+    }
+
+    if (allowAdult) {
+      return true;
+    }
+
+    if (viewer && image.owner.id === viewer.id) {
+      return true;
+    }
+
+    return false;
+  });
 
   if (!viewer) {
     return filteredByAdult.filter((image) => image.moderationStatus !== 'REMOVED');

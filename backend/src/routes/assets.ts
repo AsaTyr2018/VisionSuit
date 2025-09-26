@@ -516,7 +516,7 @@ assetsRouter.get('/models', async (req, res, next) => {
   try {
     const viewer = req.user;
     const isAdmin = viewer?.role === 'ADMIN';
-    const allowAdultContent = viewer?.showAdultContent ?? false;
+    const allowAdultContent = isAdmin ? true : viewer?.showAdultContent ?? false;
     const visibilityFilter: Prisma.ModelAssetWhereInput = isAdmin
       ? {}
       : viewer
@@ -550,7 +550,13 @@ assetsRouter.get('/models', async (req, res, next) => {
     }
 
     if (!allowAdultContent) {
-      filters.push({ isAdult: false });
+      if (viewer) {
+        filters.push({
+          OR: [{ isAdult: false }, { ownerId: viewer.id }],
+        });
+      } else {
+        filters.push({ isAdult: false });
+      }
     }
 
     let where: Prisma.ModelAssetWhereInput = {};
@@ -581,7 +587,7 @@ assetsRouter.get('/images', async (req, res, next) => {
   try {
     const viewer = req.user;
     const isAdmin = viewer?.role === 'ADMIN';
-    const allowAdultContent = viewer?.showAdultContent ?? false;
+    const allowAdultContent = isAdmin ? true : viewer?.showAdultContent ?? false;
     const visibilityFilter: Prisma.ImageAssetWhereInput = isAdmin
       ? {}
       : viewer
@@ -615,7 +621,13 @@ assetsRouter.get('/images', async (req, res, next) => {
     }
 
     if (!allowAdultContent) {
-      filters.push({ isAdult: false });
+      if (viewer) {
+        filters.push({
+          OR: [{ isAdult: false }, { ownerId: viewer.id }],
+        });
+      } else {
+        filters.push({ isAdult: false });
+      }
     }
 
     let where: Prisma.ImageAssetWhereInput = {};
