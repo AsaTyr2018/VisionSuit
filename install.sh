@@ -551,9 +551,21 @@ ensure_node_and_npm() {
     info "Installing Node.js 18 LTS via NodeSource"
     $sudo_cmd apt-get update
     $sudo_cmd apt-get install -y ca-certificates curl gnupg
-    $sudo_cmd mkdir -p /etc/apt/keyrings
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | $sudo_cmd tee /etc/apt/keyrings/nodesource.gpg >/dev/null
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | $sudo_cmd tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+    if [ -n "$sudo_cmd" ]; then
+      $sudo_cmd mkdir -p /etc/apt/keyrings
+    else
+      mkdir -p /etc/apt/keyrings
+    fi
+
+    if [ -n "$sudo_cmd" ]; then
+      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor | $sudo_cmd tee /etc/apt/keyrings/nodesource.gpg >/dev/null
+      $sudo_cmd chmod a+r /etc/apt/keyrings/nodesource.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | $sudo_cmd tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+    else
+      curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor > /etc/apt/keyrings/nodesource.gpg
+      chmod a+r /etc/apt/keyrings/nodesource.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_18.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+    fi
     $sudo_cmd apt-get update
     $sudo_cmd apt-get install -y nodejs
   elif [ "$installer" = "brew" ]; then
