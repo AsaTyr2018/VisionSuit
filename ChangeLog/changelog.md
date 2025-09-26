@@ -1117,3 +1117,8 @@
 - **Type**: Normal Change
 - **Reason**: The Windows bulk uploader aborted before authenticating when `ServerBaseUrl` already ended in `/api`, doubling the VisionSuit routes during the `/api/meta/status` probe and returning HTTP 404 even though the server was healthy.
 - **Changes**: Taught `ConvertTo-AbsoluteUri` in `scripts/bulk_import_windows.ps1` to deduplicate overlapping path segments and adjusted the README so administrators know they can paste either the site root or API endpoint without tripping the health check.
+## 034 – [Fix] Windows bulk import metadata lookup
+- **Change Type**: Normal Change
+- **Reason**: Windows bulk imports failed immediately after authentication because the script passed multiple `-Path` parameters while collecting metadata candidates.
+- **Details**: Updated the candidate metadata collection to evaluate each `Join-Path` call individually so only a single `-Path` parameter is supplied per invocation.
+
