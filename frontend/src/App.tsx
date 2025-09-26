@@ -1074,6 +1074,7 @@ export const App = () => {
           rankingTiersFallback={rankingTiersFallback}
           generatorSettings={generatorSettings}
           onGeneratorSettingsUpdated={setGeneratorSettings}
+          onPlatformConfigUpdated={setPlatformConfig}
         />
       );
     }
