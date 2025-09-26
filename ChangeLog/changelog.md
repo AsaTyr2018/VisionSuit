@@ -1072,3 +1072,13 @@
 - **Type**: Normal Change
 - **Reason**: The installer failed to add the NodeSource repository on fresh systems because the ASCII-armored signing key was written without converting it into the keyring format that `apt` expects.
 - **Changes**: Updated `install.sh` to dearmor the NodeSource GPG key, ensure the keyring directory exists with the right permissions, and use optional `sudo` wrappers when writing the key and repository list.
+
+## 200 – [Fix] Linux bulk importer response verification
+- **Change Type**: Normal Change
+- **Reason**: The Linux/macOS bulk uploader reported success even when the API skipped creating the model, leaving galleries populated with renders but no matching LoRA asset in VisionSuit.
+- **Changes**: Added asset-slug validation to `scripts/bulk_import_linux.sh` so the run aborts when the API response lacks the expected identifiers, and refreshed the README reliability note to document the cross-platform verification step.
+
+## 201 – [Fix] Windows bulk importer asset verification
+- **Change Type**: Normal Change
+- **Reason**: The Windows bulk uploader could continue batching gallery images before the API exposed the new model, leading to collections with renders but no matching LoRA asset in VisionSuit.
+- **Changes**: Updated `scripts/bulk_import_windows.ps1` to verify the model is visible via the VisionSuit API before scheduling additional image batches and adjusted the README reliability note to highlight the Windows workflow safeguard.

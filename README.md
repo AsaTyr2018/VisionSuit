@@ -233,7 +233,7 @@ The PowerShell helper mirrors the Linux workflow: it authenticates, verifies adm
 
 > Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
 
-> Reliability check: After each upload the Windows helper now queries VisionSuit for the created model and gallery entries. If the API cannot confirm the asset slug or the expected image IDs, the script aborts the run instead of silently continuing.
+> Reliability check: Both helpers validate the VisionSuit response before continuing. The Linux/macOS script requires the API to return an asset slug and gallery slug before it uploads follow-up renders, while the Windows helper now confirms the model appears in VisionSuit before it queues extra image batches and double-checks the gallery contents afterward. If either script cannot confirm the expected identifiers it aborts the run instead of silently continuing.
 
 #### Metadata overrides and defaults
 
