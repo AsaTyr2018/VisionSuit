@@ -6,6 +6,8 @@ BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 DOCKER_COMPOSE_CMD=""
 SERVER_IP=""
+STARTUP_MODE="manual"
+SYSTEMD_SERVICE_NAME="visionsuit-dev.service"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -122,6 +124,131 @@ info() {
 
 success() {
   printf '\033[1;32m✔\033[0m %s\n' "$1"
+}
+
+prompt_startup_mode() {
+  info "Select how VisionSuit should start after installation"
+  echo "  [1] Manual launch (run ./dev-start.sh yourself)"
+  echo "  [2] Automatic launch via systemd service"
+
+  local choice
+  while true; do
+    read -r -p "Startup mode [1]: " choice || true
+    case "${choice:-1}" in
+      1)
+        STARTUP_MODE="manual"
+        break
+        ;;
+      2)
+        STARTUP_MODE="automatic"
+        break
+        ;;
+      *)
+        echo "Please enter 1 or 2."
+        ;;
+    esac
+  done
+}
+
+print_manual_start_hint() {
+  info "Manual startup selected"
+  echo "Launch VisionSuit manually whenever needed:"
+  echo "  HOST=${backend_host:-$SERVER_IP} BACKEND_PORT=${backend_port:-4000} FRONTEND_PORT=${frontend_port:-5173} ./dev-start.sh"
+}
+
+setup_systemd_service() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    info "systemd is not available on this host. Falling back to manual startup."
+    STARTUP_MODE="manual"
+    return
+  fi
+
+  local service_file="/etc/systemd/system/${SYSTEMD_SERVICE_NAME}"
+  local service_user
+  local service_group
+  service_user="$(id -un)"
+  service_group="$(id -gn)"
+
+  info "Configuring systemd service (${SYSTEMD_SERVICE_NAME})"
+
+  if [ -f "$service_file" ]; then
+    info "An existing VisionSuit service definition was found."
+    if confirm "Overwrite the existing service with the new configuration?"; then
+      systemctl stop "$SYSTEMD_SERVICE_NAME" >/dev/null 2>&1 || true
+      systemctl disable "$SYSTEMD_SERVICE_NAME" >/dev/null 2>&1 || true
+    else
+      if confirm "Restart the existing service now?"; then
+        if systemctl restart "$SYSTEMD_SERVICE_NAME"; then
+          success "VisionSuit service restarted."
+        else
+          info "Unable to restart the existing service. Please check systemctl status ${SYSTEMD_SERVICE_NAME}."
+        fi
+      else
+        info "Keeping the current service definition."
+      fi
+      return
+    fi
+  fi
+
+  local host_env
+  host_env="${backend_host:-$SERVER_IP}"
+  if [ -z "$host_env" ]; then
+    host_env="0.0.0.0"
+  fi
+
+  if ! tee "$service_file" >/dev/null <<EOF
+[Unit]
+Description=VisionSuit stack (dev-start.sh)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$ROOT_DIR
+User=$service_user
+Group=$service_group
+ExecStart=$ROOT_DIR/dev-start.sh
+Environment=HOST=$host_env
+Environment=BACKEND_PORT=${backend_port:-4000}
+Environment=FRONTEND_PORT=${frontend_port:-5173}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  then
+    info "Failed to write ${service_file}. Falling back to manual startup."
+    STARTUP_MODE="manual"
+    return
+  fi
+
+  if ! systemctl daemon-reload; then
+    info "systemctl daemon-reload failed. Falling back to manual startup."
+    STARTUP_MODE="manual"
+    return
+  fi
+
+  if ! systemctl enable --now "$SYSTEMD_SERVICE_NAME"; then
+    info "Failed to enable/start ${SYSTEMD_SERVICE_NAME}. Falling back to manual startup."
+    STARTUP_MODE="manual"
+    return
+  fi
+
+  success "VisionSuit systemd service enabled (${SYSTEMD_SERVICE_NAME})."
+  info "Manage the service with 'systemctl status ${SYSTEMD_SERVICE_NAME}' or 'systemctl restart ${SYSTEMD_SERVICE_NAME}'."
+}
+
+configure_startup_mode() {
+  if [ "$STARTUP_MODE" = "automatic" ]; then
+    setup_systemd_service
+    if [ "$STARTUP_MODE" != "automatic" ]; then
+      print_manual_start_hint
+    fi
+  else
+    print_manual_start_hint
+  fi
 }
 
 prompt_default() {
@@ -390,6 +517,8 @@ require_command npm
 require_command python3
 ensure_docker_requirements
 
+prompt_startup_mode
+
 info "Installiere Backend-Abhängigkeiten"
 (
   cd "$BACKEND_DIR"
@@ -628,5 +757,7 @@ if confirm "Jetzt einen Admin-Benutzer anlegen?"; then
   )
   success "Admin-Benutzer wurde angelegt oder aktualisiert."
 fi
+
+configure_startup_mode
 
 success "Installation abgeschlossen."

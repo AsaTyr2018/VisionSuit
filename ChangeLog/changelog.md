@@ -1047,3 +1047,8 @@
 - **General**: Ensured on-site generator jobs feed positive prompts and negatives into their intended SDXL text encoders so ComfyUI receives the right conditioning.
 - **Technical Changes**: Bound both global and local text fields for the positive and negative CLIP nodes in the default workflow parameter map and expanded the GPU agent regression test to verify the mirrored bindings.
 - **Data Changes**: None.
+
+## 198 – [Feature] Installer startup mode selection
+- **Type**: Normal Change
+- **Reason**: Provide administrators with an immediate choice between manual launches and an automatically managed service so deployments match their operational requirements without editing system files later.
+- **Changes**: Added a startup-mode prompt to `install.sh`, provisioned an optional `visionsuit-dev.service` systemd unit with automatic enablement, emitted manual launch guidance when skipping automation, and updated the README with the new workflow.
