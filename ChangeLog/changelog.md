@@ -1097,3 +1097,8 @@
 - **Type**: Normal Change
 - **Reason**: Newly uploaded models stored successfully in MinIO and the database, but VisionSuit could not display or download them because the storage proxy route rejected object IDs that still contained slash characters.
 - **Changes**: Updated `buildStorageProxyUrl` in `frontend/src/lib/storage.ts` to URL-encode the full object identifier before constructing the proxy path so requests hit `/api/storage/:bucket/:objectId` with the expected payload, restoring preview and download access for fresh models.
+
+## 205 – [Fix] Adult asset visibility alignment
+- **Type**: Normal Change
+- **Reason**: Adult-rated models and renders appeared in curator profiles but disappeared from the explorers because the backend asset feeds and client-side filters hid them whenever the viewer's safe-mode toggle was off, even for the uploading curator or a logged-in administrator.
+- **Changes**: Allowed administrators and asset owners to bypass the adult-content filter in `/api/assets/models` and `/api/assets/images`, mirrored the same ownership-aware logic in `frontend/src/App.tsx`, and kept the existing restrictions for guests and non-owner viewers with safe mode enabled.
