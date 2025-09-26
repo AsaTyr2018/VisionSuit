@@ -233,6 +233,32 @@ The PowerShell helper mirrors the Linux workflow: it authenticates, verifies adm
 
 > Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
 
+#### Metadata overrides and defaults
+
+The bulk helpers now mirror the fields exposed by the upload wizard: they populate model titles, descriptions, tags, gallery visibility, triggers, and collection targets before any files leave your machine. Each LoRA can ship its own overrides through a JSON descriptor placed either next to the `.safetensors` file (`./loras/model-name.json`) or inside the image directory (`./images/model-name/metadata.json`). Example:
+
+```json
+{
+  "title": "Firefly Mix",
+  "description": "2.5D anime lighting with warm tones.",
+  "visibility": "public",
+  "galleryMode": "existing",
+  "targetGallery": "curated-firefly",
+  "trigger": "firefly mix",
+  "category": "anime",
+  "tags": ["anime", "warm", "stylized"]
+}
+```
+
+Accepted keys align with the REST payload: `title`, `description`, `visibility` (`public` / `private`), `galleryMode` (`new` / `existing`), `targetGallery` (slug or title when reusing a collection), `trigger`, `category`, and `tags` (array or comma-separated string). When `galleryMode` resolves to `existing` the scripts require a valid `targetGallery`; new collections default to `<title> Collection` when no custom name is provided. The helpers deduplicate tags case-insensitively and respect `{title}` placeholders inside the default gallery target so global templates stay expressive.
+
+Global defaults can be set once and reused across every model:
+
+- **Linux/macOS** – export environment variables before running the script: `VISIONSUIT_VISIBILITY`, `VISIONSUIT_GALLERY_MODE`, `VISIONSUIT_TARGET_GALLERY`, `VISIONSUIT_DESCRIPTION`, `VISIONSUIT_CATEGORY`, `VISIONSUIT_TRIGGER`, and `VISIONSUIT_TAGS` (comma separated). Omit values to fall back to the script’s private/new defaults.
+- **Windows** – pass optional parameters such as `-DefaultVisibility public -DefaultGalleryMode existing -DefaultTargetGallery curated-anime -DefaultTags art,anime -DefaultDescription "Warm lighting" -DefaultCategory anime -DefaultTrigger firefly` or set the same `VISIONSUIT_*` environment variables for unattended runs.
+
+All metadata updates are echoed in the console so mismatches or fallback decisions are easy to audit before the files reach VisionSuit.
+
 ### MyLora migration
 
 Use `scripts/migrate_mylora_to_visionsuit.py` to pull an existing MyLora library into VisionSuit without touching databases directly.

@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Update] Bulk import metadata alignment
+- **Change Type**: Normal Change
+- **Reason**: The refreshed upload flow introduced additional model, image, and collection fields, leaving the bulk scripts without a way to populate triggers, descriptions, visibility, and gallery targeting for new imports.
+- **Changes**: Added metadata-aware defaults and JSON overrides to the Linux and Windows bulk upload scripts, surfaced warnings for invalid values, expanded parameter and environment controls, and refreshed the README to document the new workflow.
+
 ## 033 – [Fix] Automated Node.js provisioning (commit TBD)
 - **Type**: Normal Change
 - **Reason**: The installer aborted on fresh systems without Node.js even though the setup flow is expected to prepare every prerequisite automatically.
