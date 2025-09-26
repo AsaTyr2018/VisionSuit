@@ -1147,3 +1147,8 @@
 - **Reason**: After administrators turned off self-service registration, the backend kept the locked state cached so re-enabling the toggle in the admin panel had no effect until the server restarted.
 - **Changes**: Refreshed `backend/src/lib/settings.ts` to update the runtime platform flags after saving admin settings and had `frontend/src/components/AdminPanel.tsx` reload the platform configuration so the registration toggle immediately applies across the interface.
 
+## 211 – [Update] Gallery lightbox navigation QoL
+- **Change Type**: Normal Change
+- **Reason**: Reviewers needed a faster way to step through gallery images without repeatedly closing the lightbox or targeting small thumbnails.
+- **Changes**: Added swipe, click, and keyboard arrow navigation to the gallery image modal, introduced focus styles for the interactive lightbox surface, and documented the streamlined workflow in the README.
+

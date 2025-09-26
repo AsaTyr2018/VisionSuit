@@ -35,7 +35,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 - Flagged models and renders are hidden from members and curators; creators get a lightweight “In Audit” placeholder while administrators continue to see clear previews and can approve or remove them while leaving the required audit note that will power the upcoming notification center.
 - Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
 - Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
-- Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image.
+- Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image. Swipe, click, or use the arrow keys in the lightbox to move through the collection without closing the modal.
 - Interface remains resilient when the backend returns incomplete gallery payloads—missing owners, metadata, or even entry arrays—and the metadata card now stretches across the dialog for easier scanning.
 - Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
 - Modelcards include a dedicated Trigger/Activator field that is required during uploads or edits and ships with a click-to-copy shortcut for quick prompting.

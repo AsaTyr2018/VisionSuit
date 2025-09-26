@@ -1,4 +1,5 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 
 import type { AssetComment, Gallery, ImageAsset, ModelAsset, User } from '../types/api';
 
@@ -358,6 +359,130 @@ export const GalleryExplorer = ({
           { updatedAt: activeImage.image.updatedAt, cacheKey: activeImage.image.id },
         ) ?? activeImage.image.storagePath
     : null;
+
+  const activeImageIndex = useMemo(() => {
+    if (!activeImage) {
+      return -1;
+    }
+
+    return activeGalleryImages.findIndex((entry) => entry.entryId === activeImage.entryId);
+  }, [activeGalleryImages, activeImage]);
+
+  const showImageAtIndex = useCallback(
+    (index: number) => {
+      if (activeGalleryImages.length === 0) {
+        setActiveImage(null);
+        return;
+      }
+
+      const normalizedIndex = ((index % activeGalleryImages.length) + activeGalleryImages.length) % activeGalleryImages.length;
+      const nextEntry = activeGalleryImages[normalizedIndex];
+      setActiveImage(nextEntry);
+    },
+    [activeGalleryImages],
+  );
+
+  const canCycleImages = activeGalleryImages.length > 1;
+
+  const showNextImage = useCallback(() => {
+    if (activeGalleryImages.length === 0) {
+      return;
+    }
+
+    const nextIndex = activeImageIndex >= 0 ? activeImageIndex + 1 : 0;
+    showImageAtIndex(nextIndex);
+  }, [activeGalleryImages.length, activeImageIndex, showImageAtIndex]);
+
+  const showPreviousImage = useCallback(() => {
+    if (activeGalleryImages.length === 0) {
+      return;
+    }
+
+    const previousIndex = activeImageIndex >= 0 ? activeImageIndex - 1 : activeGalleryImages.length - 1;
+    showImageAtIndex(previousIndex);
+  }, [activeGalleryImages.length, activeImageIndex, showImageAtIndex]);
+
+  const swipeStateRef = useRef<{ pointerId: number | null; startX: number; startY: number; hasMoved: boolean }>(
+    {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      hasMoved: false,
+    },
+  );
+
+  const resetSwipeState = useCallback(() => {
+    swipeStateRef.current = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      hasMoved: false,
+    };
+  }, []);
+
+  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+      return;
+    }
+
+    swipeStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      hasMoved: false,
+    };
+  }, []);
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (swipeStateRef.current.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStateRef.current.startX;
+    const deltaY = event.clientY - swipeStateRef.current.startY;
+
+    if (!swipeStateRef.current.hasMoved) {
+      swipeStateRef.current.hasMoved = Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4;
+    }
+  }, []);
+
+  const handlePointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (swipeStateRef.current.pointerId !== event.pointerId) {
+        return;
+      }
+
+      const deltaX = event.clientX - swipeStateRef.current.startX;
+      const deltaY = event.clientY - swipeStateRef.current.startY;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+      const didMove = swipeStateRef.current.hasMoved;
+
+      resetSwipeState();
+
+      if (absDeltaX > 40 && absDeltaX > absDeltaY) {
+        if (deltaX < 0) {
+          showNextImage();
+        } else {
+          showPreviousImage();
+        }
+        return;
+      }
+
+      if (!didMove) {
+        showNextImage();
+      }
+    },
+    [resetSwipeState, showNextImage, showPreviousImage],
+  );
+
+  const handlePointerCancel = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (swipeStateRef.current.pointerId !== event.pointerId) {
+      return;
+    }
+
+    resetSwipeState();
+  }, [resetSwipeState]);
 
   const activeImageOverlayClasses = [
     'gallery-image-modal__media',
@@ -788,12 +913,24 @@ export const GalleryExplorer = ({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setActiveImage(null);
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        showNextImage();
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        showPreviousImage();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeImage]);
+  }, [activeImage, showNextImage, showPreviousImage]);
 
   return (
     <section className="panel">
@@ -1290,7 +1427,33 @@ export const GalleryExplorer = ({
                   reviewing this image.
                 </p>
               ) : null}
-              <div className={activeImageOverlayClasses}>
+              <div
+                className={activeImageOverlayClasses}
+                role={canCycleImages ? 'button' : undefined}
+                tabIndex={canCycleImages ? 0 : -1}
+                aria-disabled={canCycleImages ? undefined : true}
+                aria-label={
+                  canCycleImages
+                    ? `View next image in ${activeGallery?.title ?? 'collection'}`
+                    : `Viewing ${activeImage.image.title}`
+                }
+                onPointerDown={canCycleImages ? handlePointerDown : undefined}
+                onPointerMove={canCycleImages ? handlePointerMove : undefined}
+                onPointerUp={canCycleImages ? handlePointerEnd : undefined}
+                onPointerCancel={canCycleImages ? handlePointerCancel : undefined}
+                onKeyDown={canCycleImages ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    showNextImage();
+                  } else if (event.key === 'ArrowRight') {
+                    event.preventDefault();
+                    showNextImage();
+                  } else if (event.key === 'ArrowLeft') {
+                    event.preventDefault();
+                    showPreviousImage();
+                  }
+                } : undefined}
+              >
                 <img src={activeImagePreviewUrl ?? activeImage.image.storagePath} alt={activeImage.image.title} />
                 {activeImage.image.moderationStatus === 'FLAGGED' ? (
                   <span className="moderation-overlay__label">In audit</span>
