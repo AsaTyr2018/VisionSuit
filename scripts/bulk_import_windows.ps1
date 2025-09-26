@@ -303,6 +303,245 @@ function Get-BulkUploadProfile {
   }
 }
 
+function Test-ModelAssetPresence {
+  param(
+    [System.Net.Http.HttpClient]$HttpClient,
+    [string]$ApiBase,
+    [string]$AssetSlug,
+    [string]$Title
+  )
+
+  if (-not $AssetSlug) {
+    Write-Log "Model verification skipped for '$Title' because the upload response did not expose a slug."
+    return $false
+  }
+
+  $endpoint = "$ApiBase/assets/models"
+  $maxAttempts = 5
+  $delaySeconds = 2
+
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+      $response = $HttpClient.GetAsync($endpoint).GetAwaiter().GetResult()
+      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    }
+    catch {
+      Write-Log "Model verification request failed for '$Title' (attempt $attempt/$maxAttempts): $($_.Exception.Message)"
+      if ($attempt -ge $maxAttempts) {
+        return $false
+      }
+
+      Start-Sleep -Seconds $delaySeconds
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      continue
+    }
+
+    if (-not $response.IsSuccessStatusCode) {
+      Write-Log "Model verification request returned HTTP $($response.StatusCode) for '$Title': $body"
+      if ($attempt -ge $maxAttempts) {
+        return $false
+      }
+
+      Start-Sleep -Seconds $delaySeconds
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      continue
+    }
+
+    try {
+      $models = $body | ConvertFrom-Json
+    }
+    catch {
+      Write-Log "Model verification parsing failed for '$Title': $($_.Exception.Message)"
+      return $false
+    }
+
+    $list = @()
+    if ($models -is [System.Collections.IEnumerable]) {
+      $list = @($models)
+    }
+    else {
+      $list = @($models)
+    }
+
+    $match = $list | Where-Object {
+      $_ -and $_.PSObject.Properties['slug'] -and ([string]$_.slug).ToLowerInvariant() -eq $AssetSlug.ToLowerInvariant()
+    } | Select-Object -First 1
+
+    if ($match) {
+      Write-Log "Verified model '$Title' (slug '$AssetSlug') is now available via the API."
+      return $true
+    }
+
+    if ($attempt -lt $maxAttempts) {
+      Write-Log "Model '$Title' with slug '$AssetSlug' not visible yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
+      Start-Sleep -Seconds $delaySeconds
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+    }
+    else {
+      Write-Log "Model '$Title' with slug '$AssetSlug' was not found in VisionSuit after $maxAttempts verification attempts."
+      return $false
+    }
+  }
+
+  return $false
+}
+
+function Test-GalleryPresence {
+  param(
+    [System.Net.Http.HttpClient]$HttpClient,
+    [string]$ApiBase,
+    [string]$GallerySlug,
+    [string]$AssetSlug,
+    [string[]]$ExpectedImageIds,
+    [string]$Title
+  )
+
+  if (-not $GallerySlug) {
+    Write-Log "Gallery verification skipped for '$Title' because the upload response did not expose a gallery slug."
+    return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+  }
+
+  $expected = @()
+  if ($ExpectedImageIds) {
+    $expected = $ExpectedImageIds | Where-Object { $_ }
+  }
+
+  $endpoint = "$ApiBase/galleries"
+  $maxAttempts = 5
+  $delaySeconds = 2
+
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+      $response = $HttpClient.GetAsync($endpoint).GetAwaiter().GetResult()
+      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    }
+    catch {
+      Write-Log "Gallery verification request failed for '$Title' (attempt $attempt/$maxAttempts): $($_.Exception.Message)"
+      if ($attempt -ge $maxAttempts) {
+        return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+      }
+
+      Start-Sleep -Seconds $delaySeconds
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      continue
+    }
+
+    if (-not $response.IsSuccessStatusCode) {
+      Write-Log "Gallery verification request returned HTTP $($response.StatusCode) for '$Title': $body"
+      if ($attempt -ge $maxAttempts) {
+        return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+      }
+
+      Start-Sleep -Seconds $delaySeconds
+      $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+      continue
+    }
+
+    try {
+      $galleries = $body | ConvertFrom-Json
+    }
+    catch {
+      Write-Log "Gallery verification parsing failed for '$Title': $($_.Exception.Message)"
+      return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+    }
+
+    $list = @()
+    if ($galleries -is [System.Collections.IEnumerable]) {
+      $list = @($galleries)
+    }
+    else {
+      $list = @($galleries)
+    }
+
+    $gallery = $list | Where-Object {
+      $_ -and $_.PSObject.Properties['slug'] -and ([string]$_.slug).ToLowerInvariant() -eq $GallerySlug.ToLowerInvariant()
+    } | Select-Object -First 1
+
+    if (-not $gallery) {
+      if ($attempt -lt $maxAttempts) {
+        Write-Log "Gallery '$GallerySlug' for '$Title' not visible yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
+        Start-Sleep -Seconds $delaySeconds
+        $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+        continue
+      }
+
+      Write-Log "Gallery '$GallerySlug' for '$Title' was not found after $maxAttempts verification attempts."
+      return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+    }
+
+    $entries = @()
+    if ($gallery.PSObject.Properties['entries']) {
+      $entries = @($gallery.entries)
+    }
+
+    $hasModelEntry = $false
+    foreach ($entry in $entries) {
+      if ($entry -and $entry.PSObject.Properties['asset'] -and $entry.asset -and $entry.asset.PSObject.Properties['slug']) {
+        $slug = [string]$entry.asset.slug
+        if ($slug -and $slug.ToLowerInvariant() -eq $AssetSlug.ToLowerInvariant()) {
+          $hasModelEntry = $true
+          break
+        }
+      }
+    }
+
+    if (-not $hasModelEntry) {
+      if ($attempt -lt $maxAttempts) {
+        Write-Log "Gallery '$GallerySlug' does not list model slug '$AssetSlug' yet (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
+        Start-Sleep -Seconds $delaySeconds
+        $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+        continue
+      }
+
+      Write-Log "Gallery '$GallerySlug' never exposed model slug '$AssetSlug' for '$Title' after verification retries."
+      return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+    }
+
+    $galleryImageCount = 0
+    $matched = New-Object System.Collections.Generic.HashSet[string] -ArgumentList ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($entry in $entries) {
+      if ($entry -and $entry.PSObject.Properties['image'] -and $entry.image) {
+        $galleryImageCount++
+        if ($entry.image.PSObject.Properties['id']) {
+          $imageId = [string]$entry.image.id
+          if ($imageId) {
+            $matched.Add($imageId) | Out-Null
+          }
+        }
+      }
+    }
+
+    $expectedMatches = 0
+    if ($expected.Count -gt 0) {
+      $expectedMatches = ($expected | Where-Object { $matched.Contains($_) }).Count
+
+      if ($expectedMatches -lt $expected.Count) {
+        if ($attempt -lt $maxAttempts) {
+          Write-Log "Gallery '$GallerySlug' is missing $($expected.Count - $expectedMatches) of $($expected.Count) uploaded image(s) (attempt $attempt/$maxAttempts); retrying in $delaySeconds second(s)."
+          Start-Sleep -Seconds $delaySeconds
+          $delaySeconds = [Math]::Min($delaySeconds * 2, 10)
+          continue
+        }
+
+        Write-Log "Gallery '$GallerySlug' did not expose all uploaded images for '$Title' after verification retries."
+        return [pscustomobject]@{ Success = $false; MatchedImageCount = $expectedMatches; TotalGalleryImageCount = $galleryImageCount }
+      }
+    }
+
+    if ($expected.Count -eq 0) {
+      Write-Log "Verified gallery '$GallerySlug' contains the uploaded model '$AssetSlug'."
+    }
+    else {
+      Write-Log "Verified gallery '$GallerySlug' contains model '$AssetSlug' and all $expectedMatches uploaded image(s) (total images: $galleryImageCount)."
+    }
+
+    return [pscustomobject]@{ Success = $true; MatchedImageCount = [Math]::Max($expectedMatches, 0); TotalGalleryImageCount = $galleryImageCount }
+  }
+
+  return [pscustomobject]@{ Success = $false; MatchedImageCount = 0; TotalGalleryImageCount = 0 }
+}
+
 try {
   $lorasRoot = (Resolve-Path -Path $LorasDirectory -ErrorAction Stop).ProviderPath
 } catch {
@@ -475,6 +714,8 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
 
   $disposables = @()
   $gallerySlug = $null
+  $assetSlug = $null
+  $uploadedImageIds = New-Object System.Collections.Generic.List[string]
 
   try {
     $modelStream = [System.IO.File]::OpenRead($loraFile.FullName)
@@ -503,6 +744,16 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
         return
       }
 
+      if ($parsed -and $parsed.PSObject.Properties['assetSlug']) {
+        $assetSlug = [string]$parsed.assetSlug
+      }
+
+      if (-not $assetSlug) {
+        Write-Log "Model upload succeeded for '$($profile.Title)' but no asset slug was returned."
+        $skipCount++
+        return
+      }
+
       $gallerySlug = $parsed.gallerySlug
       if (-not $gallerySlug) {
         Write-Log "Model upload succeeded for '$($profile.Title)' but gallery information was missing."
@@ -510,7 +761,7 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
         return
       }
 
-      Write-Log "Model upload complete for '$($profile.Title)'. Gallery slug: $gallerySlug."
+      Write-Log "Model upload complete for '$($profile.Title)'. Gallery slug: $gallerySlug. Asset slug: $assetSlug."
     }
     else {
       Write-Log "Upload failed for '$($profile.Title)' (HTTP $($response.StatusCode)): $body"
@@ -536,8 +787,19 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
   }
 
   if ($otherImages.Count -eq 0) {
+    if (-not (Test-ModelAssetPresence -HttpClient $httpClient -ApiBase $apiBase -AssetSlug $assetSlug -Title $profile.Title)) {
+      $skipCount++
+      return
+    }
+
+    $galleryCheck = Test-GalleryPresence -HttpClient $httpClient -ApiBase $apiBase -GallerySlug $gallerySlug -AssetSlug $assetSlug -ExpectedImageIds @() -Title $profile.Title
+    if (-not $galleryCheck.Success) {
+      $skipCount++
+      return
+    }
+
     $uploadCount++
-    Write-Log "No additional images found for '$($profile.Title)'; only the preview was uploaded."
+    Write-Log "No additional images found for '$($profile.Title)'; preview upload verified (gallery images: $($galleryCheck.TotalGalleryImageCount))."
     return
   }
 
@@ -599,6 +861,45 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
 
       if ($chunkResponse.IsSuccessStatusCode) {
         $processedImages += $chunk.Count
+
+        try {
+          $chunkParsed = $chunkBody | ConvertFrom-Json
+        }
+        catch {
+          Write-Log "Image batch $batchIndex succeeded for '$($profile.Title)' but response parsing failed: $($_.Exception.Message)"
+          $skipCount++
+          $batchFailed = $true
+          break
+        }
+
+        if (-not ($chunkParsed -and $chunkParsed.PSObject.Properties['imageIds'])) {
+          Write-Log "Image batch $batchIndex succeeded for '$($profile.Title)' but did not return image identifiers."
+          $skipCount++
+          $batchFailed = $true
+          break
+        }
+
+        $chunkIds = @($chunkParsed.imageIds)
+        if (-not $chunkIds -or $chunkIds.Count -eq 0) {
+          Write-Log "Image batch $batchIndex succeeded for '$($profile.Title)' but returned an empty image identifier list."
+          $skipCount++
+          $batchFailed = $true
+          break
+        }
+
+        foreach ($id in $chunkIds) {
+          if ($id) {
+            [void]$uploadedImageIds.Add([string]$id)
+          }
+        }
+
+        if ($chunkIds.Count -lt $chunk.Count) {
+          Write-Log "Image batch $batchIndex for '$($profile.Title)' returned fewer IDs ($($chunkIds.Count)) than files uploaded ($($chunk.Count))."
+          $skipCount++
+          $batchFailed = $true
+          break
+        }
+
         Write-Log "Uploaded image batch $batchIndex for '$($profile.Title)' ($($chunk.Count) image(s))."
       }
       else {
@@ -633,8 +934,21 @@ Get-ChildItem -Path $lorasRoot -Filter *.safetensors -File | ForEach-Object {
     return
   }
 
+  $expectedImageIds = @($uploadedImageIds.ToArray())
+
+  if (-not (Test-ModelAssetPresence -HttpClient $httpClient -ApiBase $apiBase -AssetSlug $assetSlug -Title $profile.Title)) {
+    $skipCount++
+    return
+  }
+
+  $galleryVerification = Test-GalleryPresence -HttpClient $httpClient -ApiBase $apiBase -GallerySlug $gallerySlug -AssetSlug $assetSlug -ExpectedImageIds $expectedImageIds -Title $profile.Title
+  if (-not $galleryVerification.Success) {
+    $skipCount++
+    return
+  }
+
   $uploadCount++
-  Write-Log "Completed '$($profile.Title)': uploaded model plus $processedImages additional image(s) across $($batchIndex - 1) batch(es)."
+  Write-Log "Completed '$($profile.Title)': uploaded model plus $processedImages additional image(s) across $($batchIndex - 1) batch(es); verified $($galleryVerification.MatchedImageCount) new image(s) in gallery holding $($galleryVerification.TotalGalleryImageCount) image(s)."
 }
 
 if ($httpClient) {
