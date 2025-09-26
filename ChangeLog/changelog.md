@@ -1057,3 +1057,8 @@
 - **Type**: Normal Change
 - **Reason**: Provide administrators with an immediate choice between manual launches and an automatically managed service so deployments match their operational requirements without editing system files later.
 - **Changes**: Added a startup-mode prompt to `install.sh`, provisioned an optional `visionsuit-dev.service` systemd unit with automatic enablement, emitted manual launch guidance when skipping automation, and updated the README with the new workflow.
+
+## 199 – [Fix] NodeSource keyring provisioning
+- **Type**: Normal Change
+- **Reason**: The installer failed to add the NodeSource repository on fresh systems because the ASCII-armored signing key was written without converting it into the keyring format that `apt` expects.
+- **Changes**: Updated `install.sh` to dearmor the NodeSource GPG key, ensure the keyring directory exists with the right permissions, and use optional `sudo` wrappers when writing the key and repository list.
