@@ -80,11 +80,12 @@ export const buildStorageProxyUrl = (bucket?: string | null, objectName?: string
   }
 
   const encodedBucket = encodeURIComponent(bucket);
-  const encodedObject = objectName
-    .split('/')
-    .filter((segment) => segment.length > 0)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
+  const trimmedObjectName = objectName.trim();
+  if (trimmedObjectName.length === 0) {
+    return null;
+  }
+
+  const encodedObject = encodeURIComponent(trimmedObjectName);
 
   if (!encodedObject) {
     return null;

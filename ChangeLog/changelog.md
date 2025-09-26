@@ -1092,3 +1092,8 @@
 - **Type**: Normal Change
 - **Reason**: Windows bulk imports continued to fail on fresh installations because cached `GET /api/assets/models` responses returned HTTP 304 without the new model payload, preventing the verification loop from ever seeing the uploaded asset.
 - **Changes**: Disabled Express ETags and applied no-store cache headers to all `/api` responses so authenticated clients always receive fresh payloads, and extended the README reliability note to explain the cache-busting behaviour.
+
+## 204 – [Fix] Storage proxy encoding for model previews
+- **Type**: Normal Change
+- **Reason**: Newly uploaded models stored successfully in MinIO and the database, but VisionSuit could not display or download them because the storage proxy route rejected object IDs that still contained slash characters.
+- **Changes**: Updated `buildStorageProxyUrl` in `frontend/src/lib/storage.ts` to URL-encode the full object identifier before constructing the proxy path so requests hit `/api/storage/:bucket/:objectId` with the expected payload, restoring preview and download access for fresh models.
