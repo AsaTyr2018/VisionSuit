@@ -1132,3 +1132,8 @@
 - **Reason**: Curators could lose track of private or moderated uploads because viewer-facing filters hid their own assets, and administrators needed a recovery tool to reconcile database metadata with MinIO after manual storage edits.
 - **Changes**: Relaxed gallery, asset feed, and profile queries so authenticated owners always see every model, image, and gallery entry they uploaded regardless of moderation status, visibility, or safe-mode settings. Added `backend/scripts/reindexStorage.ts` together with the `npm run storage:reindex` helper to rescan MinIO, recreate missing `StorageObject` rows, and refresh file metadata.
 
+## 209 – [Fix] Registration lock indicator
+- **Type**: Normal Change
+- **Reason**: Visitors could still open the registration dialog even after administrators disabled self-service signups, leading to confusing error toasts instead of a clear closed state.
+- **Changes**: Updated `frontend/src/App.tsx` to keep the **Create account** button visible but disabled whenever registration or maintenance mode is off-limits and surface the corresponding notice. Refreshed the README to call out the locked button behaviour so operators know what to expect when closing signups.
+

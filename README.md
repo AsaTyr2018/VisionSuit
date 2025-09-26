@@ -22,6 +22,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
 - Guests can browse public assets, while downloads, comments, and reactions require a signed-in account (USER role or higher). Adult-tagged models and renders stay hidden from guests and from members who leave the NSFW toggle off (default) in their account settings.
+- Administrators can disable self-service signups at any time; the **Create account** control stays visible but disabled so visitors immediately understand that registrations are closed while credentialed users continue signing in.
 - Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
 - Gallery and model previews now ship with an intelligent two-minute cache token so browsers keep recent imagery warm while automatically reloading whenever the underlying asset changes.
 - Model detail views and the gallery lightbox now include full comment threads—model dialogs keep replies inline beneath the content, while the gallery modal tucks discussions into a collapsible side rail so the enlarged image always stays visible. Signed-in members can post feedback and react to individual responses in place.
