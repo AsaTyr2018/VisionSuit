@@ -245,6 +245,46 @@ function Collect-Tags {
   return $result.ToArray()
 }
 
+function Get-MetadataValue {
+  param(
+    $Metadata,
+    [string]$Key
+  )
+
+  if ($null -eq $Metadata -or -not $Key) {
+    return $null
+  }
+
+  if ($Metadata -is [System.Collections.IDictionary]) {
+    try {
+      if ($Metadata.Contains($Key)) {
+        return $Metadata[$Key]
+      }
+    }
+    catch {
+      # Some IDictionary implementations (e.g., Hashtable) throw on Contains with null keys.
+    }
+
+    foreach ($dictKey in $Metadata.Keys) {
+      if (($dictKey -is [string]) -and $dictKey.Equals($Key, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $Metadata[$dictKey]
+      }
+    }
+
+    return $null
+  }
+
+  $property = $Metadata.PSObject.Properties |
+    Where-Object { $_.Name.Equals($Key, [System.StringComparison]::OrdinalIgnoreCase) } |
+    Select-Object -First 1
+
+  if ($property) {
+    return $property.Value
+  }
+
+  return $null
+}
+
 function Build-UploadProfile {
   param(
     [string]$BaseName,
@@ -269,13 +309,13 @@ function Build-UploadProfile {
 
   $warnings = New-Object System.Collections.Generic.List[string]
 
-  $title = Normalize-String -Value ($metadata.title)
+  $title = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'title')
   if (-not $title) { $title = $BaseName }
 
-  $description = Normalize-String -Value ($metadata.description)
+  $description = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'description')
   if (-not $description) { $description = Normalize-String -Value $DefaultDescription }
 
-  $visibilitySource = Normalize-String -Value ($metadata.visibility)
+  $visibilitySource = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'visibility')
   if (-not $visibilitySource) { $visibilitySource = Normalize-String -Value $DefaultVisibility }
   $visibility = Normalize-Visibility -Visibility $visibilitySource -Warnings $warnings
 
@@ -286,18 +326,18 @@ function Build-UploadProfile {
       $fallbackGalleryMode = 'new'
     }
   }
-  $galleryModeSource = Normalize-String -Value ($metadata.galleryMode)
+  $galleryModeSource = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'galleryMode')
   if (-not $galleryModeSource) { $galleryModeSource = $fallbackGalleryMode }
   $galleryMode = Normalize-GalleryMode -Mode $galleryModeSource -Fallback $fallbackGalleryMode -Warnings $warnings
 
-  $category = Normalize-String -Value ($metadata.category)
+  $category = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'category')
   if (-not $category) { $category = Normalize-String -Value $DefaultCategory }
 
-  $trigger = Normalize-String -Value ($metadata.trigger)
+  $trigger = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'trigger')
   if (-not $trigger) { $trigger = Normalize-String -Value $DefaultTrigger }
   if (-not $trigger) { $trigger = $BaseName }
 
-  $targetGalleryRaw = Normalize-String -Value ($metadata.targetGallery)
+  $targetGalleryRaw = Normalize-String -Value (Get-MetadataValue -Metadata $metadata -Key 'targetGallery')
   if (-not $targetGalleryRaw) { $targetGalleryRaw = Normalize-String -Value $DefaultTargetGallery }
   if ($targetGalleryRaw -and $targetGalleryRaw.Contains('{title}')) {
     $targetGalleryRaw = $targetGalleryRaw.Replace('{title}', $title)
@@ -311,7 +351,7 @@ function Build-UploadProfile {
     $warnings.Add("Gallery mode is 'existing' but no targetGallery was provided.")
   }
 
-  $tags = Collect-Tags -DefaultTags $DefaultTags -MetadataValue $metadata.tags
+  $tags = Collect-Tags -DefaultTags $DefaultTags -MetadataValue (Get-MetadataValue -Metadata $metadata -Key 'tags')
 
   return [pscustomobject]@{
     Title = $title
