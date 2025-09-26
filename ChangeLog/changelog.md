@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Fix] Bulk upload verification hardening (commit TBD)
+- **Change Type**: Normal Change
+- **Reason**: Bulk uploads reported success even when models failed to appear in VisionSuit, so operators could not trust the automation.
+- **Changes**: Added API-level verification to the Windows bulk import script, tightened response parsing, and updated the README with the new reliability behavior.
+
 ## 033 – [Update] Bulk import metadata alignment
 - **Change Type**: Normal Change
 - **Reason**: The refreshed upload flow introduced additional model, image, and collection fields, leaving the bulk scripts without a way to populate triggers, descriptions, visibility, and gallery targeting for new imports.

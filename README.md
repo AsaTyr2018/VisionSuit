@@ -233,6 +233,8 @@ The PowerShell helper mirrors the Linux workflow: it authenticates, verifies adm
 
 > Tip: If `ImagesDirectory` is missing or omitted, the script now searches for preview folders that live next to each `.safetensors` file (for example `./loras/model-name.safetensors` with a sibling `./loras/model-name/`).
 
+> Reliability check: After each upload the Windows helper now queries VisionSuit for the created model and gallery entries. If the API cannot confirm the asset slug or the expected image IDs, the script aborts the run instead of silently continuing.
+
 #### Metadata overrides and defaults
 
 The bulk helpers now mirror the fields exposed by the upload wizard: they populate model titles, descriptions, tags, gallery visibility, triggers, and collection targets before any files leave your machine. Each LoRA can ship its own overrides through a JSON descriptor placed either next to the `.safetensors` file (`./loras/model-name.json`) or inside the image directory (`./images/model-name/metadata.json`). Example:
