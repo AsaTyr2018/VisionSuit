@@ -1,82 +1,82 @@
-# VisionSuit Workflow-Plan
+# VisionSuit Workflow Plan
 
-## 1. Projektüberblick
-- **Ziel**: Aufbau einer selbst-hostbaren Plattform (Node.js) für KI-generierte Bildgalerien und das Hosting von LoRA-Safetensors.
-- **USP**: Einheitliche Upload-Erfahrung mit automatischer Metadaten-Extraktion, intelligente Verknüpfung zwischen Bildern und LoRAs sowie performante Suche ohne Enterprise-Datenbanken.
-- **Leitprinzipien**: Benutzerfreundliche, moderne Dark-UI, einfache Installation per Shell-Skript, Fokus auf Accessibility und moderate Hardware-Anforderungen.
+## 1. Project Overview
+- **Goal**: Build a self-hostable Node.js platform for AI-generated image galleries and LoRA safetensor hosting.
+- **USP**: Consistent upload experience with automatic metadata extraction, intelligent links between images and LoRAs, and high-performance search without enterprise databases.
+- **Guiding Principles**: User-friendly modern dark UI, simple shell-based installation, focus on accessibility, and moderate hardware requirements.
 
-## 2. Arbeitsphasen & Meilensteine
-1. **Grundlagen & Planung (Woche 1)**
-   - Anforderungsanalyse finalisieren, Datenmodell und API-Spezifikationen definieren.
-   - Evaluierung von Bibliotheken für Bild-/Safetensor-Analyse (z. B. `sharp`, `safetensors` via Node bindings).
-2. **Backend-Basis (Woche 2)**
-   - Node.js-Projektstruktur aufsetzen (TypeScript + Express/Fastify, Prisma/Drizzle mit SQLite/PostgreSQL optional).
-   - Authentifizierung/Autorisierung (Session + API-Key für Upload-Automatisierung) vorbereiten.
-   - Datei-Storage-Strategie definieren (lokal mit strukturierter Ordnerhierarchie + Checksums).
-3. **Upload-Pipeline & Metadaten (Woche 3)**
-   - Upload-Wizard API: Validierungen, Chunked Uploads, Virus-/Malware-Scan Hooks.
-   - Metadaten-Extractor implementieren: Lesen von PNG/JPEG EXIF, JSON-Sidecars, Safetensor-Header.
-   - Asynchrone Job-Queue für Analyse (BullMQ mit Redis-Alternative wie `bullmq-lite` oder SQLite-basierte Queue).
-4. **Galerie- & Hosting-Funktionalität (Woche 4)**
-   - REST/GraphQL-Endpunkte für Bilder & LoRAs (CRUD, Suche, Filter, Tagging).
-   - Linking-Engine: automatische Zuordnung von LoRA-Dateien zu Bildergalerie-Einträgen anhand von Tags/Prompts.
-   - Suchindizes ohne Elastic: Lightweight Volltext (SQLite FTS5) + Facettenfilter.
-5. **Frontend Webpanel (Woche 5-6)**
-   - Moderne Dark-UI mit React/Vite + Tailwind/Shadcn oder SvelteKit.
-   - Upload-Wizard UI mit Schritt-für-Schritt-Formular, Validierungsfeedback, Drag & Drop.
-   - Galerie-Ansicht mit Infinite Scroll, Filterleisten, Detail-Drawer für Metadaten & verbundenen LoRAs.
-6. **Automatisierungs- & Installationsschicht (Woche 7)**
-   - Shell-Installscript (bash/sh) zur automatischen Einrichtung (Node, Dependencies, DB Migration, PM2-Service).
-   - Konfigurationsvorlagen (.env, storage-Pfade) erzeugen.
-7. **Qualitätssicherung & Release (Woche 8)**
-   - Tests (Unit, Integration, E2E mit Playwright/Cypress) aufsetzen.
-   - Accessibility- und Performance-Audits (Lighthouse, axe-core).
-   - Dokumentation, Onboarding-Anleitung, Release-Tagging.
+## 2. Work Phases & Milestones
+1. **Foundations & Planning (Week 1)**
+   - Finalize requirements analysis, define data model and API specifications.
+   - Evaluate libraries for image/LoRA safetensor analysis (e.g., `sharp`, `safetensors` via Node bindings).
+2. **Backend Base (Week 2)**
+   - Set up the Node.js project structure (TypeScript + Express/Fastify, Prisma/Drizzle with optional SQLite/PostgreSQL).
+   - Prepare authentication/authorization (sessions + API key for automated uploads).
+   - Define file storage strategy (local storage with structured folder hierarchy + checksums).
+3. **Upload Pipeline & Metadata (Week 3)**
+   - Build the upload wizard API: validations, chunked uploads, virus/malware scan hooks.
+   - Implement metadata extractor: read PNG/JPEG EXIF, JSON sidecars, and safetensor headers.
+   - Add asynchronous job queue for analysis (BullMQ with a Redis alternative such as `bullmq-lite` or a SQLite-based queue).
+4. **Gallery & Hosting Functionality (Week 4)**
+   - Provide REST/GraphQL endpoints for images & LoRAs (CRUD, search, filter, tagging).
+   - Implement linking engine: automatically associate LoRA files with gallery entries based on tags/prompts.
+   - Create search indices without Elastic: lightweight full-text (SQLite FTS5) + faceted filters.
+5. **Frontend Web Panel (Weeks 5-6)**
+   - Deliver a modern dark UI using React/Vite + Tailwind/Shadcn or SvelteKit.
+   - Develop upload wizard UI with step-by-step form, validation feedback, drag & drop.
+   - Add gallery view with infinite scroll, filter bars, detail drawer for metadata & linked LoRAs.
+6. **Automation & Installation Layer (Week 7)**
+   - Provide shell installation script (bash/sh) for automatic setup (Node, dependencies, DB migration, PM2 service).
+   - Generate configuration templates (.env, storage paths).
+7. **Quality Assurance & Release (Week 8)**
+   - Set up tests (unit, integration, E2E with Playwright/Cypress).
+   - Run accessibility and performance audits (Lighthouse, axe-core).
+   - Prepare documentation, onboarding guide, release tagging.
 
-## 3. Technische Kernkomponenten
-- **Backend**: Node.js (LTS), TypeScript, Fastify/Express, Prisma/Drizzle ORM, SQLite als Default DB.
-- **Storage**: Lokales Dateisystem mit strukturierter Ablage (`/assets/images`, `/assets/loras`), Hash-Prüfung.
-- **Metadaten-Service**: Worker-Prozess mit Warteschlange, nutzt Libraries für EXIF & Safetensor-Parsing.
-- **Suche & Filter**: SQLite FTS5 + Tagging-Relationen; Caching mit `node-cache` oder `redis` optional.
-- **Frontend**: React (Vite) oder SvelteKit, TailwindCSS, Headless UI-Komponenten, sanfte Seitenübergänge via Framer Motion.
-- **API-Sicherheit**: Rate-Limiting, Input-Sanitizing, Signierte Upload-URLs, CSRF-Schutz im Panel.
+## 3. Core Technical Components
+- **Backend**: Node.js (LTS), TypeScript, Fastify/Express, Prisma/Drizzle ORM, SQLite as default DB.
+- **Storage**: Local file system with structured storage (`/assets/images`, `/assets/loras`), hash verification.
+- **Metadata Service**: Worker process with queue, uses libraries for EXIF and safetensor parsing.
+- **Search & Filter**: SQLite FTS5 + tagging relations; optional caching with `node-cache` or `redis`.
+- **Frontend**: React (Vite) or SvelteKit, TailwindCSS, Headless UI components, smooth page transitions via Framer Motion.
+- **API Security**: Rate limiting, input sanitization, signed upload URLs, CSRF protection in the panel.
 
-## 4. Upload-Wizard Flow
-1. Benutzer authentifiziert sich.
-2. Schritt "Basisdaten": Name, Typ (Bild/LoRA), Kategorie, Tags, Beschreibung.
-3. Schritt "Dateien": Drag & Drop, Upload-Progress, Hash-Prüfung.
-4. Schritt "Review": Zusammenfassung + automatische Metadatenvorschau.
-5. Submit → API legt Eintrag an, stößt Analyse-Queue an.
-6. Nach Analyse: Verknüpft Bilder ↔ LoRAs, reichert Tags/Prompts an, sendet Benachrichtigung.
+## 4. Upload Wizard Flow
+1. User authenticates.
+2. **"Basics" step**: name, type (image/LoRA), category, tags, description.
+3. **"Files" step**: drag & drop, upload progress, hash verification.
+4. **"Review" step**: summary + automatic metadata preview.
+5. Submit → API creates entry, triggers analysis queue.
+6. After analysis: link images ↔ LoRAs, enrich tags/prompts, send notification.
 
-## 5. Metadaten-Extraktion & Verknüpfung
-- **Bilder**: EXIF, Prompt-JSON im PNG-Text-Chunk (Stable Diffusion), Dimensionsdaten, Modellinformationen.
-- **LoRAs**: Lesen des Safetensor-Headers, extrahieren von Netzwerkarchitektur, Trigger-Wörtern, Base-Model.
-- **Matching-Logik**: Vergleicht Tags, Trigger-Wörter, Prompt-Hash; manuelle Nachbearbeitung im UI möglich.
-- **Moderation**: Hashing (Perceptual Hash) zum Duplikatabgleich, Flagging-Regeln für sensible Inhalte.
+## 5. Metadata Extraction & Linking
+- **Images**: EXIF, prompt JSON in PNG text chunk (Stable Diffusion), dimensions, model details.
+- **LoRAs**: Read safetensor header, extract network architecture, trigger words, base model.
+- **Matching Logic**: Compare tags, trigger words, prompt hash; allow manual review in the UI.
+- **Moderation**: Perceptual hashing for duplicate detection, flagging rules for sensitive content.
 
-## 6. Such- & Filterfunktionen
-- Filter nach Typ, Kategorie, Tags, Modell, Auflösung, Upload-Datum.
-- Volltextsuche über Titel, Beschreibung, extrahierte Prompts.
-- Sortierungen (Neueste, Beliebteste, Bewertung nach Community-Feedback).
-- Optional: Favoriten-/Sammlungs-Funktionen pro Benutzer.
+## 6. Search & Filter Features
+- Filter by type, category, tags, model, resolution, upload date.
+- Full-text search across title, description, extracted prompts.
+- Sorting (newest, most popular, community rating).
+- Optional favorites/collections per user.
 
-## 7. Deployment & Betrieb
-- Zielplattform: Self-hosted Linux (Debian/Ubuntu) ohne Docker.
-- Installscript erledigt: Node-Installation (nvm oder binary), `npm install`, DB-Migration, Start via PM2/Systemd.
-- Logging: Winston/Pino + rotierende Logs.
-- Backup-Strategie: Cronjob für DB + Assets (rsync/Restic).
+## 7. Deployment & Operations
+- Target platform: self-hosted Linux (Debian/Ubuntu) without Docker.
+- Installation script performs: Node installation (nvm or binary), `npm install`, DB migration, start via PM2/Systemd.
+- Logging: Winston/Pino + rotating logs.
+- Backup strategy: cron job for DB + assets (rsync/Restic).
 
-## 8. Risiko- & Mitigationsliste
-- **Große Dateien**: Chunked Upload + Resume, Storage Quotas.
-- **Metadaten-Vielfalt**: Fallbacks für unbekannte Formate, modulare Parser.
-- **Performance der Suche**: Caching-Schicht, asynchrone Indizierung.
-- **Rechtliches**: Opt-in für Nutzungsbedingungen, Content-Moderation/DMCA-Workflow.
+## 8. Risks & Mitigations
+- **Large files**: chunked upload + resume, storage quotas.
+- **Metadata variety**: fallbacks for unknown formats, modular parsers.
+- **Search performance**: caching layer, asynchronous indexing.
+- **Legal considerations**: opt-in terms of use, content moderation/DMCA workflow.
 
-## 9. Nächste konkrete Schritte
-1. Feinkonzept Datenmodell & API-Schema dokumentieren.
-2. Proof-of-Concept für Safetensor-Parsing in Node.js erstellen.
-3. UI-Wireframes (Upload-Wizard, Galerie, Detailseite) definieren.
-4. Installationsskript-Anforderungen sammeln (Unterstützte OS, Abhängigkeiten).
+## 9. Next Concrete Steps
+1. Document detailed data model & API schema.
+2. Build proof of concept for safetensor parsing in Node.js.
+3. Define UI wireframes (upload wizard, gallery, detail view).
+4. Gather installation script requirements (supported OS, dependencies).
 
-Dieser Workflow-Plan dient als Leitfaden und kann nach Bedarf verfeinert werden, sobald technische Evaluierungen abgeschlossen sind.
+This workflow plan serves as a guide and can be refined once technical evaluations are complete.

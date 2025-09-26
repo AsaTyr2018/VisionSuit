@@ -198,6 +198,11 @@
 - **Technical Changes**: Implemented modular home cards, responsive two-section grid, tagged CTA buttons, explorer tag filtering, and README updates.
 - **Data Changes**: None.
 
+## 035 – [Update] English workflow plan
+- **Change Type**: Normal Change
+- **Reason**: The workflow documentation was only available in German, preventing non-German-speaking contributors from understanding the roadmap.
+- **Changes**: Translated `docs/workflow-plan.md` into English while preserving the existing structure and intent.
+
 ## 035 – [Addition] Metadata extraction pipeline (commit TBD)
 - **General**: Added automated metadata parsing for uploads to power richer search.
 - **Technical Changes**: Built a backend metadata helper for PNG/JPEG/Safetensors, integrated results into upload processing and API payloads, wired frontend filters and admin dashboards to the new fields, and documented the automation.
