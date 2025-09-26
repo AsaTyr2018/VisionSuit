@@ -522,9 +522,9 @@ try {
     $otherImages = $images | Where-Object { $_.FullName -ne $preview.FullName }
 
     $candidateMetadata = @(
-      Join-Path -Path $lora.DirectoryName -ChildPath "$baseName.json",
-      Join-Path -Path $lorasRoot -ChildPath "$baseName.json",
-      Join-Path -Path $imageFolder -ChildPath 'metadata.json'
+      (Join-Path -Path $lora.DirectoryName -ChildPath "$baseName.json")
+      (Join-Path -Path $lorasRoot -ChildPath "$baseName.json")
+      (Join-Path -Path $imageFolder -ChildPath 'metadata.json')
     ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
     $metadataPath = $null
     foreach ($candidate in $candidateMetadata) {
