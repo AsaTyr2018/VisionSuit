@@ -1102,3 +1102,8 @@
 - **Type**: Normal Change
 - **Reason**: Adult-rated models and renders appeared in curator profiles but disappeared from the explorers because the backend asset feeds and client-side filters hid them whenever the viewer's safe-mode toggle was off, even for the uploading curator or a logged-in administrator.
 - **Changes**: Allowed administrators and asset owners to bypass the adult-content filter in `/api/assets/models` and `/api/assets/images`, mirrored the same ownership-aware logic in `frontend/src/App.tsx`, and kept the existing restrictions for guests and non-owner viewers with safe mode enabled.
+
+## 206 – [Fix] Windows bulk importer reliability sweep
+- **Type**: Normal Change
+- **Reason**: The Windows bulk uploader occasionally skipped gallery images and kept processing additional models even when the API never exposed the freshly uploaded asset, leaving curators with partial collections.
+- **Changes**: Sorted LoRA inputs for deterministic processing, added cache-busting verification polls, introduced retry logic with exponential backoff for model and gallery batch uploads, upgraded the safeguard to abort the entire run after any verification failure, hardened the HTTP client against caching, and refreshed the README reliability note with the new behaviour.
