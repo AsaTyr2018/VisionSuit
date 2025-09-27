@@ -49,10 +49,31 @@ export interface AdminSettingsSafetyImageAnalysisRuntime {
   pressureHeuristicOnly: boolean;
 }
 
+export interface AdminSettingsSafetyImageAnalysisCnnThresholds {
+  nudeDelta: number;
+  swimwearMin: number;
+  ambiguousDelta: number;
+  reviewDelta: number;
+}
+
+export interface AdminSettingsSafetyImageAnalysisCnn {
+  enabled: boolean;
+  modelPath: string;
+  inputSize: number;
+  cropExpansion: number;
+  mean: [number, number, number];
+  std: [number, number, number];
+  executionProviders: string[];
+  warmupIterations: number;
+  labels: string[];
+  thresholds: AdminSettingsSafetyImageAnalysisCnnThresholds;
+}
+
 export interface AdminSettingsSafetyImageAnalysisConfig {
   maxWorkingEdge: number;
   thresholds: AdminSettingsSafetyImageAnalysisThresholds;
   runtime: AdminSettingsSafetyImageAnalysisRuntime;
+  cnn: AdminSettingsSafetyImageAnalysisCnn;
 }
 
 export interface AdminSettingsSafety {
@@ -234,6 +255,7 @@ const writeImageAnalysisConfig = async (config: AdminSettingsSafetyImageAnalysis
       maxWorkingEdge: config.maxWorkingEdge,
       thresholds: config.thresholds,
       runtime: config.runtime,
+      cnn: config.cnn,
     },
   };
 
@@ -281,6 +303,7 @@ const resolveAdminSettings = async (): Promise<AdminSettings> => {
         maxWorkingEdge: appConfig.nsfw.imageAnalysis.maxWorkingEdge,
         thresholds: { ...appConfig.nsfw.imageAnalysis.thresholds },
         runtime: { ...appConfig.nsfw.imageAnalysis.runtime },
+        cnn: { ...appConfig.nsfw.imageAnalysis.cnn },
       },
     },
   };
@@ -459,6 +482,7 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
           appConfig.nsfw.imageAnalysis.runtime.pressureHeuristicOnly,
         ),
       },
+      cnn: { ...appConfig.nsfw.imageAnalysis.cnn },
     };
 
     sanitizedImageConfig.runtime.queueHardLimit = Math.max(
@@ -493,6 +517,7 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
         maxWorkingEdge: sanitizedImageConfig.maxWorkingEdge,
         thresholds: { ...sanitizedImageConfig.thresholds },
         runtime: { ...sanitizedImageConfig.runtime },
+        cnn: { ...sanitizedImageConfig.cnn },
       };
       await writeImageAnalysisConfig(appConfig.nsfw.imageAnalysis);
     }

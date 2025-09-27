@@ -57,6 +57,7 @@ export interface OpenCVModule {
   readonly IMREAD_COLOR: number;
   readonly COLOR_BGR2HSV: number;
   readonly COLOR_BGR2YCrCb: number;
+  readonly COLOR_BGR2RGB: number;
   readonly COLOR_BGR2GRAY: number;
   readonly COLOR_RGBA2BGR: number;
   readonly CC_STAT_AREA: number;

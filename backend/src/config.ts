@@ -75,10 +75,31 @@ interface ImageAnalysisRuntimeConfig {
   pressureHeuristicOnly: boolean;
 }
 
+interface ImageAnalysisCnnThresholdConfig {
+  nudeDelta: number;
+  swimwearMin: number;
+  ambiguousDelta: number;
+  reviewDelta: number;
+}
+
+interface ImageAnalysisCnnConfig {
+  enabled: boolean;
+  modelPath: string;
+  inputSize: number;
+  cropExpansion: number;
+  mean: [number, number, number];
+  std: [number, number, number];
+  executionProviders: string[];
+  warmupIterations: number;
+  labels: string[];
+  thresholds: ImageAnalysisCnnThresholdConfig;
+}
+
 interface ImageAnalysisConfig {
   maxWorkingEdge: number;
   thresholds: ImageAnalysisThresholdConfig;
   runtime: ImageAnalysisRuntimeConfig;
+  cnn: ImageAnalysisCnnConfig;
 }
 
 const defaultMetadataFilterConfig: MetadataFilterConfig = {
@@ -152,6 +173,24 @@ const defaultMetadataFilterConfig: MetadataFilterConfig = {
   },
 };
 
+const defaultImageAnalysisCnnConfig: ImageAnalysisCnnConfig = {
+  enabled: true,
+  modelPath: path.resolve(process.cwd(), 'models/nude_vs_swimwear.onnx'),
+  inputSize: 224,
+  cropExpansion: 0.18,
+  mean: [0.485, 0.456, 0.406],
+  std: [0.229, 0.224, 0.225],
+  executionProviders: ['cpu'],
+  warmupIterations: 1,
+  labels: ['nude', 'swimwear', 'ambiguous'],
+  thresholds: {
+    nudeDelta: 0.2,
+    swimwearMin: 0.45,
+    ambiguousDelta: 0.25,
+    reviewDelta: 0.12,
+  },
+};
+
 const defaultImageAnalysisConfig: ImageAnalysisConfig = {
   maxWorkingEdge: 1280,
   thresholds: {
@@ -176,6 +215,7 @@ const defaultImageAnalysisConfig: ImageAnalysisConfig = {
     fastModeMaxEdge: 960,
     pressureHeuristicOnly: true,
   },
+  cnn: defaultImageAnalysisCnnConfig,
 };
 
 const resolveConfigPath = (relativePath: string): string | undefined => {
@@ -304,6 +344,83 @@ const sanitizeBoolean = (value: unknown, fallback: boolean): boolean => {
   return fallback;
 };
 
+const sanitizeNumber = (value: unknown, fallback: number, clampRange?: [number, number]): number => {
+  let numeric: number | null = null;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    numeric = value;
+  } else if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      numeric = parsed;
+    }
+  }
+
+  if (numeric == null) {
+    return fallback;
+  }
+
+  if (clampRange) {
+    const [min, max] = clampRange;
+    return Math.min(max, Math.max(min, numeric));
+  }
+
+  return numeric;
+};
+
+const sanitizeNumberArray = (
+  value: unknown,
+  fallback: number[],
+  clampRange?: [number, number],
+): number[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = fallback.slice();
+  let updated = false;
+
+  for (let i = 0; i < normalized.length && i < value.length; i += 1) {
+    const candidate = sanitizeNumber(value[i], Number.NaN, clampRange);
+    if (!Number.isNaN(candidate)) {
+      normalized[i] = candidate;
+      updated = true;
+    }
+  }
+
+  return updated ? normalized : fallback;
+};
+
+const sanitizeStringArray = (value: unknown, fallback: string[], lowercase = false): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    normalized.add(lowercase ? trimmed.toLowerCase() : trimmed);
+  }
+
+  return normalized.size > 0 ? Array.from(normalized) : fallback;
+};
+
+const sanitizeFilePath = (value: unknown, fallback: string): string => {
+  const candidate = typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+  const resolved = resolveConfigPath(candidate);
+  if (resolved) {
+    return resolved;
+  }
+
+  return path.isAbsolute(candidate) ? candidate : path.resolve(process.cwd(), candidate);
+};
+
 const loadMetadataFilterConfig = (): MetadataFilterConfig => {
   const resolvedPath = resolveConfigPath('config/nsfw-metadata-filters.json');
   if (!resolvedPath) {
@@ -359,6 +476,18 @@ const loadImageAnalysisConfig = (): ImageAnalysisConfig => {
 
     const thresholds = rawConfig.thresholds as Record<string, unknown> | undefined;
     const runtime = rawConfig.runtime as Record<string, unknown> | undefined;
+    const cnn = rawConfig.cnn as Record<string, unknown> | undefined;
+    const cnnThresholds = cnn?.thresholds as Record<string, unknown> | undefined;
+
+    const cnnLabels = sanitizeStringArray(cnn?.labels, defaultImageAnalysisConfig.cnn.labels, true);
+    const requiredLabels = defaultImageAnalysisConfig.cnn.labels;
+    const labelSet = new Set<string>(cnnLabels);
+    for (const label of requiredLabels) {
+      if (!labelSet.has(label)) {
+        cnnLabels.push(label);
+        labelSet.add(label);
+      }
+    }
 
     return {
       maxWorkingEdge: sanitizePositiveInteger(
@@ -442,6 +571,60 @@ const loadImageAnalysisConfig = (): ImageAnalysisConfig => {
           runtime?.pressureHeuristicOnly,
           defaultImageAnalysisConfig.runtime.pressureHeuristicOnly,
         ),
+      },
+      cnn: {
+        enabled: sanitizeBoolean(cnn?.enabled, defaultImageAnalysisConfig.cnn.enabled),
+        modelPath: sanitizeFilePath(cnn?.modelPath, defaultImageAnalysisConfig.cnn.modelPath),
+        inputSize: Math.max(
+          32,
+          sanitizePositiveInteger(cnn?.inputSize, defaultImageAnalysisConfig.cnn.inputSize),
+        ),
+        cropExpansion: sanitizePercentage(
+          cnn?.cropExpansion,
+          defaultImageAnalysisConfig.cnn.cropExpansion,
+          [0, 0.5],
+        ),
+        mean: sanitizeNumberArray(cnn?.mean, defaultImageAnalysisConfig.cnn.mean, [0, 1]) as [
+          number,
+          number,
+          number,
+        ],
+        std: sanitizeNumberArray(cnn?.std, defaultImageAnalysisConfig.cnn.std, [0.01, 1]) as [
+          number,
+          number,
+          number,
+        ],
+        executionProviders: sanitizeStringArray(
+          cnn?.executionProviders,
+          defaultImageAnalysisConfig.cnn.executionProviders,
+        ),
+        warmupIterations: Math.max(
+          0,
+          sanitizeNonNegativeInteger(
+            cnn?.warmupIterations,
+            defaultImageAnalysisConfig.cnn.warmupIterations,
+          ),
+        ),
+        labels: cnnLabels,
+        thresholds: {
+          nudeDelta: sanitizeNumber(
+            cnnThresholds?.nudeDelta,
+            defaultImageAnalysisConfig.cnn.thresholds.nudeDelta,
+            [0, 1],
+          ),
+          swimwearMin: sanitizePercentage(
+            cnnThresholds?.swimwearMin,
+            defaultImageAnalysisConfig.cnn.thresholds.swimwearMin,
+          ),
+          ambiguousDelta: sanitizePercentage(
+            cnnThresholds?.ambiguousDelta,
+            defaultImageAnalysisConfig.cnn.thresholds.ambiguousDelta,
+          ),
+          reviewDelta: sanitizePercentage(
+            cnnThresholds?.reviewDelta,
+            defaultImageAnalysisConfig.cnn.thresholds.reviewDelta,
+          ),
+        },
       },
     };
   } catch (error) {

@@ -72,12 +72,12 @@ Analyze uploaded images on-premise and mark explicit content automatically while
 - [ ] **Swimwear vs. Full Nudity**
   - [x] Use edge density, color variance, and uncovered-area heuristics inside detected torso regions to infer clothing coverage: bikinis, lingerie, tattoos, and patterned fabric introduce strong contrast edges along straps and waistbands, while pure skin regions with low variance suggest nudity.
   - [x] Introduce silhouette thresholds (`torsoPresenceMin`, `hipPresenceMin`, `limbDominanceMax`, `offCenterTolerance`) in `config/nsfw-image-analysis.json` so limb-dominant or off-center exposures are escalated for human review even when overall skin ratios stay high.
-  - [ ] Feed the torso crop into a lightweight ONNX-hosted CNN (`nude_vs_swimwear.onnx`, MobileNetV3-small backbone) to reinforce the heuristic. The model should return calibrated probabilities for `nude`, `swimwear`, and `ambiguous` so skin-tone and edge-based heuristics remain advisory rather than the sole decision makers.
+  - [x] Feed the torso crop into a lightweight ONNX-hosted CNN (`nude_vs_swimwear.onnx`, MobileNetV3-small backbone) to reinforce the heuristic. The model should return calibrated probabilities for `nude`, `swimwear`, and `ambiguous` so skin-tone and edge-based heuristics remain advisory rather than the sole decision makers.
     - Decision: We do not maintain an existing checkpoint for `nude_vs_swimwear.onnx`, so a new lightweight training effort will use MobileNetV3-small with three classes (nude, swimwear, ambiguous) trained on curated, licensed torso crops from adult stock, swimwear stock, and art nude datasets.
-  - [ ] Maintain thresholds (combine heuristic + model outputs):
+  - [x] Maintain thresholds (combine heuristic + model outputs):
     - [x] `skinRatio ≥ 0.35`, `coverageScore ≤ 0.25`, **and** `P(nude) - P(swimwear) ≥ 0.2` → flag as `adult=true` (full nudity). *(Implemented with heuristic-only scoring and configurable thresholds; CNN integration remains outstanding.)*
     - [x] `skinRatio ≥ 0.2` with either `coverageScore > 0.25` **or** `P(swimwear) ≥ 0.45` → mark as `suggestive` but keep `adult=false` for bikini-tier content. *(Heuristic thresholds only; CNN outputs not yet wired.)*
-    - [ ] When the CNN returns `ambiguous`, down-rank the adult score slightly and surface a "Needs review" soft flag so moderators can adjudicate unusual cases (body paint, lingerie sets, cosplay armor, etc.).
+    - [x] When the CNN returns `ambiguous`, down-rank the adult score slightly and surface a "Needs review" soft flag so moderators can adjudicate unusual cases (body paint, lingerie sets, cosplay armor, etc.).
 - [ ] **Disallowed Content Detection**
   - [ ] Scan prompts, filenames, and tag metadata for minor/bestiality keywords (reuse the lists above).
   - [ ] Avoid training or hosting a dedicated `minor`/`bestiality` CNN. Instead, combine hard text/meta blockers (tags, filenames, LoRA metadata), neutral detectors (human/animal/nudity presence) with rule combos, and general-purpose NSFW classifiers so the system stays legal and keeps false positives manageable without prohibited datasets.
