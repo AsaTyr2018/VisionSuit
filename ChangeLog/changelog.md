@@ -158,6 +158,10 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 034 – [Standard Change] Metadata tag search enhancement
+- **Why**: Searching for models by their training tags returned no results because tag-frequency metadata only exposed counts and not the tag labels to the search index.
+- **What**: Included tag-frequency labels from both `ss_tag_frequency` and `tag_frequency` metadata in the collected search strings, broadened helper detection to cover both structures, and refreshed the README highlight to mention the richer explorer search.
+
 ## 033 – [Fix] Windows bulk importer count guard (commit TBD)
 - **Type**: Normal Change
 - **Why**: The PowerShell helper intermittently crashed when PowerShell returned single objects without a `Count` property, producing confusing "property 'Count' cannot be found" errors during uploads.
