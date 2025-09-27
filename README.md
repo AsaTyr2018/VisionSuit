@@ -28,7 +28,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 
 ## Good to Know
 
-- Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
+- Sticky shell layout with live service badges, a Platform health trust panel (curator counts, moderation coverage, service uptime), and role-aware call-to-action cards that route curators straight into uploads, gallery drafting, generator runs, or moderation with toast notifications along the way.
 - Embedded Prisma Studio lives behind the `/db` route—`./dev-start.sh` boots it on port 5555, the frontend proxies access through the sidebar button, and only authenticated administrators can open a session (backed by a short-lived HttpOnly cookie).
 - Ship the MobileNet-based `models/nude_vs_swimwear.onnx` (or update its path in `config/nsfw-image-analysis.json`) before running the NSFW analyzer; when the file is missing the backend logs a warning and falls back to heuristics only.
 - Guests can browse public assets, while downloads, comments, and reactions require a signed-in account (USER role or higher). Adult-tagged models and renders stay hidden from guests and from members who leave the NSFW toggle off (default) in their account settings.

@@ -1,3 +1,8 @@
+## 039 – [Standard Change] Home trust & CTA rollout
+- **Type**: Standard Change
+- **Reason**: Align the documented home experience with actual UI elements so curators and administrators see actionable entry points and transparent trust signals when they land on the dashboard.
+- **Change**: Added role-aware call-to-action cards and a Platform health trust panel to the home view, styled the new sections, refreshed README guidance, and marked the sanity check gap as resolved.
+
 ## 038 – [Standard Change] Prisma Studio service proxy
 - **Type**: Standard Change
 - **Reason**: Provide administrators with persistent database tooling without exposing the default Prisma Studio port or bypassing existing authentication flows.

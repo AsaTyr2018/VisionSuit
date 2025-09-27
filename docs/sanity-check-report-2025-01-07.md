@@ -12,7 +12,7 @@
 - **On-Site Generator hub** – The README outlines curated base-model lists, serialized dispatch, capped history, and artifact import workflows. Frontend generator state management slices history to the last ten inactive jobs, and the backend dispatcher hydrates configured models while materializing workflows, reflecting the documented behaviour.【F:README.md†L24-L24】【F:frontend/src/components/OnSiteGenerator.tsx†L300-L360】【F:backend/src/lib/generator/dispatcher.ts†L320-L380】
 
 ## Documentation gaps or inaccuracies
-- **Missing trust metrics & call-to-action panels** – The README claims the shell ships with "trust metrics" and "call-to-action panels" on the home view, but the current home layout only renders "Latest models" and "Latest images" grids without any trust/CTA sections. Adding those panels or adjusting the documentation would resolve the discrepancy.【F:README.md†L31-L31】【F:frontend/src/App.tsx†L1047-L1079】
+- **Resolved: trust metrics & call-to-action panels** – The home view now includes a "Take action" card row and a "Platform health" trust panel summarizing curator counts, moderation coverage, and live service status, matching the README guidance.【F:frontend/src/App.tsx†L1025-L1111】【F:frontend/src/index.css†L621-L770】
 - **Trigger field not required during edits** – The docs state that the modelcard Trigger/Activator field "is required during uploads or edits." While uploads enforce a trigger, the edit dialog and API accept empty triggers and persist them as null, so edits do not require the field. Update the docs or add validation if the field should remain mandatory on edit.【F:README.md†L51-L51】【F:frontend/src/components/ModelAssetEditDialog.tsx†L161-L205】【F:backend/src/routes/assets.ts†L392-L416】
 
 ## Suggested follow-ups
