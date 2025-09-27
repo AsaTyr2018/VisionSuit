@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – [Addition] NSFW image analysis heuristics
+- **Type**: Normal Change
+- **Reason**: Extend the moderation stack beyond metadata by introducing an on-device image analyzer that scores skin exposure without requiring cloud services.
+- **Change**: Added an OpenCV-based TypeScript module with JPEG/PNG decoding, skin masking, coverage heuristics, admin-configurable thresholds, and regression tests that differentiate nudity from swimwear while persisting settings in `config/nsfw-image-analysis.json`.
+
 ## 032 – [Addition] NSFW metadata snapshot
 - **Type**: Normal Change
 - **Reason**: Administrators needed an at-a-glance view to validate how new metadata thresholds affect existing LoRA assets.
@@ -192,6 +197,11 @@
 - **Type of Change**: Normal Change
 - **Why**: Document the roadmap required to replace the legacy keyword-only NSFW filter with a multi-signal, self-hosted system.
 - **What**: Added a deployment plan covering LoRA metadata screening heuristics, an OpenCV-based image analysis pipeline, admin fine-tuning controls, and linked the guide from the README.
+
+## 034 – [Addition] Pose-aware NSFW heuristics
+- **Type**: Normal Change
+- **Reason**: Extend the in-progress NSFW rollout with torso-aware heuristics so limb-dominant uploads are escalated instead of silently passing automated checks.
+- **Change**: Added silhouette-driven torso/hip analysis and limb-dominance review flags to `backend/src/lib/nsfw/imageAnalysis.ts`, introduced new thresholds in `config/nsfw-image-analysis.json`, expanded regression tests with synthetic limb fixtures, updated the deployment plan progress, and refreshed the README highlight for the analyzer.
 
 ## 034 – [Standard Change] Metadata tag search enhancement
 - **Why**: Searching for models by their training tags returned no results because tag-frequency metadata only exposed counts and not the tag labels to the search index.

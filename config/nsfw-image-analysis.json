@@ -1,0 +1,16 @@
+{
+  "imageAnalysis": {
+    "maxWorkingEdge": 1280,
+    "thresholds": {
+      "nudeSkinRatio": 0.35,
+      "suggestiveSkinRatio": 0.2,
+      "nudeCoverageMax": 0.12,
+      "suggestiveCoverageMax": 0.6,
+      "reviewMargin": 0.05,
+      "torsoPresenceMin": 0.35,
+      "hipPresenceMin": 0.25,
+      "limbDominanceMax": 0.45,
+      "offCenterTolerance": 0.2
+    }
+  }
+}

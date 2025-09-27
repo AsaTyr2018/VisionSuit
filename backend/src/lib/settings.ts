@@ -25,8 +25,22 @@ export interface AdminSettingsSafetyMetadataThresholds {
   beast: number;
 }
 
+export interface AdminSettingsSafetyImageAnalysisThresholds {
+  nudeSkinRatio: number;
+  suggestiveSkinRatio: number;
+  nudeCoverageMax: number;
+  suggestiveCoverageMax: number;
+  reviewMargin: number;
+}
+
+export interface AdminSettingsSafetyImageAnalysisConfig {
+  maxWorkingEdge: number;
+  thresholds: AdminSettingsSafetyImageAnalysisThresholds;
+}
+
 export interface AdminSettingsSafety {
   metadataThresholds: AdminSettingsSafetyMetadataThresholds;
+  imageAnalysis: AdminSettingsSafetyImageAnalysisConfig;
 }
 
 export interface AdminSettings {
@@ -40,6 +54,7 @@ const repoRoot = resolve(backendRoot, '..');
 const backendEnvPath = resolve(backendRoot, '.env');
 const frontendEnvPath = resolve(repoRoot, 'frontend', '.env');
 const metadataConfigPath = resolve(repoRoot, 'config', 'nsfw-metadata-filters.json');
+const imageAnalysisConfigPath = resolve(repoRoot, 'config', 'nsfw-image-analysis.json');
 
 const booleanTrueTokens = new Set(['1', 'true', 'yes', 'on']);
 const booleanFalseTokens = new Set(['0', 'false', 'no', 'off']);
@@ -196,6 +211,18 @@ const writeMetadataThresholds = async (thresholds: AdminSettingsSafetyMetadataTh
   await fs.writeFile(`${metadataConfigPath}`, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 };
 
+const writeImageAnalysisConfig = async (config: AdminSettingsSafetyImageAnalysisConfig) => {
+  const payload = {
+    imageAnalysis: {
+      maxWorkingEdge: config.maxWorkingEdge,
+      thresholds: config.thresholds,
+    },
+  };
+
+  await ensureDirectory(imageAnalysisConfigPath);
+  await fs.writeFile(`${imageAnalysisConfigPath}`, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+};
+
 const resolveAdminSettings = async (): Promise<AdminSettings> => {
   const backendEnv = await readEnvValues(backendEnvPath);
   const frontendEnv = await readEnvValues(frontendEnvPath);
@@ -232,6 +259,10 @@ const resolveAdminSettings = async (): Promise<AdminSettings> => {
     },
     safety: {
       metadataThresholds: { ...appConfig.nsfw.metadataFilters.thresholds },
+      imageAnalysis: {
+        maxWorkingEdge: appConfig.nsfw.imageAnalysis.maxWorkingEdge,
+        thresholds: { ...appConfig.nsfw.imageAnalysis.thresholds },
+      },
     },
   };
 };
@@ -290,6 +321,67 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
   if (metadataThresholdsChanged) {
     appConfig.nsfw.metadataFilters.thresholds = incomingThresholds;
     await writeMetadataThresholds(incomingThresholds);
+  }
+
+  const sanitizeRatio = (value: number, fallback: number, clampMax = 1) => {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.min(clampMax, Math.max(0, value));
+  };
+
+  const sanitizeWorkingEdge = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) {
+      return appConfig.nsfw.imageAnalysis.maxWorkingEdge;
+    }
+    return Math.round(value);
+  };
+
+  const incomingImageAnalysis = settings.safety.imageAnalysis;
+  if (incomingImageAnalysis) {
+    const sanitizedImageConfig: AdminSettingsSafetyImageAnalysisConfig = {
+      maxWorkingEdge: sanitizeWorkingEdge(incomingImageAnalysis.maxWorkingEdge),
+      thresholds: {
+        nudeSkinRatio: sanitizeRatio(
+          incomingImageAnalysis.thresholds.nudeSkinRatio,
+          appConfig.nsfw.imageAnalysis.thresholds.nudeSkinRatio,
+        ),
+        suggestiveSkinRatio: sanitizeRatio(
+          incomingImageAnalysis.thresholds.suggestiveSkinRatio,
+          appConfig.nsfw.imageAnalysis.thresholds.suggestiveSkinRatio,
+        ),
+        nudeCoverageMax: sanitizeRatio(
+          incomingImageAnalysis.thresholds.nudeCoverageMax,
+          appConfig.nsfw.imageAnalysis.thresholds.nudeCoverageMax,
+        ),
+        suggestiveCoverageMax: sanitizeRatio(
+          incomingImageAnalysis.thresholds.suggestiveCoverageMax,
+          appConfig.nsfw.imageAnalysis.thresholds.suggestiveCoverageMax,
+        ),
+        reviewMargin: sanitizeRatio(
+          incomingImageAnalysis.thresholds.reviewMargin,
+          appConfig.nsfw.imageAnalysis.thresholds.reviewMargin,
+          0.25,
+        ),
+      },
+    };
+
+    const previous = appConfig.nsfw.imageAnalysis;
+    const thresholdsChanged =
+      previous.thresholds.nudeSkinRatio !== sanitizedImageConfig.thresholds.nudeSkinRatio ||
+      previous.thresholds.suggestiveSkinRatio !== sanitizedImageConfig.thresholds.suggestiveSkinRatio ||
+      previous.thresholds.nudeCoverageMax !== sanitizedImageConfig.thresholds.nudeCoverageMax ||
+      previous.thresholds.suggestiveCoverageMax !== sanitizedImageConfig.thresholds.suggestiveCoverageMax ||
+      previous.thresholds.reviewMargin !== sanitizedImageConfig.thresholds.reviewMargin ||
+      previous.maxWorkingEdge !== sanitizedImageConfig.maxWorkingEdge;
+
+    if (thresholdsChanged) {
+      appConfig.nsfw.imageAnalysis = {
+        maxWorkingEdge: sanitizedImageConfig.maxWorkingEdge,
+        thresholds: { ...sanitizedImageConfig.thresholds },
+      };
+      await writeImageAnalysisConfig(appConfig.nsfw.imageAnalysis);
+    }
   }
 
   const resolved = await resolveAdminSettings();
