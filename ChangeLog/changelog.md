@@ -1196,3 +1196,8 @@
 - **Reason**: Windows bulk uploads that only included one LoRA or a single preview image crashed because the script attempted to read the `.Count` property from scalar file objects.
 - **Changes**: Wrapped the Windows importer’s file enumerations in arrays so lone safetensors and preview images are counted correctly, and refreshed the README Windows workflow guidance with the single-item support tip.
 
+## 213 – [Enhancement] Automated NSFW metadata screening
+- **Type**: Normal Change
+- **Reason**: LoRA uploads still relied on manual tag audits, so adult and disallowed themes slipped through until curators reviewed them by hand.
+- **Changes**: Extended the safetensor ingestion pipeline to normalize tag-frequency tables, persist normalized counts and score breakdowns in model metadata, compare the totals against configurable thresholds, automatically mark adult LoRAs, flag minor/bestiality matches for moderation with visibility locks, and documented the completed checklist items in the NSFW deployment plan alongside a refreshed README highlight.
+
