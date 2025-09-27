@@ -1287,3 +1287,8 @@
 - **Changes**: Introduced a reusable NSFW workflow helper that fans buffers through the scheduler-backed analyzer and OpenCV heuristics, updated uploads, generator imports, and the `/api/safety/nsfw/rescan` route to persist moderation summaries and reuse the shared decisions, locked generator imports when minor/bestiality cues appear, refreshed README highlights, and documented the rollout in this changelog.
 
 
+
+## 221 – [Analysis] Documentation sanity check report
+- **Type**: Normal Change
+- **Reason**: A documentation review was requested to ensure the README accurately reflects the implemented VisionSuit features.
+- **Changes**: Documented a sanity-check report that confirms key README highlights against backend/frontend behaviour and calls out mismatches (missing trust/CTA panels and optional trigger edits) to guide future documentation or feature updates.
