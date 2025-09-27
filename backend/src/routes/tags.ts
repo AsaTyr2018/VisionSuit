@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { getAdultKeywordLabels } from '../lib/adult-keywords';
+import { collectModerationSummaries, normalizeModerationSummary } from '../lib/nsfw-open-cv';
 import type { Prisma } from '@prisma/client';
 
 export const tagsRouter = Router();
@@ -15,39 +16,53 @@ const toggleAdultSchema = z.object({
   isAdult: z.boolean(),
 });
 
+type TaggedModelRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  trigger: string | null;
+  metadata: Prisma.JsonValue | null;
+  moderationSummary: Prisma.JsonValue | null;
+  isAdult: boolean;
+  tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+  versions: Array<{ metadata: Prisma.JsonValue | null }>;
+};
+
+type TaggedImageRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  prompt: string | null;
+  negativePrompt: string | null;
+  model: string | null;
+  sampler: string | null;
+  seed: string | null;
+  cfgScale: number | null;
+  steps: number | null;
+  isAdult: boolean;
+  moderationSummary: Prisma.JsonValue | null;
+  tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+};
+
 const recalculateAdultForTag = async (tagId: string) => {
-  const [models, images] = await Promise.all([
+  const [rawModels, rawImages] = await Promise.all([
     prisma.modelAsset.findMany({
       where: { tags: { some: { tagId } } },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        trigger: true,
-        metadata: true,
-        isAdult: true,
+      include: {
         tags: { include: { tag: true } },
         versions: { select: { metadata: true } },
       },
     }),
     prisma.imageAsset.findMany({
       where: { tags: { some: { tagId } } },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        prompt: true,
-        negativePrompt: true,
-        model: true,
-        sampler: true,
-        seed: true,
-        cfgScale: true,
-        steps: true,
-        isAdult: true,
+      include: {
         tags: { include: { tag: true } },
       },
     }),
   ]);
+
+  const models = rawModels as unknown as TaggedModelRecord[];
+  const images = rawImages as unknown as TaggedImageRecord[];
 
   const adultKeywords = await getAdultKeywordLabels();
 
@@ -56,6 +71,11 @@ const recalculateAdultForTag = async (tagId: string) => {
       const versionMetadataList = model.versions
         .map((entry) => entry.metadata ?? null)
         .filter((entry): entry is Prisma.JsonValue => entry != null);
+      const moderationSummaries = collectModerationSummaries([
+        model.moderationSummary ?? null,
+        model.metadata ?? null,
+        ...versionMetadataList,
+      ]);
       const nextIsAdult = determineAdultForModel({
         title: model.title,
         description: model.description,
@@ -64,6 +84,7 @@ const recalculateAdultForTag = async (tagId: string) => {
         metadataList: versionMetadataList,
         tags: model.tags,
         adultKeywords,
+        moderationSummaries,
       });
 
       if (model.isAdult !== nextIsAdult) {
@@ -85,6 +106,8 @@ const recalculateAdultForTag = async (tagId: string) => {
         metadataPayload.steps = image.steps;
       }
 
+      const moderationSummary = normalizeModerationSummary(image.moderationSummary);
+
       const nextIsAdult = determineAdultForImage({
         title: image.title,
         description: image.description,
@@ -95,6 +118,7 @@ const recalculateAdultForTag = async (tagId: string) => {
         metadata: Object.keys(metadataPayload).length > 0 ? metadataPayload : null,
         tags: image.tags,
         adultKeywords,
+        moderation: moderationSummary,
       });
 
       if (image.isAdult !== nextIsAdult) {

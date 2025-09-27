@@ -36,34 +36,34 @@ enum ModerationActionType {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  email       String       @unique
-  displayName String
-  role        UserRole     @default(USER)
-  bio         String?
-  avatarUrl   String?
-  passwordHash String      @default("")
-  isActive    Boolean      @default(true)
-  showAdultContent Boolean @default(false)
-  lastLoginAt DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  galleries   Gallery[]    @relation("GalleryOwner")
-  assets      ModelAsset[] @relation("AssetOwner")
-  images      ImageAsset[] @relation("ImageOwner")
-  imageLikes ImageLike[]
-  modelComments ModelComment[]
-  modelCommentLikes ModelCommentLike[]
-  imageComments ImageComment[]
-  imageCommentLikes ImageCommentLike[]
-  uploadDrafts UploadDraft[]
-  rankingState UserRankingState?
-  generatorRequests GeneratorRequest[]
-  generatorQueueBlocks GeneratorQueueBlock[]
-  flaggedModels ModelAsset[] @relation("ModelAssetFlagger")
-  flaggedImages ImageAsset[] @relation("ImageAssetFlagger")
-  moderationActions ModerationLog[] @relation("ModerationLogActor")
-  moderationNotices ModerationLog[] @relation("ModerationLogRecipient")
+  id                     String                  @id @default(cuid())
+  email                  String                  @unique
+  displayName            String
+  role                   UserRole                @default(USER)
+  bio                    String?
+  avatarUrl              String?
+  passwordHash           String                  @default("")
+  isActive               Boolean                 @default(true)
+  showAdultContent       Boolean                 @default(false)
+  lastLoginAt            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  galleries              Gallery[]               @relation("GalleryOwner")
+  assets                 ModelAsset[]            @relation("AssetOwner")
+  images                 ImageAsset[]            @relation("ImageOwner")
+  imageLikes             ImageLike[]
+  modelComments          ModelComment[]
+  modelCommentLikes      ModelCommentLike[]
+  imageComments          ImageComment[]
+  imageCommentLikes      ImageCommentLike[]
+  uploadDrafts           UploadDraft[]
+  rankingState           UserRankingState?
+  generatorRequests      GeneratorRequest[]
+  generatorQueueBlocks   GeneratorQueueBlock[]
+  flaggedModels          ModelAsset[]            @relation("ModelAssetFlagger")
+  flaggedImages          ImageAsset[]            @relation("ImageAssetFlagger")
+  moderationActions      ModerationLog[]         @relation("ModerationLogActor")
+  moderationNotices      ModerationLog[]         @relation("ModerationLogRecipient")
   modelModerationReports ModelModerationReport[]
   imageModerationReports ImageModerationReport[]
 }
@@ -83,80 +83,83 @@ model Gallery {
 }
 
 model ModelAsset {
-  id           String       @id @default(cuid())
-  slug         String       @unique
-  title        String
-  description  String?
-  trigger      String?
-  version      String
-  fileSize     Int?
-  checksum     String?
-  storagePath  String       @unique
-  previewImage String?
-  metadata     Json?
-  isPublic     Boolean      @default(true)
-  isAdult      Boolean      @default(false)
-  ownerId      String
-  owner        User         @relation("AssetOwner", fields: [ownerId], references: [id])
-  tags         AssetTag[]
-  galleryItems GalleryEntry[] @relation("GalleryModel")
-  versions     ModelVersion[]
-  comments     ModelComment[]
+  id                String                  @id @default(cuid())
+  slug              String                  @unique
+  title             String
+  description       String?
+  trigger           String?
+  version           String
+  fileSize          Int?
+  checksum          String?
+  storagePath       String                  @unique
+  previewImage      String?
+  metadata          Json?
+  moderationSummary Json?
+  isPublic          Boolean                 @default(true)
+  isAdult           Boolean                 @default(false)
+  ownerId           String
+  owner             User                    @relation("AssetOwner", fields: [ownerId], references: [id])
+  tags              AssetTag[]
+  galleryItems      GalleryEntry[]          @relation("GalleryModel")
+  versions          ModelVersion[]
+  comments          ModelComment[]
   generatorRequests GeneratorRequest[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  moderationStatus ModerationStatus @default(ACTIVE)
-  flaggedAt    DateTime?
-  flaggedById  String?
-  flaggedBy    User?        @relation("ModelAssetFlagger", fields: [flaggedById], references: [id])
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  moderationStatus  ModerationStatus        @default(ACTIVE)
+  flaggedAt         DateTime?
+  flaggedById       String?
+  flaggedBy         User?                   @relation("ModelAssetFlagger", fields: [flaggedById], references: [id])
   moderationReports ModelModerationReport[]
 }
 
 model ModelVersion {
-  id           String      @id @default(cuid())
-  modelId      String
-  model        ModelAsset  @relation(fields: [modelId], references: [id])
-  version      String
-  storagePath  String      @unique
-  previewImage String?
-  metadata     Json?
-  fileSize     Int?
-  checksum     String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id                String     @id @default(cuid())
+  modelId           String
+  model             ModelAsset @relation(fields: [modelId], references: [id])
+  version           String
+  storagePath       String     @unique
+  previewImage      String?
+  metadata          Json?
+  moderationSummary Json?
+  fileSize          Int?
+  checksum          String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   @@unique([modelId, version])
 }
 
 model ImageAsset {
-  id             String         @id @default(cuid())
-  title          String
-  description    String?
-  width          Int?
-  height         Int?
-  fileSize       Int?
-  storagePath    String         @unique
-  prompt         String?
-  negativePrompt String?
-  seed           String?
-  model          String?
-  sampler        String?
-  cfgScale       Float?
-  steps          Int?
-  tags           ImageTag[]
-  isPublic       Boolean        @default(true)
-  isAdult        Boolean        @default(false)
-  galleries      GalleryEntry[] @relation("GalleryImage")
-  ownerId        String
-  owner          User           @relation("ImageOwner", fields: [ownerId], references: [id])
-  likes          ImageLike[]
-  comments       ImageComment[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  moderationStatus ModerationStatus @default(ACTIVE)
-  flaggedAt      DateTime?
-  flaggedById    String?
-  flaggedBy      User?           @relation("ImageAssetFlagger", fields: [flaggedById], references: [id])
+  id                String                  @id @default(cuid())
+  title             String
+  description       String?
+  width             Int?
+  height            Int?
+  fileSize          Int?
+  storagePath       String                  @unique
+  prompt            String?
+  negativePrompt    String?
+  seed              String?
+  model             String?
+  sampler           String?
+  cfgScale          Float?
+  steps             Int?
+  moderationSummary Json?
+  tags              ImageTag[]
+  isPublic          Boolean                 @default(true)
+  isAdult           Boolean                 @default(false)
+  galleries         GalleryEntry[]          @relation("GalleryImage")
+  ownerId           String
+  owner             User                    @relation("ImageOwner", fields: [ownerId], references: [id])
+  likes             ImageLike[]
+  comments          ImageComment[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  moderationStatus  ModerationStatus        @default(ACTIVE)
+  flaggedAt         DateTime?
+  flaggedById       String?
+  flaggedBy         User?                   @relation("ImageAssetFlagger", fields: [flaggedById], references: [id])
   moderationReports ImageModerationReport[]
 }
 
@@ -173,15 +176,15 @@ model ImageLike {
 }
 
 model ModelComment {
-  id        String   @id @default(cuid())
+  id        String             @id @default(cuid())
   modelId   String
-  model     ModelAsset @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  model     ModelAsset         @relation(fields: [modelId], references: [id], onDelete: Cascade)
   authorId  String
-  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
   content   String
   likes     ModelCommentLike[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@index([modelId])
 }
@@ -199,15 +202,15 @@ model ModelCommentLike {
 }
 
 model ImageComment {
-  id        String   @id @default(cuid())
+  id        String             @id @default(cuid())
   imageId   String
-  image     ImageAsset @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  image     ImageAsset         @relation(fields: [imageId], references: [id], onDelete: Cascade)
   authorId  String
-  author    User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author    User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
   content   String
   likes     ImageCommentLike[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@index([imageId])
 }
@@ -225,14 +228,14 @@ model ImageCommentLike {
 }
 
 model GalleryEntry {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   galleryId String
   imageId   String?
   assetId   String?
-  position  Int      @default(0)
+  position  Int         @default(0)
   note      String?
-  createdAt DateTime @default(now())
-  gallery   Gallery  @relation(fields: [galleryId], references: [id])
+  createdAt DateTime    @default(now())
+  gallery   Gallery     @relation(fields: [galleryId], references: [id])
   image     ImageAsset? @relation("GalleryImage", fields: [imageId], references: [id])
   asset     ModelAsset? @relation("GalleryModel", fields: [assetId], references: [id])
 }
@@ -309,24 +312,24 @@ model RankingSettings {
 }
 
 model GeneratorSettings {
-  id         Int                  @id @default(autoincrement())
-  accessMode GeneratorAccessMode  @default(ADMIN_ONLY)
-  baseModels Json                 @default("[]")
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
+  id         Int                 @id @default(autoincrement())
+  accessMode GeneratorAccessMode @default(ADMIN_ONLY)
+  baseModels Json                @default("[]")
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
 }
 
 model GeneratorQueueState {
-  id                  Int       @id @default(autoincrement())
-  isPaused            Boolean   @default(false)
-  declineNewRequests  Boolean   @default(false)
-  pausedAt            DateTime?
-  activity            Json?
-  activityUpdatedAt   DateTime?
-  activeRequestId     String?
-  lockedAt            DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                 Int       @id @default(autoincrement())
+  isPaused           Boolean   @default(false)
+  declineNewRequests Boolean   @default(false)
+  pausedAt           DateTime?
+  activity           Json?
+  activityUpdatedAt  DateTime?
+  activeRequestId    String?
+  lockedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model GeneratorQueueBlock {
@@ -340,29 +343,29 @@ model GeneratorQueueBlock {
 }
 
 model GeneratorRequest {
-  id             String                @id @default(cuid())
-  userId         String
-  baseModelId    String?
+  id                  String   @id @default(cuid())
+  userId              String
+  baseModelId         String?
   baseModelSelections Json?
-  prompt         String
-  negativePrompt String?
-  seed           String?
-  guidanceScale  Float?
-  steps          Int?
-  sampler        String   @default("dpmpp_2m_sde_gpu")
-  scheduler      String   @default("karras")
-  width          Int
-  height         Int
-  loraSelections Json?
-  status         String               @default("draft")
-  errorReason    String?
-  outputBucket   String?
-  outputPrefix   String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  prompt              String
+  negativePrompt      String?
+  seed                String?
+  guidanceScale       Float?
+  steps               Int?
+  sampler             String   @default("dpmpp_2m_sde_gpu")
+  scheduler           String   @default("karras")
+  width               Int
+  height              Int
+  loraSelections      Json?
+  status              String   @default("draft")
+  errorReason         String?
+  outputBucket        String?
+  outputPrefix        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  user      User        @relation(fields: [userId], references: [id])
-  baseModel ModelAsset? @relation(fields: [baseModelId], references: [id])
+  user      User                @relation(fields: [userId], references: [id])
+  baseModel ModelAsset?         @relation(fields: [baseModelId], references: [id])
   artifacts GeneratorArtifact[]
 }
 
@@ -380,16 +383,17 @@ model GeneratorArtifact {
 }
 
 model ModerationLog {
-  id            String                 @id @default(cuid())
-  entityType    ModerationEntityType
-  entityId      String
-  action        ModerationActionType
-  message       String?
-  actorId       String?
-  actor         User?                  @relation("ModerationLogActor", fields: [actorId], references: [id])
-  targetUserId  String?
-  targetUser    User?                  @relation("ModerationLogRecipient", fields: [targetUserId], references: [id])
-  createdAt     DateTime               @default(now())
+  id           String               @id @default(cuid())
+  entityType   ModerationEntityType
+  entityId     String
+  action       ModerationActionType
+  message      String?
+  actorId      String?
+  actor        User?                @relation("ModerationLogActor", fields: [actorId], references: [id])
+  targetUserId String?
+  targetUser   User?                @relation("ModerationLogRecipient", fields: [targetUserId], references: [id])
+  createdAt    DateTime             @default(now())
+
   @@index([entityType, entityId])
 }
 
@@ -433,13 +437,13 @@ model RankTier {
 }
 
 model UserRankingState {
-  userId      String   @id
-  scoreOffset Int      @default(0)
-  isExcluded  Boolean  @default(false)
+  userId      String    @id
+  scoreOffset Int       @default(0)
+  isExcluded  Boolean   @default(false)
   lastResetAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id])
 }
 
 model AdultSafetyKeyword {

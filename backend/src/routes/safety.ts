@@ -6,6 +6,7 @@ import { determineAdultForImage, determineAdultForModel } from '../lib/adult-con
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { prisma } from '../lib/prisma';
 import { getAdultKeywordLabels, listAdultSafetyKeywords } from '../lib/adult-keywords';
+import { collectModerationSummaries, normalizeModerationSummary } from '../lib/nsfw-open-cv';
 
 export const safetyRouter = Router();
 
@@ -27,6 +28,7 @@ type ModelAdultEvaluationTarget = {
   description: string | null;
   trigger: string | null;
   metadata: Prisma.JsonValue | null;
+  moderationSummary: Prisma.JsonValue | null;
   isAdult: boolean;
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   versions: Array<{ metadata: Prisma.JsonValue | null }>;
@@ -44,6 +46,7 @@ type ImageAdultEvaluationTarget = {
   cfgScale: number | null;
   steps: number | null;
   isAdult: boolean;
+  moderationSummary: Prisma.JsonValue | null;
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
 };
 
@@ -51,7 +54,7 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
   let cursorId: string | null = null;
 
   while (true) {
-    const models: ModelAdultEvaluationTarget[] = await prisma.modelAsset.findMany({
+    const modelRecords = await prisma.modelAsset.findMany({
       orderBy: { id: 'asc' },
       take: ADULT_RECALC_BATCH_SIZE,
       ...(cursorId
@@ -60,17 +63,13 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
             skip: 1,
           }
         : {}),
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        trigger: true,
-        metadata: true,
-        isAdult: true,
+      include: {
         tags: { include: { tag: true } },
         versions: { select: { metadata: true } },
       },
     });
+
+    const models = modelRecords as unknown as ModelAdultEvaluationTarget[];
 
     if (models.length === 0) {
       break;
@@ -81,6 +80,12 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
         const versionMetadataList = model.versions
           .map((entry) => entry.metadata ?? null)
           .filter((entry): entry is Prisma.JsonValue => entry != null);
+        const moderationSummaries = collectModerationSummaries([
+          model.moderationSummary ?? null,
+          model.metadata ?? null,
+          ...versionMetadataList,
+        ]);
+
         const nextIsAdult = determineAdultForModel({
           title: model.title,
           description: model.description,
@@ -89,6 +94,7 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
           metadataList: versionMetadataList,
           tags: model.tags,
           adultKeywords,
+          moderationSummaries,
         });
 
         if (model.isAdult === nextIsAdult) {
@@ -123,7 +129,7 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
   let cursorId: string | null = null;
 
   while (true) {
-    const images: ImageAdultEvaluationTarget[] = await prisma.imageAsset.findMany({
+    const imageRecords = await prisma.imageAsset.findMany({
       orderBy: { id: 'asc' },
       take: ADULT_RECALC_BATCH_SIZE,
       ...(cursorId
@@ -132,21 +138,12 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
             skip: 1,
           }
         : {}),
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        prompt: true,
-        negativePrompt: true,
-        model: true,
-        sampler: true,
-        seed: true,
-        cfgScale: true,
-        steps: true,
-        isAdult: true,
+      include: {
         tags: { include: { tag: true } },
       },
     });
+
+    const images = imageRecords as unknown as ImageAdultEvaluationTarget[];
 
     if (images.length === 0) {
       break;
@@ -167,6 +164,8 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
 
         const metadata = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
 
+        const moderationSummary = normalizeModerationSummary(image.moderationSummary);
+
         const nextIsAdult = determineAdultForImage({
           title: image.title,
           description: image.description,
@@ -177,6 +176,7 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
           metadata,
           tags: image.tags,
           adultKeywords,
+          moderation: moderationSummary,
         });
 
         if (image.isAdult === nextIsAdult) {

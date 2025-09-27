@@ -19,6 +19,11 @@ import {
   type ImageMetadataResult,
   type SafetensorsMetadataResult,
 } from '../lib/metadata';
+import {
+  analyzeImageModeration,
+  serializeModerationSummary,
+  type ImageModerationSummary,
+} from '../lib/nsfw-open-cv';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -47,6 +52,7 @@ type StoredUploadFile = {
   };
   imageMetadata?: ImageMetadataResult;
   modelMetadata?: SafetensorsMetadataResult | null;
+  moderationSummary?: ImageModerationSummary | null;
 };
 
 const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category?: string | null) => {
@@ -285,9 +291,18 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         const storageId = crypto.randomUUID();
         const objectName = storageId;
 
-        const [imageMetadata, modelMetadata] = await Promise.all([
+        const [imageMetadata, modelMetadata, moderationSummary] = await Promise.all([
           isImage ? extractImageMetadata(file).catch(() => undefined) : Promise.resolve(undefined),
           !isImage ? Promise.resolve(extractModelMetadataFromFile(file)) : Promise.resolve(null),
+          isImage
+            ? analyzeImageModeration(file.buffer).catch((error) => {
+                console.warn('Failed to analyze image for moderation heuristics.', {
+                  file: file.originalname,
+                  error,
+                });
+                return null;
+              })
+            : Promise.resolve(null),
         ]);
 
         await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
@@ -315,6 +330,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
 
         if (modelMetadata) {
           entry.modelMetadata = modelMetadata;
+        }
+
+        if (moderationSummary) {
+          entry.moderationSummary = moderationSummary;
         }
 
         return entry;
@@ -359,6 +378,9 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
     const previewEntry = storedEntries.find((entry) => entry.isImage);
     const previewStored = previewEntry?.storage ?? null;
     const imageFiles = storedEntries.filter((entry) => entry.isImage);
+    const moderationSummaries = imageFiles
+      .map((entry) => entry.moderationSummary)
+      .filter((entry): entry is ImageModerationSummary => Boolean(entry));
 
     const result = await prisma.$transaction(async (tx) => {
       const gallery = await resolveGallery(
@@ -424,6 +446,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           json.metadata = metadata;
         }
 
+        if (entry.moderationSummary) {
+          json.moderation = serializeModerationSummary(entry.moderationSummary);
+        }
+
         return json;
       });
 
@@ -485,6 +511,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           modelMetadataPayload.preview = previewMetadataPayload;
         }
 
+        if (previewEntry?.moderationSummary) {
+          modelMetadataPayload.moderation = serializeModerationSummary(previewEntry.moderationSummary);
+        }
+
         if (modelEntry?.modelMetadata) {
           const extracted = modelEntry.modelMetadata;
           modelMetadataPayload.baseModel = extracted.baseModel ?? null;
@@ -505,7 +535,14 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           ...(previewMetadataPayload ? { metadataList: [previewMetadataPayload] } : {}),
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
+          moderationSummaries: [
+            ...(previewEntry?.moderationSummary ? [previewEntry.moderationSummary] : []),
+            ...moderationSummaries,
+          ],
         });
+
+        const primaryModeration = previewEntry?.moderationSummary ?? moderationSummaries[0] ?? null;
+        const serializedPrimaryModeration = serializeModerationSummary(primaryModeration);
 
         const modelAsset = await tx.modelAsset.create({
           data: {
@@ -521,6 +558,9 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             metadata: modelMetadataPayload,
             isPublic: payload.visibility === 'public',
             isAdult: modelAdult,
+            ...(serializedPrimaryModeration !== null
+              ? { moderationSummary: serializedPrimaryModeration }
+              : {}),
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
@@ -583,6 +623,12 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           imageMetadataPayload.extras = metadata.extras as Prisma.JsonObject;
         }
 
+        if (entry.moderationSummary) {
+          imageMetadataPayload.moderation = serializeModerationSummary(entry.moderationSummary);
+        }
+
+        const serializedImageModeration = serializeModerationSummary(entry.moderationSummary ?? null);
+
         const imageAdult = determineAdultForImage({
           title,
           description: payload.description ?? null,
@@ -593,6 +639,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           metadata: Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null,
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
+          moderation: entry.moderationSummary ?? null,
         });
 
         const imageAsset = await tx.imageAsset.create({
@@ -608,15 +655,18 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             seed: metadata?.seed ?? null,
             model: metadata?.model ?? null,
             sampler: metadata?.sampler ?? null,
-            cfgScale: metadata?.cfgScale ?? null,
-            steps: metadata?.steps ?? null,
-            isPublic: payload.visibility === 'public',
-            isAdult: imageAdult,
-            owner: { connect: { id: actor.id } },
-            tags: {
-              create: tagIds.map((tagId) => ({ tagId })),
-            },
+          cfgScale: metadata?.cfgScale ?? null,
+          steps: metadata?.steps ?? null,
+          isPublic: payload.visibility === 'public',
+          isAdult: imageAdult,
+          ...(serializedImageModeration !== null
+            ? { moderationSummary: serializedImageModeration }
+            : {}),
+          owner: { connect: { id: actor.id } },
+          tags: {
+            create: tagIds.map((tagId) => ({ tagId })),
           },
+        },
         });
 
         const entryRecord = await tx.galleryEntry.create({

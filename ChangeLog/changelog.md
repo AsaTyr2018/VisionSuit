@@ -1181,3 +1181,18 @@
 - **Reason**: Windows bulk uploads that only included one LoRA or a single preview image crashed because the script attempted to read the `.Count` property from scalar file objects.
 - **Changes**: Wrapped the Windows importer’s file enumerations in arrays so lone safetensors and preview images are counted correctly, and refreshed the README Windows workflow guidance with the single-item support tip.
 
+## 213 – [Update] NSFW swimwear heuristic realignment
+- **Type**: Normal Change
+- **Reason**: The safety team confirmed we will not maintain the proposed `nude_vs_swimwear.onnx` checkpoint, so the roadmap needed to stop referencing the unavailable model.
+- **Changes**: Updated `docs/nsfw-deployment-plan.md` to focus on OpenCV heuristics and add the official decision note, and refreshed the README highlight to call out that the NSFW pipeline no longer depends on the retired ONNX model.
+
+## 214 – [Feature] OpenCV moderation heuristics enforcement
+- **Type**: Normal Change
+- **Reason**: Documentation alone left the NSFW filter ineffective because uploads still relied solely on keyword heuristics while referencing the deprecated `nude_vs_swimwear.onnx` fallback.
+- **Changes**: Added an OpenCV-inspired skin and garment analyzer (`backend/src/lib/nsfw-open-cv.ts`), wired it into image/model upload flows, generator imports, and moderation recalculations, persisted the resulting summaries in new Prisma `moderationSummary` columns, and refreshed the README highlight to note the backend now executes the heuristics on every upload.
+
+## 215 – [Fix] Prisma schema moderation summary alignment
+- **Type**: Normal Change
+- **Reason**: Model uploads attempted to persist OpenCV moderation summaries, but the Prisma schema lacked the `moderationSummary` field on `ModelAsset`, leaving generated clients unaware of the column and blocking writes at runtime.
+- **Changes**: Declared the `moderationSummary` JSON column on the `ModelAsset` model inside `backend/prisma/schema.prisma` and reformatted the schema with `npx prisma format` so Prisma Client exposes the field to the upload pipeline.
+
