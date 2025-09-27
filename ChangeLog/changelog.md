@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Fix] Windows bulk importer count guard (commit TBD)
+- **Type**: Normal Change
+- **Why**: The PowerShell helper intermittently crashed when PowerShell returned single objects without a `Count` property, producing confusing "property 'Count' cannot be found" errors during uploads.
+- **What**: Added shared helpers that normalize enumerables into arrays and compute sizes safely, then refactored the Windows importer to rely on them for file, image, and batch processing.
+
 ## 033 – [Standard Change] Secure Windows bulk uploader redesign
 - **Change Type**: Standard Change
 - **Reason**: The previous Windows importer targeted a localhost-only API endpoint and skipped health verification, causing remote uploads to fail against VisionSuit deployments.

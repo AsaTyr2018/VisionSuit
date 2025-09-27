@@ -72,6 +72,54 @@ function Write-Log {
   Write-Host "[$timestamp] $Message"
 }
 
+function ConvertTo-ObjectArray {
+  param($Value)
+
+  if ($null -eq $Value) {
+    return @()
+  }
+
+  if ($Value -is [System.Array]) {
+    return $Value
+  }
+
+  if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+    return @($Value)
+  }
+
+  return @($Value)
+}
+
+function Get-ObjectCount {
+  param($Value)
+
+  if ($null -eq $Value) {
+    return 0
+  }
+
+  if ($Value -is [System.Collections.ICollection]) {
+    return $Value.Count
+  }
+
+  if ($Value -is [string]) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+      return 0
+    }
+    return 1
+  }
+
+  $enumerable = $Value -as [System.Collections.IEnumerable]
+  if ($enumerable -and -not ($Value -is [string])) {
+    $count = 0
+    foreach ($item in $enumerable) {
+      $count++
+    }
+    return $count
+  }
+
+  return 1
+}
+
 function Resolve-ExistingDirectory {
   param([string]$Path, [string]$Description)
   $resolved = Resolve-Path -Path $Path -ErrorAction Stop
@@ -613,8 +661,10 @@ try {
 
   $uploadUri = ConvertTo-AbsoluteUri -BaseUri $baseUri -RelativePath '/api/uploads'
 
-  $loraFiles = @(Get-ChildItem -LiteralPath $lorasRoot -Filter '*.safetensors' -Recurse -File | Sort-Object FullName)
-  if ($loraFiles.Count -eq 0) {
+  $loraFiles = ConvertTo-ObjectArray -Value (
+    Get-ChildItem -LiteralPath $lorasRoot -Filter '*.safetensors' -Recurse -File | Sort-Object FullName
+  )
+  if ((Get-ObjectCount -Value $loraFiles) -eq 0) {
     Write-Log "No LoRA safetensors found beneath '$lorasRoot'."
     return
   }
@@ -645,17 +695,19 @@ try {
     }
 
     $allowedExtensions = @('.png', '.jpg', '.jpeg', '.webp', '.bmp')
-    $images = @(Get-ChildItem -LiteralPath $imageFolder -File | Where-Object {
-      $allowedExtensions -contains ([System.IO.Path]::GetExtension($_.Name).ToLowerInvariant())
-    } | Sort-Object Name)
-    if ($images.Count -eq 0) {
+    $images = ConvertTo-ObjectArray -Value (
+      Get-ChildItem -LiteralPath $imageFolder -File | Where-Object {
+        $allowedExtensions -contains ([System.IO.Path]::GetExtension($_.Name).ToLowerInvariant())
+      } | Sort-Object Name
+    )
+    if ((Get-ObjectCount -Value $images) -eq 0) {
       Write-Log "Skipping '$baseName' because no preview-ready images were found."
       $skipped++
       continue
     }
 
     $preview = Get-Random -InputObject $images
-    $otherImages = @($images | Where-Object { $_.FullName -ne $preview.FullName })
+    $otherImages = ConvertTo-ObjectArray -Value ($images | Where-Object { $_.FullName -ne $preview.FullName })
 
     $candidateMetadata = @(
       (Join-Path -Path $lora.DirectoryName -ChildPath "$baseName.json")
@@ -743,7 +795,8 @@ try {
         }
       }
 
-      if ($otherImages.Count -gt 0) {
+      $otherImageCount = Get-ObjectCount -Value $otherImages
+      if ($otherImageCount -gt 0) {
         $batchIndex = 0
         $galleryFields = @{
           'assetType'    = 'image'
@@ -756,20 +809,21 @@ try {
         if ($profile.Description) { $galleryFields['description'] = $profile.Description }
         if ($profile.Category) { $galleryFields['category'] = $profile.Category }
 
-        $otherImageArray = @($otherImages)
+        $otherImageArray = ConvertTo-ObjectArray -Value $otherImages
         $batchFailed = $false
-        for ($start = 0; $start -lt $otherImageArray.Count; $start += $ImageBatchSize) {
-          $endIndex = [Math]::Min($start + $ImageBatchSize - 1, $otherImageArray.Count - 1)
+        for ($start = 0; $start -lt $otherImageCount; $start += $ImageBatchSize) {
+          $endIndex = [Math]::Min($start + $ImageBatchSize - 1, $otherImageCount - 1)
           if ($endIndex -lt $start) {
             continue
           }
           $chunk = if ($start -eq $endIndex) {
             @($otherImageArray[$start])
           } else {
-            $otherImageArray[$start..$endIndex]
+            @($otherImageArray[$start..$endIndex])
           }
+          $chunkCount = Get-ObjectCount -Value $chunk
 
-        $batchParts = New-Object System.Collections.Generic.List[object]
+          $batchParts = New-Object System.Collections.Generic.List[object]
           foreach ($img in $chunk) {
             $batchParts.Add(@{ Path = $img.FullName; MimeType = Get-MimeType -Path $img.FullName })
           }
@@ -791,7 +845,7 @@ try {
               $batchFailed = $true
               break
             }
-            Write-Log "Uploaded image batch $batchIndex for '$($profile.Title)' ($($chunk.Count) image(s))."
+            Write-Log "Uploaded image batch $batchIndex for '$($profile.Title)' ($chunkCount image(s))."
           }
           finally {
             $batchContent.Content.Dispose()
