@@ -23,6 +23,7 @@ import type {
   AdminSettings,
   PlatformConfig,
   MetadataThresholdPreview,
+  NsfwRescanSummary,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
 import { ImageAssetEditDialog } from './ImageAssetEditDialog';
@@ -421,6 +422,8 @@ export const AdminPanel = ({
   const [metadataPreview, setMetadataPreview] = useState<MetadataThresholdPreview | null>(null);
   const [isMetadataPreviewLoading, setIsMetadataPreviewLoading] = useState(false);
   const [metadataPreviewError, setMetadataPreviewError] = useState<string | null>(null);
+  const [isRescanningNsfw, setIsRescanningNsfw] = useState(false);
+  const [nsfwRescanSummary, setNsfwRescanSummary] = useState<NsfwRescanSummary | null>(null);
   const [adultKeywords, setAdultKeywords] = useState<AdultSafetyKeyword[]>([]);
   const [isAdultKeywordsLoading, setIsAdultKeywordsLoading] = useState(false);
   const [adultKeywordError, setAdultKeywordError] = useState<string | null>(null);
@@ -1148,6 +1151,29 @@ export const AdminPanel = ({
       setIsSavingSafetyThresholds(false);
     }
   };
+
+  const handleTriggerNsfwRescan = useCallback(async () => {
+    if (!token) {
+      setStatus({ type: 'error', message: 'Authentication required to trigger the NSFW rescan.' });
+      return;
+    }
+
+    setIsRescanningNsfw(true);
+    setStatus(null);
+
+    try {
+      const summary = await api.triggerNsfwRescan(token);
+      setNsfwRescanSummary(summary);
+      setStatus({ type: 'success', message: 'NSFW rescan completed successfully.' });
+      void fetchMetadataPreview({ silent: true });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to trigger the NSFW rescan.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsRescanningNsfw(false);
+    }
+  }, [token, fetchMetadataPreview]);
 
   const loadAdultKeywords = useCallback(async () => {
     if (!token) {
@@ -2901,6 +2927,73 @@ export const AdminPanel = ({
               <p className="admin__empty">{settingsError}</p>
             ) : (
               <p className="admin__empty">Safety thresholds are not available right now.</p>
+            )}
+          </section>
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>NSFW rescan</h3>
+              <p>Re-run the on-upload checks across existing LoRAs and gallery images.</p>
+            </div>
+            <div className="admin__form-actions admin__form-actions--inline">
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => {
+                  void handleTriggerNsfwRescan();
+                }}
+                disabled={isRescanningNsfw}
+              >
+                {isRescanningNsfw ? 'Rescanning…' : 'Rescan catalog'}
+              </button>
+            </div>
+            {nsfwRescanSummary ? (
+              <div className="nsfw-rescan-summary">
+                <table className="admin__table nsfw-rescan-summary__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Category</th>
+                      <th scope="col">Scanned</th>
+                      <th scope="col">Adult ↑</th>
+                      <th scope="col">Adult ↓</th>
+                      <th scope="col">Flagged</th>
+                      <th scope="col">Unflagged</th>
+                      <th scope="col">Errors</th>
+                      <th scope="col">Analysis failures</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nsfwRescanSummary.models ? (
+                      <tr>
+                        <th scope="row">Models</th>
+                        <td>{nsfwRescanSummary.models.scanned}</td>
+                        <td>{nsfwRescanSummary.models.adultMarked}</td>
+                        <td>{nsfwRescanSummary.models.adultCleared}</td>
+                        <td>{nsfwRescanSummary.models.flagged}</td>
+                        <td>{nsfwRescanSummary.models.unflagged}</td>
+                        <td>{nsfwRescanSummary.models.errors}</td>
+                        <td>—</td>
+                      </tr>
+                    ) : null}
+                    {nsfwRescanSummary.images ? (
+                      <tr>
+                        <th scope="row">Images</th>
+                        <td>{nsfwRescanSummary.images.scanned}</td>
+                        <td>{nsfwRescanSummary.images.adultMarked}</td>
+                        <td>{nsfwRescanSummary.images.adultCleared}</td>
+                        <td>{nsfwRescanSummary.images.flagged}</td>
+                        <td>{nsfwRescanSummary.images.unflagged}</td>
+                        <td>{nsfwRescanSummary.images.errors}</td>
+                        <td>{nsfwRescanSummary.images.analysisFailed}</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+                <p className="admin__footnote">
+                  Summary reflects the most recent rescan triggered from this session.
+                </p>
+              </div>
+            ) : (
+              <p className="admin__footnote">No NSFW rescan has run in this session.</p>
             )}
           </section>
           <section className="admin__section">

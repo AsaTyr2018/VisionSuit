@@ -1,3 +1,8 @@
+## 035 – [Standard Change] NSFW moderation regression tests
+- **Type**: Standard Change
+- **Reason**: Ensure the NSFW upload and rescan workflow keeps marking adult and potentially illegal content correctly.
+- **Change**: Added targeted moderation unit tests covering metadata thresholds, keyword detection, and metadata screening fallbacks.
+
 ## 001 – [Fix] Express startup fix
 - **General**: Stabilized the backend boot process after Express failed to locate the request augmentation module.
 - **Technical Changes**: Converted the Express request extension from `.d.ts` to `.ts`, refreshed backend linting, and documented the troubleshooting steps and upload endpoint in the README.
@@ -1235,4 +1240,9 @@
 - **Type**: Normal Change
 - **Reason**: The OpenCV pipeline had no way to throttle bursts of uploads, so moderators risked timeouts and inconsistent scoring when CPU pressure spiked.
 - **Changes**: Added configurable worker-pool and queue runtime settings, shipped a dedicated scheduler with retry/backoff and fast-mode degradation, exposed tuning controls through the admin safety writer, expanded NSFW image analysis options for fast heuristics, refreshed README highlights, and checked off the runtime milestones in the deployment plan with new regression tests.
+
+## 215 – [Enhancement] NSFW upload enforcement and rescan tooling
+- **Type**: Normal Change
+- **Reason**: Adult and disallowed themes could still slip through initial ingestion, and administrators had no way to refresh legacy assets after updating heuristics.
+- **Changes**: Introduced reusable NSFW moderation helpers that automatically mark new uploads as adult or queue them for moderation when metadata, prompts, or OpenCV analysis detect minor/bestiality signals; persisted the screening payload on LoRA metadata; exposed `/api/safety/nsfw/rescan` to replay the checks across existing models and images with storage-backed analysis; added an Administration → Safety control to trigger the rescan with live summaries; and refreshed the README to highlight the automated enforcement and rescan workflow.
 
