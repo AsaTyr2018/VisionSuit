@@ -687,6 +687,27 @@ export const App = () => {
     setIsProfileAuditMode((previous) => !previous);
   }, [authUser]);
 
+  const handleOpenPrismaStudio = useCallback(() => {
+    if (!authUser || authUser.role !== 'ADMIN') {
+      setToast({ type: 'error', message: 'Prisma Studio is available to administrators only.' });
+      return;
+    }
+
+    if (!token) {
+      setToast({ type: 'error', message: 'Authentication required to open Prisma Studio.' });
+      return;
+    }
+
+    const studioUrl = `/db?accessToken=${encodeURIComponent(token)}`;
+    const popup = window.open(studioUrl, '_blank', 'noopener');
+    if (!popup) {
+      setToast({
+        type: 'error',
+        message: 'Enable pop-ups to launch Prisma Studio in a separate tab.',
+      });
+    }
+  }, [authUser, setToast, token]);
+
   const handleLoginSubmit = async (email: string, password: string) => {
     setIsLoggingIn(true);
     setLoginError(null);
@@ -732,6 +753,9 @@ export const App = () => {
   };
 
   const handleLogout = () => {
+    void fetch('/db/logout', { method: 'POST', credentials: 'include' }).catch((error) => {
+      console.warn('Failed to clear Prisma Studio session on logout:', error);
+    });
     logout();
     setUsers([]);
     setActiveProfileId(null);
@@ -1187,6 +1211,11 @@ export const App = () => {
                 {viewMeta[view].title}
               </button>
             ))}
+            {authUser?.role === 'ADMIN' ? (
+              <button type="button" className="sidebar__nav-button" onClick={handleOpenPrismaStudio}>
+                Prisma Studio
+              </button>
+            ) : null}
           </nav>
 
           <div className="sidebar__auth">
