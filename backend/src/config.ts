@@ -63,9 +63,22 @@ interface ImageAnalysisThresholdConfig {
   offCenterTolerance: number;
 }
 
+interface ImageAnalysisRuntimeConfig {
+  maxWorkers: number;
+  maxBatchSize: number;
+  queueSoftLimit: number;
+  queueHardLimit: number;
+  maxRetries: number;
+  backoffMs: number;
+  pressureCooldownMs: number;
+  fastModeMaxEdge: number;
+  pressureHeuristicOnly: boolean;
+}
+
 interface ImageAnalysisConfig {
   maxWorkingEdge: number;
   thresholds: ImageAnalysisThresholdConfig;
+  runtime: ImageAnalysisRuntimeConfig;
 }
 
 const defaultMetadataFilterConfig: MetadataFilterConfig = {
@@ -151,6 +164,17 @@ const defaultImageAnalysisConfig: ImageAnalysisConfig = {
     hipPresenceMin: 0.25,
     limbDominanceMax: 0.45,
     offCenterTolerance: 0.2,
+  },
+  runtime: {
+    maxWorkers: 2,
+    maxBatchSize: 4,
+    queueSoftLimit: 24,
+    queueHardLimit: 64,
+    maxRetries: 1,
+    backoffMs: 150,
+    pressureCooldownMs: 45000,
+    fastModeMaxEdge: 960,
+    pressureHeuristicOnly: true,
   },
 };
 
@@ -247,6 +271,39 @@ const sanitizePositiveInteger = (value: unknown, fallback: number): number => {
   return fallback;
 };
 
+const sanitizeNonNegativeInteger = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+};
+
+const sanitizeBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+};
+
 const loadMetadataFilterConfig = (): MetadataFilterConfig => {
   const resolvedPath = resolveConfigPath('config/nsfw-metadata-filters.json');
   if (!resolvedPath) {
@@ -301,6 +358,7 @@ const loadImageAnalysisConfig = (): ImageAnalysisConfig => {
     }
 
     const thresholds = rawConfig.thresholds as Record<string, unknown> | undefined;
+    const runtime = rawConfig.runtime as Record<string, unknown> | undefined;
 
     return {
       maxWorkingEdge: sanitizePositiveInteger(
@@ -345,6 +403,44 @@ const loadImageAnalysisConfig = (): ImageAnalysisConfig => {
           thresholds?.offCenterTolerance,
           defaultImageAnalysisConfig.thresholds.offCenterTolerance,
           [0, 0.5],
+        ),
+      },
+      runtime: {
+        maxWorkers: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.maxWorkers, defaultImageAnalysisConfig.runtime.maxWorkers),
+        ),
+        maxBatchSize: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.maxBatchSize, defaultImageAnalysisConfig.runtime.maxBatchSize),
+        ),
+        queueSoftLimit: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.queueSoftLimit, defaultImageAnalysisConfig.runtime.queueSoftLimit),
+        ),
+        queueHardLimit: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.queueHardLimit, defaultImageAnalysisConfig.runtime.queueHardLimit),
+        ),
+        maxRetries: sanitizeNonNegativeInteger(
+          runtime?.maxRetries,
+          defaultImageAnalysisConfig.runtime.maxRetries,
+        ),
+        backoffMs: sanitizeNonNegativeInteger(
+          runtime?.backoffMs,
+          defaultImageAnalysisConfig.runtime.backoffMs,
+        ),
+        pressureCooldownMs: sanitizeNonNegativeInteger(
+          runtime?.pressureCooldownMs,
+          defaultImageAnalysisConfig.runtime.pressureCooldownMs,
+        ),
+        fastModeMaxEdge: sanitizePositiveInteger(
+          runtime?.fastModeMaxEdge,
+          defaultImageAnalysisConfig.runtime.fastModeMaxEdge,
+        ),
+        pressureHeuristicOnly: sanitizeBoolean(
+          runtime?.pressureHeuristicOnly,
+          defaultImageAnalysisConfig.runtime.pressureHeuristicOnly,
         ),
       },
     };

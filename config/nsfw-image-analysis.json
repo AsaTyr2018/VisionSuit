@@ -11,6 +11,17 @@
       "hipPresenceMin": 0.25,
       "limbDominanceMax": 0.45,
       "offCenterTolerance": 0.2
+    },
+    "runtime": {
+      "maxWorkers": 2,
+      "maxBatchSize": 4,
+      "queueSoftLimit": 24,
+      "queueHardLimit": 64,
+      "maxRetries": 1,
+      "backoffMs": 150,
+      "pressureCooldownMs": 45000,
+      "fastModeMaxEdge": 960,
+      "pressureHeuristicOnly": true
     }
   }
 }

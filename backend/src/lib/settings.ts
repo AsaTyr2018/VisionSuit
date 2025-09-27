@@ -33,9 +33,22 @@ export interface AdminSettingsSafetyImageAnalysisThresholds {
   reviewMargin: number;
 }
 
+export interface AdminSettingsSafetyImageAnalysisRuntime {
+  maxWorkers: number;
+  maxBatchSize: number;
+  queueSoftLimit: number;
+  queueHardLimit: number;
+  maxRetries: number;
+  backoffMs: number;
+  pressureCooldownMs: number;
+  fastModeMaxEdge: number;
+  pressureHeuristicOnly: boolean;
+}
+
 export interface AdminSettingsSafetyImageAnalysisConfig {
   maxWorkingEdge: number;
   thresholds: AdminSettingsSafetyImageAnalysisThresholds;
+  runtime: AdminSettingsSafetyImageAnalysisRuntime;
 }
 
 export interface AdminSettingsSafety {
@@ -216,6 +229,7 @@ const writeImageAnalysisConfig = async (config: AdminSettingsSafetyImageAnalysis
     imageAnalysis: {
       maxWorkingEdge: config.maxWorkingEdge,
       thresholds: config.thresholds,
+      runtime: config.runtime,
     },
   };
 
@@ -262,6 +276,7 @@ const resolveAdminSettings = async (): Promise<AdminSettings> => {
       imageAnalysis: {
         maxWorkingEdge: appConfig.nsfw.imageAnalysis.maxWorkingEdge,
         thresholds: { ...appConfig.nsfw.imageAnalysis.thresholds },
+        runtime: { ...appConfig.nsfw.imageAnalysis.runtime },
       },
     },
   };
@@ -337,6 +352,20 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
     return Math.round(value);
   };
 
+  const sanitizeRuntimeNumber = (value: number, fallback: number, minimum = 0) => {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.max(minimum, Math.round(value));
+  };
+
+  const sanitizeRuntimeBoolean = (value: boolean, fallback: boolean) => {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    return fallback;
+  };
+
   const incomingImageAnalysis = settings.safety.imageAnalysis;
   if (incomingImageAnalysis) {
     const sanitizedImageConfig: AdminSettingsSafetyImageAnalysisConfig = {
@@ -364,21 +393,82 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
           0.25,
         ),
       },
+      runtime: {
+        maxWorkers: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.maxWorkers,
+          appConfig.nsfw.imageAnalysis.runtime.maxWorkers,
+          1,
+        ),
+        maxBatchSize: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.maxBatchSize,
+          appConfig.nsfw.imageAnalysis.runtime.maxBatchSize,
+          1,
+        ),
+        queueSoftLimit: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.queueSoftLimit,
+          appConfig.nsfw.imageAnalysis.runtime.queueSoftLimit,
+          1,
+        ),
+        queueHardLimit: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.queueHardLimit,
+          appConfig.nsfw.imageAnalysis.runtime.queueHardLimit,
+          1,
+        ),
+        maxRetries: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.maxRetries,
+          appConfig.nsfw.imageAnalysis.runtime.maxRetries,
+          0,
+        ),
+        backoffMs: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.backoffMs,
+          appConfig.nsfw.imageAnalysis.runtime.backoffMs,
+          0,
+        ),
+        pressureCooldownMs: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.pressureCooldownMs,
+          appConfig.nsfw.imageAnalysis.runtime.pressureCooldownMs,
+          0,
+        ),
+        fastModeMaxEdge: sanitizeRuntimeNumber(
+          incomingImageAnalysis.runtime.fastModeMaxEdge,
+          appConfig.nsfw.imageAnalysis.runtime.fastModeMaxEdge,
+          1,
+        ),
+        pressureHeuristicOnly: sanitizeRuntimeBoolean(
+          incomingImageAnalysis.runtime.pressureHeuristicOnly,
+          appConfig.nsfw.imageAnalysis.runtime.pressureHeuristicOnly,
+        ),
+      },
     };
 
+    sanitizedImageConfig.runtime.queueHardLimit = Math.max(
+      sanitizedImageConfig.runtime.queueSoftLimit,
+      sanitizedImageConfig.runtime.queueHardLimit,
+    );
+
     const previous = appConfig.nsfw.imageAnalysis;
-    const thresholdsChanged =
+    const configChanged =
       previous.thresholds.nudeSkinRatio !== sanitizedImageConfig.thresholds.nudeSkinRatio ||
       previous.thresholds.suggestiveSkinRatio !== sanitizedImageConfig.thresholds.suggestiveSkinRatio ||
       previous.thresholds.nudeCoverageMax !== sanitizedImageConfig.thresholds.nudeCoverageMax ||
       previous.thresholds.suggestiveCoverageMax !== sanitizedImageConfig.thresholds.suggestiveCoverageMax ||
       previous.thresholds.reviewMargin !== sanitizedImageConfig.thresholds.reviewMargin ||
-      previous.maxWorkingEdge !== sanitizedImageConfig.maxWorkingEdge;
+      previous.maxWorkingEdge !== sanitizedImageConfig.maxWorkingEdge ||
+      previous.runtime.maxWorkers !== sanitizedImageConfig.runtime.maxWorkers ||
+      previous.runtime.maxBatchSize !== sanitizedImageConfig.runtime.maxBatchSize ||
+      previous.runtime.queueSoftLimit !== sanitizedImageConfig.runtime.queueSoftLimit ||
+      previous.runtime.queueHardLimit !== sanitizedImageConfig.runtime.queueHardLimit ||
+      previous.runtime.maxRetries !== sanitizedImageConfig.runtime.maxRetries ||
+      previous.runtime.backoffMs !== sanitizedImageConfig.runtime.backoffMs ||
+      previous.runtime.pressureCooldownMs !== sanitizedImageConfig.runtime.pressureCooldownMs ||
+      previous.runtime.fastModeMaxEdge !== sanitizedImageConfig.runtime.fastModeMaxEdge ||
+      previous.runtime.pressureHeuristicOnly !== sanitizedImageConfig.runtime.pressureHeuristicOnly;
 
-    if (thresholdsChanged) {
+    if (configChanged) {
       appConfig.nsfw.imageAnalysis = {
         maxWorkingEdge: sanitizedImageConfig.maxWorkingEdge,
         thresholds: { ...sanitizedImageConfig.thresholds },
+        runtime: { ...sanitizedImageConfig.runtime },
       };
       await writeImageAnalysisConfig(appConfig.nsfw.imageAnalysis);
     }
