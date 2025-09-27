@@ -51,6 +51,23 @@ interface MetadataFilterConfig {
   thresholds: MetadataThresholdConfig;
 }
 
+interface ImageAnalysisThresholdConfig {
+  nudeSkinRatio: number;
+  suggestiveSkinRatio: number;
+  nudeCoverageMax: number;
+  suggestiveCoverageMax: number;
+  reviewMargin: number;
+  torsoPresenceMin: number;
+  hipPresenceMin: number;
+  limbDominanceMax: number;
+  offCenterTolerance: number;
+}
+
+interface ImageAnalysisConfig {
+  maxWorkingEdge: number;
+  thresholds: ImageAnalysisThresholdConfig;
+}
+
 const defaultMetadataFilterConfig: MetadataFilterConfig = {
   adultTerms: [
     'nsfw',
@@ -122,6 +139,21 @@ const defaultMetadataFilterConfig: MetadataFilterConfig = {
   },
 };
 
+const defaultImageAnalysisConfig: ImageAnalysisConfig = {
+  maxWorkingEdge: 1280,
+  thresholds: {
+    nudeSkinRatio: 0.35,
+    suggestiveSkinRatio: 0.2,
+    nudeCoverageMax: 0.12,
+    suggestiveCoverageMax: 0.6,
+    reviewMargin: 0.05,
+    torsoPresenceMin: 0.35,
+    hipPresenceMin: 0.25,
+    limbDominanceMax: 0.45,
+    offCenterTolerance: 0.2,
+  },
+};
+
 const resolveConfigPath = (relativePath: string): string | undefined => {
   const candidates = [
     path.resolve(process.cwd(), relativePath),
@@ -184,6 +216,37 @@ const sanitizeThreshold = (value: unknown, fallback: number): number => {
   return Math.floor(value);
 };
 
+const sanitizePercentage = (value: unknown, fallback: number, clampRange: [number, number] = [0, 1]): number => {
+  const [min, max] = clampRange;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      return Math.min(max, Math.max(min, parsed));
+    }
+  }
+
+  return fallback;
+};
+
+const sanitizePositiveInteger = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+};
+
 const loadMetadataFilterConfig = (): MetadataFilterConfig => {
   const resolvedPath = resolveConfigPath('config/nsfw-metadata-filters.json');
   if (!resolvedPath) {
@@ -220,6 +283,77 @@ const loadMetadataFilterConfig = (): MetadataFilterConfig => {
       `Failed to parse NSFW metadata filter configuration at "${resolvedPath}": ${(error as Error).message}`,
     );
     return defaultMetadataFilterConfig;
+  }
+};
+
+const loadImageAnalysisConfig = (): ImageAnalysisConfig => {
+  const resolvedPath = resolveConfigPath('config/nsfw-image-analysis.json');
+  if (!resolvedPath) {
+    return defaultImageAnalysisConfig;
+  }
+
+  try {
+    const payload = fs.readFileSync(resolvedPath, 'utf-8');
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    const rawConfig = parsed?.imageAnalysis as Record<string, unknown> | undefined;
+    if (!rawConfig) {
+      return defaultImageAnalysisConfig;
+    }
+
+    const thresholds = rawConfig.thresholds as Record<string, unknown> | undefined;
+
+    return {
+      maxWorkingEdge: sanitizePositiveInteger(
+        rawConfig.maxWorkingEdge,
+        defaultImageAnalysisConfig.maxWorkingEdge,
+      ),
+      thresholds: {
+        nudeSkinRatio: sanitizePercentage(
+          thresholds?.nudeSkinRatio,
+          defaultImageAnalysisConfig.thresholds.nudeSkinRatio,
+        ),
+        suggestiveSkinRatio: sanitizePercentage(
+          thresholds?.suggestiveSkinRatio,
+          defaultImageAnalysisConfig.thresholds.suggestiveSkinRatio,
+        ),
+        nudeCoverageMax: sanitizePercentage(
+          thresholds?.nudeCoverageMax,
+          defaultImageAnalysisConfig.thresholds.nudeCoverageMax,
+        ),
+        suggestiveCoverageMax: sanitizePercentage(
+          thresholds?.suggestiveCoverageMax,
+          defaultImageAnalysisConfig.thresholds.suggestiveCoverageMax,
+        ),
+        reviewMargin: sanitizePercentage(
+          thresholds?.reviewMargin,
+          defaultImageAnalysisConfig.thresholds.reviewMargin,
+          [0, 0.25],
+        ),
+        torsoPresenceMin: sanitizePercentage(
+          thresholds?.torsoPresenceMin,
+          defaultImageAnalysisConfig.thresholds.torsoPresenceMin,
+        ),
+        hipPresenceMin: sanitizePercentage(
+          thresholds?.hipPresenceMin,
+          defaultImageAnalysisConfig.thresholds.hipPresenceMin,
+        ),
+        limbDominanceMax: sanitizePercentage(
+          thresholds?.limbDominanceMax,
+          defaultImageAnalysisConfig.thresholds.limbDominanceMax,
+        ),
+        offCenterTolerance: sanitizePercentage(
+          thresholds?.offCenterTolerance,
+          defaultImageAnalysisConfig.thresholds.offCenterTolerance,
+          [0, 0.5],
+        ),
+      },
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `Failed to parse NSFW image analysis configuration at "${resolvedPath}": ${(error as Error).message}`,
+    );
+    return defaultImageAnalysisConfig;
   }
 };
 
@@ -470,6 +604,7 @@ const workflowParameterBindings =
   parsedWorkflowParameterBindings.length > 0 ? parsedWorkflowParameterBindings : defaultWorkflowParameterBindings;
 const workflowOverrides = parseWorkflowOverrides(process.env.GENERATOR_WORKFLOW_OVERRIDES);
 const metadataFilterConfig = loadMetadataFilterConfig();
+const imageAnalysisConfig = loadImageAnalysisConfig();
 
 const deriveMinioPublicUrl = () => {
   const explicitUrl = process.env.MINIO_PUBLIC_URL;
@@ -559,5 +694,6 @@ export const appConfig = {
   },
   nsfw: {
     metadataFilters: metadataFilterConfig,
+    imageAnalysis: imageAnalysisConfig,
   },
 };
