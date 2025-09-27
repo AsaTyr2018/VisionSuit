@@ -19,6 +19,7 @@ import {
   type ImageMetadataResult,
   type SafetensorsMetadataResult,
 } from '../lib/metadata';
+import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -468,6 +469,11 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       );
 
       if (payload.assetType === 'lora') {
+        const previewAnalysis = previewEntry?.file
+          ? await runNsfwImageAnalysis(previewEntry.file.buffer, { priority: 'high' })
+          : null;
+        const previewAnalysisPayload = previewAnalysis ? toJsonImageAnalysis(previewAnalysis) : null;
+
         const slug = await buildUniqueSlug(
           payload.title,
           (candidate) => tx.modelAsset.findUnique({ where: { slug: candidate } }).then(Boolean),
@@ -480,9 +486,24 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           draftId: draft.id,
         };
 
+        if (previewAnalysisPayload) {
+          modelMetadataPayload.nsfwImageAnalysis = previewAnalysisPayload;
+        }
+
         const previewMetadataPayload = toJsonImageMetadata(previewEntry?.imageMetadata ?? null);
         if (previewMetadataPayload) {
+          if (previewAnalysisPayload) {
+            const nsfwPayload = ((previewMetadataPayload.nsfw as Prisma.JsonObject | undefined) ?? {}) as Prisma.JsonObject;
+            nsfwPayload.imageAnalysis = previewAnalysisPayload;
+            previewMetadataPayload.nsfw = nsfwPayload;
+          }
           modelMetadataPayload.preview = previewMetadataPayload;
+        } else if (previewAnalysisPayload) {
+          modelMetadataPayload.preview = {
+            nsfw: {
+              imageAnalysis: previewAnalysisPayload,
+            },
+          } as Prisma.JsonObject;
         }
 
         if (modelEntry?.modelMetadata) {
@@ -507,6 +528,9 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           adultKeywords,
         });
 
+        const analysisAdult = Boolean(previewAnalysis?.decisions.isAdult);
+        const desiredModelAdult = modelAdult || analysisAdult;
+
         const modelAsset = await tx.modelAsset.create({
           data: {
             slug,
@@ -520,7 +544,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
             metadata: modelMetadataPayload,
             isPublic: payload.visibility === 'public',
-            isAdult: modelAdult,
+            isAdult: desiredModelAdult,
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),
@@ -583,6 +607,15 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           imageMetadataPayload.extras = metadata.extras as Prisma.JsonObject;
         }
 
+        const imageAnalysis = await runNsfwImageAnalysis(source.buffer, { priority: 'normal' });
+        if (imageAnalysis) {
+          imageMetadataPayload.nsfwImageAnalysis = toJsonImageAnalysis(imageAnalysis);
+        }
+
+        const analysisInput = imageAnalysis
+          ? { imageAnalysis: { decisions: imageAnalysis.decisions, scores: imageAnalysis.scores } }
+          : {};
+
         const imageAdult = determineAdultForImage({
           title,
           description: payload.description ?? null,
@@ -593,7 +626,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           metadata: Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null,
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
+          ...analysisInput,
         });
+
+        const imageAdultFinal = imageAdult || Boolean(imageAnalysis?.decisions.isAdult);
 
         const imageAsset = await tx.imageAsset.create({
           data: {
@@ -611,7 +647,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             cfgScale: metadata?.cfgScale ?? null,
             steps: metadata?.steps ?? null,
             isPublic: payload.visibility === 'public',
-            isAdult: imageAdult,
+            isAdult: imageAdultFinal,
             owner: { connect: { id: actor.id } },
             tags: {
               create: tagIds.map((tagId) => ({ tagId })),

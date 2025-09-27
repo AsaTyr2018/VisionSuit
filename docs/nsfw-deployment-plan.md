@@ -85,9 +85,9 @@ Analyze uploaded images on-premise and mark explicit content automatically while
     - [ ] Require co-occurring maturity markers (e.g., `adult`, `cosplay`, `college`) or explicit age metadata before treating the content as safe.
     - [ ] When textual context is neutral but imagery is suggestive, down-rank the result into a manual review bucket rather than a hard block to avoid false positives on age-play or cosplay LoRAs.
   - [ ] Any positive match marks the image with `moderationFlag=BLOCKED` and suppresses public visibility.
-- [ ] **Result Storage**
-  - [ ] Serialize results into image metadata (e.g., `nsfw.adultScore`, `nsfw.suggestiveScore`, `nsfw.moderationFlag`).
-  - [ ] Expose these fields to `determineAdultForImage` so the updated filter can combine them with textual signals.
+- [x] **Result Storage**
+  - [x] Serialize results into image metadata (e.g., `nsfw.adultScore`, `nsfw.suggestiveScore`, `nsfw.moderationFlag`).
+  - [x] Expose these fields to `determineAdultForImage` so the updated filter can combine them with textual signals.
 
 ### Runtime Considerations
 - [x] CPU-only deployment using OpenCV with OpenMP for multi-core scaling; expect < 120 ms per 1024×1024 image on a modern 8-core CPU when processing single frames.
