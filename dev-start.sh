@@ -14,7 +14,7 @@ export HOST="$HOST_ADDRESS"
 echo "Starting Prisma Studio on ${PRISMA_STUDIO_HOST}:${PRISMA_STUDIO_PORT} (proxied at /db)" >&2
 (
   cd "$ROOT_DIR/backend"
-  npx prisma studio --browser none --host "$PRISMA_STUDIO_HOST" --port "$PRISMA_STUDIO_PORT"
+  npx prisma studio --browser none --hostname "$PRISMA_STUDIO_HOST" --port "$PRISMA_STUDIO_PORT"
 ) &
 PRISMA_STUDIO_PID=$!
 

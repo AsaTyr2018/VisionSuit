@@ -1317,3 +1317,8 @@
 - **Type**: Normal Change
 - **Reason**: A documentation review was requested to ensure the README accurately reflects the implemented VisionSuit features.
 - **Changes**: Documented a sanity-check report that confirms key README highlights against backend/frontend behaviour and calls out mismatches (missing trust/CTA panels and optional trigger edits) to guide future documentation or feature updates.
+
+## 222 – [Fix] Prisma Studio hostname flag correction
+- **Type**: Normal Change
+- **Reason**: Launching Prisma Studio with the outdated `--host` flag caused the CLI to abort before starting, leaving the developer database console unavailable during local server boot.
+- **Changes**: Updated `dev-start.sh` to pass the supported `--hostname` parameter so Prisma Studio binds to the requested interface without error when running the development stack helper.
