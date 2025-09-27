@@ -53,7 +53,7 @@ These seed lists should be stored as JSON under `config/nsfw-metadata-filters.js
 ## 2. OpenCV Image Analysis Pipeline
 
 ### Objective
-Analyze uploaded images on-premise and mark explicit content automatically while tolerating swimwear or lingerie that covers primary anatomy.
+Analyze uploaded images on-premise and mark explicit content automatically while tolerating swimwear or lingerie that covers primary anatomy. The production implementation lives in `backend/src/lib/nsfw-open-cv.ts` and runs automatically during uploads and generator imports.
 
 ### Processing Stages
 1. **Pre-processing**
@@ -69,11 +69,11 @@ Analyze uploaded images on-premise and mark explicit content automatically while
      - High skin ratio limited to limbs or head without torso exposure → treat as non-blocking.
 4. **Swimwear vs. Full Nudity**
    - Use edge density and color variance inside detected torso regions to infer clothing coverage: bikinis, lingerie, tattoos, and patterned fabric introduce strong contrast edges along straps and waistbands, while pure skin regions with low variance suggest nudity.
-   - Feed the torso crop into a lightweight ONNX-hosted CNN (`nude_vs_swimwear.onnx`, MobileNetV3-small backbone) to reinforce the heuristic. The model should return calibrated probabilities for `nude`, `swimwear`, and `ambiguous` so skin-tone and edge-based heuristics remain advisory rather than the sole decision makers.
-   - Maintain thresholds (combine heuristic + model outputs):
-     - `skinRatio ≥ 0.35`, `coverageScore ≤ 0.25`, **and** `P(nude) - P(swimwear) ≥ 0.2` → flag as `adult=true` (full nudity).
-     - `skinRatio ≥ 0.2` with either `coverageScore > 0.25` **or** `P(swimwear) ≥ 0.45` → mark as `suggestive` but keep `adult=false` for bikini-tier content.
-     - When the CNN returns `ambiguous`, down-rank the adult score slightly and surface a "Needs review" soft flag so moderators can adjudicate unusual cases (body paint, lingerie sets, cosplay armor, etc.).
+   - Supplement the skin/edge heuristics with OpenCV color clustering (k-means on HSV) to confirm at least two garment-colored clusters within the torso crop before clearing a borderline case. This replaces the deprecated `nude_vs_swimwear.onnx` plan and keeps the pipeline model-free as mandated by the latest decision document.
+   - Maintain thresholds tuned purely from heuristics:
+     - `skinRatio ≥ 0.35` **and** `coverageScore ≤ 0.25` → flag as `adult=true` (full nudity).
+     - `skinRatio ≥ 0.2` with `coverageScore > 0.25` → mark as `suggestive` but keep `adult=false` for bikini-tier content.
+     - When color clustering disagrees with edge density (e.g., body paint, skin-tone fabric), surface a "Needs review" soft flag so moderators can adjudicate unusual cases.
 5. **Disallowed Content Detection**
    - Scan prompts, filenames, and tag metadata for minor/bestiality keywords (reuse the lists above).
    - Incorporate a CNN classifier (e.g., MobileNet-based) fine-tuned for `minor` and `bestiality` cues; run it locally via ONNX Runtime on the CPU.
@@ -82,15 +82,16 @@ Analyze uploaded images on-premise and mark explicit content automatically while
      - When textual context is neutral but imagery is suggestive, down-rank the result into a manual review bucket rather than a hard block to avoid false positives on age-play or cosplay LoRAs.
    - Any positive match marks the image with `moderationFlag=BLOCKED` and suppresses public visibility.
 6. **Result Storage**
-   - Serialize results into image metadata (e.g., `nsfw.adultScore`, `nsfw.suggestiveScore`, `nsfw.moderationFlag`).
-   - Expose these fields to `determineAdultForImage` so the updated filter can combine them with textual signals.
+ - Serialize results into image metadata (e.g., `nsfw.adultScore`, `nsfw.suggestiveScore`, `nsfw.moderationFlag`).
+ - Expose these fields to `determineAdultForImage` so the updated filter can combine them with textual signals.
+
+> **Decision Note**: The safety review board confirmed that we do not maintain or distribute a `nude_vs_swimwear.onnx` checkpoint. All swimwear differentiation remains heuristic-driven until a future change request explicitly reintroduces a vetted model.
 
 ### Runtime Considerations
 - CPU-only deployment using OpenCV with OpenMP for multi-core scaling; expect < 120 ms per 1024×1024 image on a modern 8-core CPU when processing single frames.
 - Introduce configurable worker pools with bounded batch sizes (`maxWorkers`, `maxBatchSize`) so bulk imports can saturate the pipeline without starving the API. Allow administrators to tune these values from the Safety tab and persist them in the configuration JSON.
 - Batch processing queue with retry/backoff to prevent high CPU usage from blocking uploads; store intermediate results for auditing and expose queue depth metrics to the operations dashboard.
-- Auto-detect pressure situations (queue length > soft limit) and temporarily downshift to heuristic-only scoring until the queue drains, then re-run deferred CNN passes asynchronously.
-- Optional GPU acceleration via OpenCL or CUDA when deploying alongside the existing GPU worker; treat it as a drop-in accelerator for the CNN passes while keeping CPU-only processing viable.
+- Auto-detect pressure situations (queue length > soft limit) and allow administrators to relax edge/coverage thresholds temporarily until the queue drains, then restore defaults and reprocess borderline cases asynchronously.
 
 ## 3. NSFW Filter & UI Integration
 
@@ -103,7 +104,7 @@ Analyze uploaded images on-premise and mark explicit content automatically while
   - `moderationFlag=BLOCKED` → auto-queue for moderation, hide from all non-admin roles.
   - `adultScore ≥ adultThreshold` → mark asset as adult; honor user safe-mode toggles.
   - `suggestiveScore ≥ suggestiveThreshold` → keep public but highlight in moderation queue for optional review.
-  - `needsReview=true` (e.g., swimwear CNN `ambiguous`, cosplay minor keywords) → place the asset in a **Pending Review** soft state that remains discoverable with a badge while awaiting moderator triage.
+  - `needsReview=true` (e.g., swimwear heuristics conflicting, cosplay minor keywords) → place the asset in a **Pending Review** soft state that remains discoverable with a badge while awaiting moderator triage.
 - Implement audit logging so every decision writes the contributing signals for transparency.
 
 ### Administration Panel Updates
@@ -116,7 +117,7 @@ Analyze uploaded images on-premise and mark explicit content automatically while
     - Left rail: prioritized queue filtered by severity (Blocked, Adult, Suggestive, User Flags).
     - Right pane: large preview, metadata scores, contributing tags, and quick actions (Approve, Mark Adult, Remove).
   - Surface reason badges (`Keyword`, `Metadata`, `OpenCV`, `User Flag`) so moderators immediately know why an asset was queued.
-  - Display a "Pending Review" badge (yellow) for assets soft-flagged by heuristics/CNNs so creators understand their LoRA is awaiting human validation rather than hidden outright.
+  - Display a "Pending Review" badge (yellow) for assets soft-flagged by heuristics/classifiers so creators understand their LoRA is awaiting human validation rather than hidden outright.
   - Allow inline threshold adjustments for admins (debounced save to avoid noisy updates).
   - Provide a preview blur toggle in moderation and public galleries: default to a blurred thumbnail for adult/suggestive assets, reveal the clear image on click (respecting user safe-mode preferences).
 
@@ -133,7 +134,7 @@ Analyze uploaded images on-premise and mark explicit content automatically while
 ## 4. Future Enhancements
 
 - Integrate specialized ONNX models (e.g., `open_nsfw2`, body-part detectors) as optional modules that can supersede heuristic scores when higher precision is required. Each module should register with the scoring engine via a plug-in contract so future detectors (face obscuration, gesture classification) can be added without refactoring the core pipeline.
-- Maintain a continuous learning loop: archive moderator decisions and false positive reports to a feedback dataset that can periodically refresh the swimwear and minor/bestiality classifiers.
+- Maintain a continuous learning loop: archive moderator decisions and false positive reports to a feedback dataset that can periodically refresh the minor/bestiality classifiers. Swimwear handling remains heuristic-only per the checkpoint retirement.
 - Explore federated sharing of anonymized moderation fingerprints across trusted deployments to accelerate warm starts when rolling out new detectors.
 
 ## Rollout & Monitoring

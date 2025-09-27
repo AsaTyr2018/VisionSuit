@@ -10,6 +10,12 @@ import { appConfig } from '../config';
 import { determineAdultForImage } from '../lib/adult-content';
 import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import { extractImageMetadata } from '../lib/metadata';
+import {
+  analyzeImageModeration,
+  normalizeModerationSummary,
+  serializeModerationSummary,
+  type ImageModerationSummary,
+} from '../lib/nsfw-open-cv';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
@@ -2346,6 +2352,7 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
 
     type ImageMetadataResult = Awaited<ReturnType<typeof extractImageMetadata>>;
     let imageMetadata: ImageMetadataResult | null = null;
+    let moderationSummary: ImageModerationSummary | null = null;
 
     if (objectBuffer) {
       try {
@@ -2356,6 +2363,13 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
         });
       } catch (error) {
         console.warn('Failed to parse generator artifact metadata.', error);
+      }
+
+      try {
+        moderationSummary = await analyzeImageModeration(objectBuffer);
+      } catch (error) {
+        console.warn('Failed to analyze generator artifact for moderation heuristics.', error);
+        moderationSummary = null;
       }
     }
 
@@ -2389,6 +2403,13 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
       ? [(imageMetadata.extras as unknown) as Prisma.JsonValue]
       : [];
 
+    const moderation =
+      moderationSummary ??
+      (imageMetadata?.extras
+        ? normalizeModerationSummary((imageMetadata.extras as unknown) as Prisma.JsonValue)
+        : null);
+    const serializedModeration = moderation ? serializeModerationSummary(moderation) : null;
+
     const isAdult = determineAdultForImage({
       title: finalTitle,
       description: null,
@@ -2401,6 +2422,7 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
       additionalTexts,
       tags: [],
       adultKeywords,
+      moderation,
     });
 
     const galleryDescription = payload.galleryDescription ?? null;
@@ -2472,6 +2494,7 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
           steps: stepsValue,
           isPublic: activeGallery.isPublic,
           isAdult,
+          ...(serializedModeration !== null ? { moderationSummary: serializedModeration } : {}),
           owner: { connect: { id: ownerId } },
         },
       });

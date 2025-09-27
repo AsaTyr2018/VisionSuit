@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
+import type { ImageModerationSummary } from './nsfw-open-cv';
+
 const BASE_ADULT_PATTERNS: RegExp[] = [
   /\bnsfw\b/i,
   /\bnude(s)?\b/i,
@@ -108,6 +110,26 @@ const hasAdultSignalFromTags = (
   return tags.some((entry) => matchesAdultSignals(entry.tag.label, keywords));
 };
 
+const hasAdultSignalFromModeration = (summary?: ImageModerationSummary | null) => {
+  if (!summary) {
+    return false;
+  }
+
+  if (summary.classification === 'NUDE') {
+    return true;
+  }
+
+  if (summary.adultScore >= 0.85) {
+    return true;
+  }
+
+  if (summary.classification === 'BORDERLINE' && summary.adultScore >= 0.75 && summary.torsoSkinRatio > 0.55) {
+    return true;
+  }
+
+  return false;
+};
+
 export const determineAdultForImage = (input: {
   title?: string | null;
   description?: string | null;
@@ -120,6 +142,7 @@ export const determineAdultForImage = (input: {
   additionalTexts?: string[];
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   adultKeywords?: string[];
+  moderation?: ImageModerationSummary | null;
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
@@ -137,8 +160,9 @@ export const determineAdultForImage = (input: {
   ], adultKeywords);
 
   const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
+  const adultFromModeration = hasAdultSignalFromModeration(input.moderation);
 
-  return adultFromTexts || adultFromTags;
+  return adultFromTexts || adultFromTags || adultFromModeration;
 };
 
 export const determineAdultForModel = (input: {
@@ -150,6 +174,7 @@ export const determineAdultForModel = (input: {
   additionalTexts?: string[];
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   adultKeywords?: string[];
+  moderationSummaries?: ImageModerationSummary[];
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
@@ -164,6 +189,9 @@ export const determineAdultForModel = (input: {
   ], adultKeywords);
 
   const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
+  const adultFromModeration = (input.moderationSummaries ?? []).some((summary) =>
+    hasAdultSignalFromModeration(summary),
+  );
 
-  return adultFromTexts || adultFromTags;
+  return adultFromTexts || adultFromTags || adultFromModeration;
 };
