@@ -13,20 +13,20 @@ Flag LoRA models that are likely to contain explicit content by examining their 
 - Optional auxiliary strings: prompt snippets, training notes, or creator-provided warnings.
 
 ### Processing Steps
-- [ ] **Metadata Extraction**
-  - [ ] Extend the backend ingestion worker so that LoRA uploads normalize the two frequency tables into a canonical lowercase key/value array (`tag` → `count`).
-  - [ ] Persist the normalized arrays in the LoRA metadata JSON for re-use by moderation tooling and search.
+- [x] **Metadata Extraction**
+  - [x] Extend the backend ingestion worker so that LoRA uploads normalize the two frequency tables into a canonical lowercase key/value array (`tag` → `count`).
+  - [x] Persist the normalized arrays in the LoRA metadata JSON for re-use by moderation tooling and search.
   - [x] Introduce reusable normalization helpers (`backend/src/lib/nsfw/metadata.ts`) to merge safetensor tables ahead of wiring them into the ingestion worker.
-- [ ] **Heuristic Evaluation**
-  - [ ] Iterate over the normalized tag list and compute:
-    - [ ] `adultScore = Σ count(tag) for tag ∈ NSFW_FILTER_TERMS`.
-    - [ ] `minorScore = Σ count(tag) for tag ∈ MINOR_FILTER_TERMS`.
-    - [ ] `beastScore = Σ count(tag) for tag ∈ BESTIALITY_FILTER_TERMS`.
-  - [ ] Compare each score against configurable thresholds (defaults below) to determine the moderation outcome.
-- [ ] **Outcome Mapping**
-  - [ ] `adultScore ≥ 15` → mark LoRA as `adult=true` but keep it visible for curator/admin review.
-  - [ ] `minorScore ≥ 1` or `beastScore ≥ 1` → place LoRA in the **Moderation** queue immediately and block community visibility until an administrator overrides it.
-  - [ ] Otherwise leave `adult=false` and let downstream checks (image previews, user flags) provide additional signals.
+- [x] **Heuristic Evaluation**
+  - [x] Iterate over the normalized tag list and compute:
+    - [x] `adultScore = Σ count(tag) for tag ∈ NSFW_FILTER_TERMS`.
+    - [x] `minorScore = Σ count(tag) for tag ∈ MINOR_FILTER_TERMS`.
+    - [x] `beastScore = Σ count(tag) for tag ∈ BESTIALITY_FILTER_TERMS`.
+  - [x] Compare each score against configurable thresholds (defaults below) to determine the moderation outcome.
+- [x] **Outcome Mapping**
+  - [x] `adultScore ≥ 15` → mark LoRA as `adult=true` but keep it visible for curator/admin review.
+  - [x] `minorScore ≥ 1` or `beastScore ≥ 1` → place LoRA in the **Moderation** queue immediately and block community visibility until an administrator overrides it.
+  - [x] Otherwise leave `adult=false` and let downstream checks (image previews, user flags) provide additional signals.
 
 ### Default Filter Lists
 - [x] Store these seed lists as JSON under `config/nsfw-metadata-filters.json` so administrators can tune them in the UI.
