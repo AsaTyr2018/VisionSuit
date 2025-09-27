@@ -467,6 +467,25 @@ export interface MetadataThresholdPreview {
   };
 }
 
+export interface NsfwRescanStats {
+  scanned: number;
+  adultMarked: number;
+  adultCleared: number;
+  flagged: number;
+  unflagged: number;
+  errors: number;
+}
+
+export interface NsfwImageRescanStats extends NsfwRescanStats {
+  analysisFailed: number;
+}
+
+export interface NsfwRescanSummary {
+  target: 'all' | 'models' | 'images';
+  models?: NsfwRescanStats;
+  images?: NsfwImageRescanStats;
+}
+
 export interface MetaStats {
   modelCount: number;
   imageCount: number;

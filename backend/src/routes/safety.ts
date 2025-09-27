@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, ModerationStatus } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -7,6 +7,10 @@ import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { prisma } from '../lib/prisma';
 import { getAdultKeywordLabels, listAdultSafetyKeywords } from '../lib/adult-keywords';
 import { appConfig } from '../config';
+import { evaluateImageModeration, evaluateModelModeration } from '../lib/nsfw/moderation';
+import { runNsfwImageAnalysis } from '../lib/nsfw/service';
+import { resolveStorageLocation, storageClient } from '../lib/storage';
+import type { MetadataEvaluationResult } from '../lib/nsfw/metadata';
 
 export const safetyRouter = Router();
 
@@ -32,6 +36,70 @@ type MetadataPreviewMatch = {
   id: string;
   title: string;
   score: number;
+};
+
+type NsfwRescanStats = {
+  scanned: number;
+  adultMarked: number;
+  adultCleared: number;
+  flagged: number;
+  unflagged: number;
+  errors: number;
+};
+
+type ImageRescanStats = NsfwRescanStats & {
+  analysisFailed: number;
+};
+
+const createRescanStats = (): NsfwRescanStats => ({
+  scanned: 0,
+  adultMarked: 0,
+  adultCleared: 0,
+  flagged: 0,
+  unflagged: 0,
+  errors: 0,
+});
+
+const createImageRescanStats = (): ImageRescanStats => ({
+  ...createRescanStats(),
+  analysisFailed: 0,
+});
+
+const mergeMetadataWithScreening = (
+  metadata: Prisma.JsonValue | null,
+  screening: MetadataEvaluationResult | null,
+): Prisma.JsonValue | null => {
+  if (!screening) {
+    return metadata;
+  }
+
+  const serializedScreening = JSON.parse(JSON.stringify(screening)) as Prisma.JsonValue;
+
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    const payload: Prisma.JsonObject = { nsfwMetadata: serializedScreening };
+    return payload;
+  }
+
+  const payload: Prisma.JsonObject = { ...(metadata as Prisma.JsonObject) };
+  payload.nsfwMetadata = serializedScreening;
+  return payload;
+};
+
+const readObjectToBuffer = async (bucket: string, objectName: string) => {
+  const stream = await storageClient.getObject(bucket, objectName);
+
+  return await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    stream.on('error', (error) => {
+      reject(error);
+    });
+    stream.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+  });
 };
 
 const toNonNegativeInteger = (value: unknown): number => {
@@ -187,6 +255,39 @@ type ImageAdultEvaluationTarget = {
   cfgScale: number | null;
   steps: number | null;
   isAdult: boolean;
+  tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+};
+
+type ModelRescanRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  trigger: string | null;
+  metadata: Prisma.JsonValue | null;
+  isAdult: boolean;
+  isPublic: boolean;
+  moderationStatus: ModerationStatus;
+  flaggedById: string | null;
+  tags: Array<{ tag: { label: string; isAdult: boolean } }>;
+  versions: Array<{ metadata: Prisma.JsonValue | null }>;
+};
+
+type ImageRescanRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  prompt: string | null;
+  negativePrompt: string | null;
+  model: string | null;
+  sampler: string | null;
+  seed: string | null;
+  cfgScale: number | null;
+  steps: number | null;
+  storagePath: string;
+  isAdult: boolean;
+  isPublic: boolean;
+  moderationStatus: ModerationStatus;
+  flaggedById: string | null;
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
 };
 
@@ -357,6 +458,286 @@ const recalculateAdultFlagsForAllAssets = async () => {
   await recalculateAdultFlagsForImages(adultKeywords);
 };
 
+const rescanModelsForNsfw = async (adultKeywords: string[], limit?: number) => {
+  const stats = createRescanStats();
+  let cursorId: string | null = null;
+
+  while (true) {
+    if (limit && stats.scanned >= limit) {
+      break;
+    }
+
+    const remaining = limit ? Math.max(0, limit - stats.scanned) : ADULT_RECALC_BATCH_SIZE;
+    const take = limit ? Math.min(ADULT_RECALC_BATCH_SIZE, remaining) : ADULT_RECALC_BATCH_SIZE;
+
+    if (take <= 0) {
+      break;
+    }
+
+    const models: ModelRescanRecord[] = await prisma.modelAsset.findMany({
+      orderBy: { id: 'asc' },
+      take,
+      ...(cursorId
+        ? {
+            cursor: { id: cursorId },
+            skip: 1,
+          }
+        : {}),
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        trigger: true,
+        metadata: true,
+        isAdult: true,
+        isPublic: true,
+        moderationStatus: true,
+        flaggedById: true,
+        tags: { include: { tag: true } },
+        versions: { select: { metadata: true } },
+      },
+    });
+
+    if (models.length === 0) {
+      break;
+    }
+
+    for (const model of models) {
+      if (limit && stats.scanned >= limit) {
+        break;
+      }
+
+      stats.scanned += 1;
+
+      try {
+        const metadata = model.metadata ?? null;
+        const metadataList = model.versions
+          .map((entry) => entry.metadata ?? null)
+          .filter((entry): entry is Prisma.JsonValue => entry != null);
+
+        const decision = evaluateModelModeration({
+          title: model.title,
+          description: model.description,
+          trigger: model.trigger,
+          metadata,
+          metadataList,
+          tags: model.tags,
+          adultKeywords,
+        });
+
+        const updatePayload: Prisma.ModelAssetUpdateInput = {};
+        const mergedMetadata = mergeMetadataWithScreening(metadata, decision.metadataScreening);
+        if (mergedMetadata !== metadata) {
+          updatePayload.metadata =
+            mergedMetadata === null
+              ? Prisma.JsonNull
+              : (mergedMetadata as Prisma.InputJsonValue);
+        }
+
+        if (model.isAdult !== decision.isAdult) {
+          updatePayload.isAdult = decision.isAdult;
+          if (decision.isAdult) {
+            stats.adultMarked += 1;
+          } else {
+            stats.adultCleared += 1;
+          }
+        }
+
+        if (decision.requiresModeration) {
+          if (model.moderationStatus !== ModerationStatus.FLAGGED) {
+            updatePayload.moderationStatus = ModerationStatus.FLAGGED;
+            updatePayload.flaggedAt = new Date();
+            updatePayload.flaggedBy = { disconnect: true };
+            stats.flagged += 1;
+          }
+          if (model.isPublic) {
+            updatePayload.isPublic = false;
+          }
+        } else if (
+          model.moderationStatus === ModerationStatus.FLAGGED &&
+          model.flaggedById == null
+        ) {
+          updatePayload.moderationStatus = ModerationStatus.ACTIVE;
+          updatePayload.flaggedAt = null;
+          updatePayload.flaggedBy = { disconnect: true };
+          stats.unflagged += 1;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          await prisma.modelAsset.update({
+            where: { id: model.id },
+            data: updatePayload,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to rescan model for NSFW signals', error);
+        stats.errors += 1;
+      }
+    }
+
+    const nextCursor: string | null = models[models.length - 1]?.id ?? null;
+    if (!nextCursor) {
+      break;
+    }
+
+    cursorId = nextCursor;
+  }
+
+  return stats;
+};
+
+const rescanImagesForNsfw = async (adultKeywords: string[], limit?: number) => {
+  const stats = createImageRescanStats();
+  let cursorId: string | null = null;
+
+  while (true) {
+    if (limit && stats.scanned >= limit) {
+      break;
+    }
+
+    const remaining = limit ? Math.max(0, limit - stats.scanned) : ADULT_RECALC_BATCH_SIZE;
+    const take = limit ? Math.min(ADULT_RECALC_BATCH_SIZE, remaining) : ADULT_RECALC_BATCH_SIZE;
+
+    if (take <= 0) {
+      break;
+    }
+
+    const images: ImageRescanRecord[] = await prisma.imageAsset.findMany({
+      orderBy: { id: 'asc' },
+      take,
+      ...(cursorId
+        ? {
+            cursor: { id: cursorId },
+            skip: 1,
+          }
+        : {}),
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        prompt: true,
+        negativePrompt: true,
+        model: true,
+        sampler: true,
+        seed: true,
+        cfgScale: true,
+        steps: true,
+        storagePath: true,
+        isAdult: true,
+        isPublic: true,
+        moderationStatus: true,
+        flaggedById: true,
+        tags: { include: { tag: true } },
+      },
+    });
+
+    if (images.length === 0) {
+      break;
+    }
+
+    for (const image of images) {
+      if (limit && stats.scanned >= limit) {
+        break;
+      }
+
+      stats.scanned += 1;
+
+      try {
+        const location = resolveStorageLocation(image.storagePath);
+        if (!location.bucket || !location.objectName) {
+          stats.analysisFailed += 1;
+          continue;
+        }
+
+        const analysis = await runNsfwImageAnalysis(
+          await readObjectToBuffer(location.bucket, location.objectName),
+          { mode: 'fast' },
+        );
+
+        if (!analysis) {
+          stats.analysisFailed += 1;
+        }
+
+        const metadataPayload: Prisma.JsonObject = {};
+        if (image.seed) {
+          metadataPayload.seed = image.seed;
+        }
+        if (image.cfgScale != null) {
+          metadataPayload.cfgScale = image.cfgScale;
+        }
+        if (image.steps != null) {
+          metadataPayload.steps = image.steps;
+        }
+
+        const resolvedMetadata = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
+
+        const decision = evaluateImageModeration({
+          title: image.title,
+          description: image.description,
+          prompt: image.prompt,
+          negativePrompt: image.negativePrompt,
+          model: image.model,
+          sampler: image.sampler,
+          metadata: resolvedMetadata,
+          tags: image.tags,
+          adultKeywords,
+          analysis: analysis,
+        });
+
+        const updatePayload: Prisma.ImageAssetUpdateInput = {};
+
+        if (image.isAdult !== decision.isAdult) {
+          updatePayload.isAdult = decision.isAdult;
+          if (decision.isAdult) {
+            stats.adultMarked += 1;
+          } else {
+            stats.adultCleared += 1;
+          }
+        }
+
+        if (decision.requiresModeration) {
+          if (image.moderationStatus !== ModerationStatus.FLAGGED) {
+            updatePayload.moderationStatus = ModerationStatus.FLAGGED;
+            updatePayload.flaggedAt = new Date();
+            updatePayload.flaggedBy = { disconnect: true };
+            stats.flagged += 1;
+          }
+          if (image.isPublic) {
+            updatePayload.isPublic = false;
+          }
+        } else if (
+          image.moderationStatus === ModerationStatus.FLAGGED &&
+          image.flaggedById == null
+        ) {
+          updatePayload.moderationStatus = ModerationStatus.ACTIVE;
+          updatePayload.flaggedAt = null;
+          updatePayload.flaggedBy = { disconnect: true };
+          stats.unflagged += 1;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          await prisma.imageAsset.update({
+            where: { id: image.id },
+            data: updatePayload,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to rescan image for NSFW signals', error);
+        stats.errors += 1;
+      }
+    }
+
+    const nextCursor: string | null = images[images.length - 1]?.id ?? null;
+    if (!nextCursor) {
+      break;
+    }
+
+    cursorId = nextCursor;
+  }
+
+  return stats;
+};
+
 let adultKeywordRecalculation: Promise<void> | null = null;
 let adultKeywordRecalculationQueued = false;
 
@@ -380,6 +761,45 @@ export const scheduleAdultKeywordRecalculation = () => {
 
   return adultKeywordRecalculation;
 };
+
+const nsfwRescanSchema = z
+  .object({
+    target: z.enum(['all', 'models', 'images']).default('all'),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(1000)
+      .optional(),
+  })
+  .default({ target: 'all' });
+
+safetyRouter.post('/nsfw/rescan', async (req, res, next) => {
+  try {
+    const parsed = nsfwRescanSchema.parse((req.body ?? {}) as Record<string, unknown>);
+    const adultKeywords = await getAdultKeywordLabels();
+
+    const summary: {
+      target: 'all' | 'models' | 'images';
+      models?: NsfwRescanStats;
+      images?: ImageRescanStats;
+    } = {
+      target: parsed.target,
+    };
+
+    if (parsed.target === 'all' || parsed.target === 'models') {
+      summary.models = await rescanModelsForNsfw(adultKeywords, parsed.limit);
+    }
+
+    if (parsed.target === 'all' || parsed.target === 'images') {
+      summary.images = await rescanImagesForNsfw(adultKeywords, parsed.limit);
+    }
+
+    res.json({ rescan: summary });
+  } catch (error) {
+    next(error);
+  }
+});
 
 safetyRouter.get('/keywords', async (_req, res, next) => {
   try {

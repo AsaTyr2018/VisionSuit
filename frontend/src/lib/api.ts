@@ -26,6 +26,7 @@ import type {
   User,
   AdultSafetyKeyword,
   MetadataThresholdPreview,
+  NsfwRescanSummary,
 } from '../types/api';
 
 import { buildApiUrl } from '../config';
@@ -168,6 +169,19 @@ const getMetadataThresholdPreview = (token: string) =>
     {},
     token,
   ).then((response) => response.preview);
+
+const triggerNsfwRescan = (
+  token: string,
+  payload: { target?: 'all' | 'models' | 'images'; limit?: number } = {},
+) =>
+  request<{ rescan: NsfwRescanSummary }>(
+    '/api/safety/nsfw/rescan',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    token,
+  ).then((response) => response.rescan);
 
 const updateAdminSettings = (token: string, payload: AdminSettings) =>
   request<AdminSettingsResponse>(
@@ -511,6 +525,7 @@ export const api = {
   cancelGeneratorRequest,
   getAdminSettings,
   getMetadataThresholdPreview,
+  triggerNsfwRescan,
   updateAdminSettings,
   getModelComments: (modelId: string, token?: string | null) =>
     request<{ comments: AssetComment[] }>(`/api/assets/models/${modelId}/comments`, {}, token ?? undefined).then(
