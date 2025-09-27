@@ -443,6 +443,30 @@ export interface AdultSafetyKeyword {
   updatedAt: string;
 }
 
+export interface MetadataThresholdPreviewSample {
+  id: string;
+  title: string;
+  score: number;
+}
+
+export interface MetadataThresholdPreviewCategory {
+  threshold: number;
+  isEnabled: boolean;
+  matchingModelCount: number;
+  sample: MetadataThresholdPreviewSample[];
+}
+
+export interface MetadataThresholdPreview {
+  generatedAt: string;
+  totalModelCount: number;
+  evaluatedModelCount: number;
+  categories: {
+    adult: MetadataThresholdPreviewCategory;
+    minor: MetadataThresholdPreviewCategory;
+    beast: MetadataThresholdPreviewCategory;
+  };
+}
+
 export interface MetaStats {
   modelCount: number;
   imageCount: number;

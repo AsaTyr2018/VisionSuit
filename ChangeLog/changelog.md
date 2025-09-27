@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – [Addition] NSFW metadata snapshot
+- **Type**: Normal Change
+- **Reason**: Administrators needed an at-a-glance view to validate how new metadata thresholds affect existing LoRA assets.
+- **Change**: Added a safety router endpoint that aggregates metadata scores per LoRA, exposed the data via the API client, rendered a refreshed admin preview table with styling, marked the deployment plan item complete, and documented the feature in the README.
+
 ## 032 – [Addition] NSFW threshold controls (commit TBD)
 - **Type**: Normal Change
 - **Reason**: Extend the in-progress NSFW filter rollout with tunable LoRA metadata thresholds so moderators can react to real catalog signals without code edits.

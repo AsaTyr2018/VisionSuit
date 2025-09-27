@@ -6,6 +6,7 @@ import { determineAdultForImage, determineAdultForModel } from '../lib/adult-con
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { prisma } from '../lib/prisma';
 import { getAdultKeywordLabels, listAdultSafetyKeywords } from '../lib/adult-keywords';
+import { appConfig } from '../config';
 
 export const safetyRouter = Router();
 
@@ -20,6 +21,148 @@ const createKeywordSchema = z.object({
 });
 
 const ADULT_RECALC_BATCH_SIZE = 100;
+
+type MetadataScoreSummary = {
+  adult: number;
+  minor: number;
+  beast: number;
+};
+
+type MetadataPreviewMatch = {
+  id: string;
+  title: string;
+  score: number;
+};
+
+const toNonNegativeInteger = (value: unknown): number => {
+  const numeric =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number.parseFloat(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round(numeric));
+};
+
+const extractMetadataScores = (metadata: Prisma.JsonValue | null): MetadataScoreSummary | null => {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+
+  const payload = metadata as Record<string, unknown>;
+  const nsfw = payload.nsfw;
+  if (!nsfw || typeof nsfw !== 'object') {
+    return null;
+  }
+
+  const scores = (nsfw as Record<string, unknown>).scores;
+  if (!scores || typeof scores !== 'object') {
+    return null;
+  }
+
+  const scoreRecord = scores as Record<string, unknown>;
+
+  const adult = toNonNegativeInteger(scoreRecord.adult);
+  const minor = toNonNegativeInteger(scoreRecord.minor);
+  const beast = toNonNegativeInteger(scoreRecord.beast);
+
+  return { adult, minor, beast };
+};
+
+safetyRouter.get('/metadata/preview', async (_req, res, next) => {
+  try {
+    const thresholds = appConfig.nsfw.metadataFilters.thresholds;
+
+    const models = await prisma.modelAsset.findMany({
+      orderBy: { title: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        versions: {
+          select: {
+            metadata: true,
+          },
+        },
+      },
+    });
+
+    let evaluatedModelCount = 0;
+
+    const adultMatches: MetadataPreviewMatch[] = [];
+    const minorMatches: MetadataPreviewMatch[] = [];
+    const beastMatches: MetadataPreviewMatch[] = [];
+
+    for (const model of models) {
+      let hasScoredMetadata = false;
+      let maxAdultScore = 0;
+      let maxMinorScore = 0;
+      let maxBeastScore = 0;
+
+      for (const version of model.versions) {
+        const scores = extractMetadataScores(version.metadata ?? null);
+        if (!scores) {
+          continue;
+        }
+
+        hasScoredMetadata = true;
+        maxAdultScore = Math.max(maxAdultScore, scores.adult);
+        maxMinorScore = Math.max(maxMinorScore, scores.minor);
+        maxBeastScore = Math.max(maxBeastScore, scores.beast);
+      }
+
+      if (!hasScoredMetadata) {
+        continue;
+      }
+
+      evaluatedModelCount += 1;
+
+      if (thresholds.adult > 0 && maxAdultScore >= thresholds.adult) {
+        adultMatches.push({ id: model.id, title: model.title, score: maxAdultScore });
+      }
+
+      if (thresholds.minor > 0 && maxMinorScore >= thresholds.minor) {
+        minorMatches.push({ id: model.id, title: model.title, score: maxMinorScore });
+      }
+
+      if (thresholds.beast > 0 && maxBeastScore >= thresholds.beast) {
+        beastMatches.push({ id: model.id, title: model.title, score: maxBeastScore });
+      }
+    }
+
+    const sortMatches = (entries: MetadataPreviewMatch[]) =>
+      [...entries].sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+
+    const buildCategory = (config: {
+      threshold: number;
+      matches: MetadataPreviewMatch[];
+    }) => ({
+      threshold: config.threshold,
+      isEnabled: config.threshold > 0,
+      matchingModelCount: config.threshold > 0 ? config.matches.length : 0,
+      sample: config.threshold > 0 ? sortMatches(config.matches).slice(0, 5) : [],
+    });
+
+    res.json({
+      preview: {
+        generatedAt: new Date().toISOString(),
+        totalModelCount: models.length,
+        evaluatedModelCount,
+        categories: {
+          adult: buildCategory({ threshold: thresholds.adult, matches: adultMatches }),
+          minor: buildCategory({ threshold: thresholds.minor, matches: minorMatches }),
+          beast: buildCategory({ threshold: thresholds.beast, matches: beastMatches }),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 type ModelAdultEvaluationTarget = {
   id: string;
