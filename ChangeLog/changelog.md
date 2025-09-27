@@ -118,6 +118,11 @@
 - **Technical Changes**: Limited uploads to one model plus optional preview, hid gallery/type controls, updated review copy, and refreshed README guidance.
 - **Data Changes**: None.
 
+## 025 – NSFW moderation plan refinement
+- **Type**: Normal Change
+- **Reason**: Addressed reviewer feedback about swimwear false positives, contextual minor detection, performance tuning, and moderation UX clarity before implementation begins.
+- **Change**: Expanded the NSFW deployment plan with a swimwear CNN fallback, cosplay-aware minor heuristics, tunable worker pools, soft "Pending Review" states, preview blur options, and a future ONNX integration roadmap.
+
 ## 025 – [Addition] Model versioning (5b1e08a)
 - **General**: Enabled versioned model management across backend and frontend.
 - **Technical Changes**: Added `ModelVersion` schema and API endpoint, expanded storage cleanup, built the ModelVersion dialog, wired API client calls, and styled version chips.
