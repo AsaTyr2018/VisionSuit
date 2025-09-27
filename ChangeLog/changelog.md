@@ -158,6 +158,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Addition] NSFW moderation deployment plan (commit TBD)
+- **Type of Change**: Normal Change
+- **Why**: Document the roadmap required to replace the legacy keyword-only NSFW filter with a multi-signal, self-hosted system.
+- **What**: Added a deployment plan covering LoRA metadata screening heuristics, an OpenCV-based image analysis pipeline, admin fine-tuning controls, and linked the guide from the README.
+
 ## 034 – [Standard Change] Metadata tag search enhancement
 - **Why**: Searching for models by their training tags returned no results because tag-frequency metadata only exposed counts and not the tag labels to the search index.
 - **What**: Included tag-frequency labels from both `ss_tag_frequency` and `tag_frequency` metadata in the collected search strings, broadened helper detection to cover both structures, and refreshed the README highlight to mention the richer explorer search.
