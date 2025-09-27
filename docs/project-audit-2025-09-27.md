@@ -20,7 +20,7 @@
 ## Gaps & Risks
 | Area | Observation | Impact |
 | --- | --- | --- |
-| Documentation typo | The GPU agent section misspells “VisionSuit” as “VisionSIOt,” which can hinder command discovery when readers search for the exact string in the repo or external docs.【F:README.md†L148-L158】 | Low – Cosmetic but undermines polish and searchability. |
+| Documentation typo | The GPU agent section previously misspelled “VisionSuit” as “VisionSIOt,” which could hinder command discovery when readers searched for the exact string in the repo or external docs. The documentation now consistently references VisionSuit.【F:README.md†L148-L158】【F:gpuworker/README.md†L61-L73】【F:gpuworker/agent/README.md†L1-L24】 | Low – Cosmetic, now resolved but worth monitoring in future edits. |
 | Installation UX | `install.sh` mixes German prompts and error messages in an otherwise English codebase, conflicting with the documentation language standard and confusing anglophone operators.【F:install.sh†L12-L158】 | Medium – Increases onboarding friction and support load. |
 | Large-file uploads | README guarantees 2 GB uploads, yet every upload endpoint uses `multer.memoryStorage()` with a 2 GB per-file limit; storing multi-gigabyte buffers in RAM is likely to exhaust server memory before they reach MinIO.【F:README.md†L46-L47】【F:backend/src/routes/uploads.ts†L30-L35】【F:backend/src/lib/uploadLimits.ts†L1-L2】 | High – Production upload jobs can crash the API; documentation over-promises reliability. |
 | Validation messaging | Several backend validation errors remain in German (e.g., version update schema), creating inconsistent operator feedback and complicating localization plans.【F:backend/src/routes/assets.ts†L482-L488】 | Low – Cosmetic but noticeable to admins. |
