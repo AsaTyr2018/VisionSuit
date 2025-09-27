@@ -42,6 +42,7 @@ type MetadataRow = { key: string; value: string };
 type TagFrequencyGroup = { scope: string; tags: { label: string; count: number }[] };
 
 const ASSET_BATCH_SIZE = 25;
+const TAG_FREQUENCY_KEYS = ['ss_tag_frequency', 'tag_frequency'] as const;
 
 const fileSizeLabels: Record<Exclude<FileSizeFilter, 'all'>, string> = {
   small: '≤ 50 MB',
@@ -199,7 +200,8 @@ const metadataKeyShouldBeOmitted = (key: string) => {
     return false;
   }
   const sanitized = key.replace(/\[\d+\]/g, '');
-  return sanitized.split('.').pop() === 'ss_tag_frequency';
+  const lastSegment = sanitized.split('.').pop();
+  return lastSegment != null && TAG_FREQUENCY_KEYS.some((candidate) => candidate === lastSegment);
 };
 
 const buildMetadataRows = (metadata?: Record<string, unknown> | null) => {
@@ -267,6 +269,15 @@ const collectMetadataStrings = (metadata?: Record<string, unknown> | null) => {
   };
 
   visit(normalized);
+
+  extractTagFrequency(metadata).forEach((group) => {
+    group.tags.forEach((tag) => {
+      const trimmedLabel = tag.label.trim();
+      if (trimmedLabel.length > 0) {
+        values.add(trimmedLabel);
+      }
+    });
+  });
 
   return Array.from(values);
 };
@@ -391,12 +402,12 @@ const extractTagFrequency = (metadata?: Record<string, unknown> | null): TagFreq
   }
 
   const normalized = normalizeMetadataValue(metadata);
-  const candidatePaths = [
-    'ss_tag_frequency',
-    'extracted.ss_tag_frequency',
-    'extracted.ss_metadata.ss_tag_frequency',
-    'ss_metadata.ss_tag_frequency',
-  ];
+  const candidatePaths = TAG_FREQUENCY_KEYS.flatMap((key) => [
+    key,
+    `extracted.${key}`,
+    `extracted.ss_metadata.${key}`,
+    `ss_metadata.${key}`,
+  ]);
 
   for (const path of candidatePaths) {
     const resolved = resolveNestedValue(normalized, path);
@@ -406,7 +417,9 @@ const extractTagFrequency = (metadata?: Record<string, unknown> | null): TagFreq
     }
   }
 
-  const fallback = findFirstMatchingValue(normalized, (key) => key.endsWith('ss_tag_frequency'));
+  const fallback = findFirstMatchingValue(normalized, (key) =>
+    TAG_FREQUENCY_KEYS.some((candidate) => key.endsWith(candidate)),
+  );
   return toTagFrequencyGroups(fallback);
 };
 
