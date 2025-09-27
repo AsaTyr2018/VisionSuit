@@ -163,6 +163,11 @@
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Change] NSFW deployment progress tracking
+- **Type**: Normal Change
+- **Reason**: Needed to translate the NSFW rollout blueprint into an actionable checklist with highlighted open questions before implementation begins.
+- **Change**: Converted the NSFW deployment plan into status-aware checklists, tagged unresolved dependencies with explicit questions, and kept remaining tasks pending for future execution.
+
 ## 033 – [Addition] NSFW moderation deployment plan (commit TBD)
 - **Type of Change**: Normal Change
 - **Why**: Document the roadmap required to replace the legacy keyword-only NSFW filter with a multi-signal, self-hosted system.
