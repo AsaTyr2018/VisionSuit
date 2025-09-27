@@ -183,6 +183,12 @@ export const ModelAssetEditDialog = ({
       return;
     }
 
+    if (!trimmedTrigger) {
+      setError('Please provide a trigger keyword for the model.');
+      setDetails([]);
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     setDetails([]);
@@ -192,7 +198,7 @@ export const ModelAssetEditDialog = ({
         title: trimmedTitle,
         description: trimmedDescription.length > 0 ? trimmedDescription : null,
         version: trimmedVersion.length > 0 ? trimmedVersion : undefined,
-        trigger: trimmedTrigger.length > 0 ? trimmedTrigger : null,
+        trigger: trimmedTrigger,
         tags: parsedTags,
       };
 

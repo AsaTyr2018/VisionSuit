@@ -5,7 +5,7 @@ import type { AssetComment, Gallery, ModelAsset, ModelVersion, User } from '../t
 
 import { api, ApiError } from '../lib/api';
 import { resolveCachedStorageUrl, resolveStorageUrl } from '../lib/storage';
-import { isAuditPlaceholderForViewer } from '../lib/moderation';
+import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from '../lib/moderation';
 import { FilterChip } from './FilterChip';
 import { ModelVersionDialog } from './ModelVersionDialog';
 import { ModelVersionEditDialog } from './ModelVersionEditDialog';
@@ -813,6 +813,10 @@ export const AssetExplorer = ({
     const selectedTagIds = new Set(selectedTags);
 
     const filtered = assets.filter((asset) => {
+      if (isAuditHiddenFromViewer(asset.moderationStatus, asset.owner.id, currentUser)) {
+        return false;
+      }
+
       if (!matchesSearch(asset, normalizedQuery)) return false;
 
       if (selectedType !== 'all') {
@@ -844,7 +848,7 @@ export const AssetExplorer = ({
     };
 
     return filtered.sort(sorters[sortOption]);
-  }, [assets, normalizedQuery, selectedOwner, selectedType, fileSizeFilter, selectedTags, sortOption]);
+  }, [assets, currentUser, normalizedQuery, selectedOwner, selectedType, fileSizeFilter, selectedTags, sortOption]);
 
   useEffect(() => {
     setVisibleLimit(ASSET_BATCH_SIZE);

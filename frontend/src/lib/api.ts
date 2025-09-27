@@ -704,7 +704,7 @@ export const api = {
       title: string;
       description: string | null;
       version: string;
-      trigger: string | null;
+      trigger: string;
       tags: string[];
       ownerId: string;
       isPublic: boolean;

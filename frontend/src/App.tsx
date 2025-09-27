@@ -14,7 +14,7 @@ import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
-import { isAuditPlaceholderForViewer } from './lib/moderation';
+import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from './lib/moderation';
 import { defaultSiteTitle } from './config';
 import type {
   Gallery,
@@ -115,11 +115,16 @@ const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) 
       return false;
     }
 
-    if (isAuditPlaceholderForViewer(asset.moderationStatus, asset.owner.id, viewer)) {
-      return true;
+    const isHidden = isAuditHiddenFromViewer(asset.moderationStatus, asset.owner.id, viewer);
+    if (isHidden) {
+      return false;
     }
 
-    return asset.moderationStatus !== 'FLAGGED';
+    if (asset.moderationStatus === 'FLAGGED') {
+      return viewer?.role === 'ADMIN' || isAuditPlaceholderForViewer(asset.moderationStatus, asset.owner.id, viewer);
+    }
+
+    return true;
   });
 };
 
@@ -155,11 +160,16 @@ const filterImageAssetsForViewer = (images: ImageAsset[], viewer?: User | null) 
       return false;
     }
 
-    if (isAuditPlaceholderForViewer(image.moderationStatus, image.owner.id, viewer)) {
-      return true;
+    const isHidden = isAuditHiddenFromViewer(image.moderationStatus, image.owner.id, viewer);
+    if (isHidden) {
+      return false;
     }
 
-    return image.moderationStatus !== 'FLAGGED';
+    if (image.moderationStatus === 'FLAGGED') {
+      return viewer?.role === 'ADMIN' || isAuditPlaceholderForViewer(image.moderationStatus, image.owner.id, viewer);
+    }
+
+    return true;
   });
 };
 

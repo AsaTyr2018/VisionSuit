@@ -1,17 +1,35 @@
 import type { ModerationStatus, User } from '../types/api';
 
+export type AuditVisibilityState = 'visible' | 'placeholder' | 'hidden';
+
+export const getAuditVisibilityStateForViewer = (
+  moderationStatus: ModerationStatus,
+  ownerId: string,
+  viewer?: User | null,
+): AuditVisibilityState => {
+  if (moderationStatus !== 'FLAGGED') {
+    return 'visible';
+  }
+
+  if (viewer?.role === 'ADMIN') {
+    return 'visible';
+  }
+
+  if (viewer && viewer.id === ownerId) {
+    return 'placeholder';
+  }
+
+  return 'hidden';
+};
+
 export const isAuditPlaceholderForViewer = (
   moderationStatus: ModerationStatus,
   ownerId: string,
   viewer?: User | null,
-) => {
-  if (!viewer) {
-    return false;
-  }
+) => getAuditVisibilityStateForViewer(moderationStatus, ownerId, viewer) === 'placeholder';
 
-  if (viewer.role === 'ADMIN') {
-    return false;
-  }
-
-  return moderationStatus === 'FLAGGED' && viewer.id === ownerId;
-};
+export const isAuditHiddenFromViewer = (
+  moderationStatus: ModerationStatus,
+  ownerId: string,
+  viewer?: User | null,
+) => getAuditVisibilityStateForViewer(moderationStatus, ownerId, viewer) === 'hidden';
