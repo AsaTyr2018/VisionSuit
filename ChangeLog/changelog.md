@@ -1,3 +1,8 @@
+## 037 – [Standard Change] NSFW moderation workspace integration
+- **Type**: Standard Change
+- **Reason**: Align the admin moderation experience with the structured NSFW verdicts now produced by the backend so moderators can act on the new signals without conflicting UI patterns.
+- **Change**: Replaced the legacy moderation card grid with the split-pane workspace that consumes NSFW visibility, reasons, and score snapshots, pruned the unused grid styles, and refreshed the README to highlight the severity filters and signal-aware workflow.
+
 ## 036 – [Standard Change] NSFW swimwear CNN integration
 - **Type**: Standard Change
 - **Reason**: Prepare the NSFW moderation stack for its first full validation pass by pairing heuristic scoring with the trained nudity-versus-swimwear classifier.
