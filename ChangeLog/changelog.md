@@ -1,3 +1,8 @@
+## 040 – [Standard Change] Documentation sanity review refresh
+- **Type**: Standard Change
+- **Reason**: Capture the latest comparison between README claims and the implemented application to guide upcoming documentation or feature adjustments.
+- **Change**: Added the 2025-01-14 documentation vs application sanity report detailing confirmed behaviours, remaining gaps from the prior review, and a newly identified inconsistency around flagged asset visibility.
+
 ## 039 – [Standard Change] Home trust & CTA rollout
 - **Type**: Standard Change
 - **Reason**: Align the documented home experience with actual UI elements so curators and administrators see actionable entry points and transparent trust signals when they land on the dashboard.
