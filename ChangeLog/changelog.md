@@ -1,3 +1,8 @@
+## 036 – [Standard Change] NSFW swimwear CNN integration
+- **Type**: Standard Change
+- **Reason**: Prepare the NSFW moderation stack for its first full validation pass by pairing heuristic scoring with the trained nudity-versus-swimwear classifier.
+- **Change**: Added on-device ONNX inference with configurable thresholds, extended the image analysis configuration schema, serialized CNN outputs, refreshed README guidance, and updated the deployment checklist to reflect the completed CNN work.
+
 ## 035 – [Standard Change] NSFW moderation regression tests
 - **Type**: Standard Change
 - **Reason**: Ensure the NSFW upload and rescan workflow keeps marking adult and potentially illegal content correctly.

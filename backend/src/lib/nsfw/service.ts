@@ -73,5 +73,16 @@ export const toJsonImageAnalysis = (analysis: ImageAnalysisResult): Prisma.JsonO
     } as Prisma.JsonObject;
   }
 
+  if (analysis.cnn) {
+    payload.cnn = {
+      nude: round(toNumber(analysis.cnn.nude)),
+      swimwear: round(toNumber(analysis.cnn.swimwear)),
+      ambiguous: round(toNumber(analysis.cnn.ambiguous)),
+      delta: round(toNumber(analysis.cnn.delta)),
+      provider: analysis.cnn.provider,
+      inferenceMs: toNumber(analysis.cnn.inferenceMs),
+    } as Prisma.JsonObject;
+  }
+
   return payload;
 };

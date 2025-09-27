@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import jpeg from 'jpeg-js';
 import UPNG from 'upng-js';
 
@@ -6,6 +8,44 @@ import { appConfig } from '../../config';
 import type { OpenCVModule, OpenCvMat } from '../../types/opencv';
 
 let openCvInstance: Promise<OpenCVModule> | null = null;
+
+interface OnnxTensorLike {
+  data?: Float32Array | number[] | Float64Array | Uint8Array;
+}
+
+interface OnnxInferenceSession {
+  inputNames?: string[];
+  outputNames?: string[];
+  run(feeds: Record<string, unknown>): Promise<Record<string, OnnxTensorLike | undefined>>;
+}
+
+interface NudityClassifierModule {
+  InferenceSession: {
+    create(
+      modelPath: string,
+      options?: { executionProviders?: string[] },
+    ): Promise<OnnxInferenceSession>;
+  };
+  Tensor: new (type: string, data: Float32Array, dims: number[]) => OnnxTensorLike;
+}
+
+interface NudityClassifierContext {
+  session: OnnxInferenceSession;
+  inputName: string;
+  outputName: string;
+  provider: string;
+}
+
+interface NudityClassifierResult {
+  nude: number;
+  swimwear: number;
+  ambiguous: number;
+  delta: number;
+  provider: string;
+  inferenceMs: number;
+}
+
+let nudityClassifier: Promise<NudityClassifierContext | null> | null = null;
 
 const OPEN_CV_INIT_TIMEOUT_MS = 15000;
 
@@ -47,6 +87,220 @@ const waitForOpenCv = (): Promise<OpenCVModule> => {
   });
 
   return openCvInstance;
+};
+
+const resolveNudityClassifier = (): Promise<NudityClassifierContext | null> => {
+  if (nudityClassifier) {
+    return nudityClassifier;
+  }
+
+  const cnnConfig = appConfig.nsfw.imageAnalysis.cnn;
+  if (!cnnConfig.enabled) {
+    nudityClassifier = Promise.resolve(null);
+    return nudityClassifier;
+  }
+
+  nudityClassifier = (async () => {
+    const modelPath = cnnConfig.modelPath;
+    if (!modelPath) {
+      return null;
+    }
+
+    try {
+      if (!fs.existsSync(modelPath)) {
+        // eslint-disable-next-line no-console
+        console.warn(`NSFW swimwear classifier disabled: model not found at "${modelPath}".`);
+        return null;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Failed to verify NSFW swimwear classifier path "${modelPath}": ${(error as Error).message}`,
+      );
+      return null;
+    }
+
+    let runtime: NudityClassifierModule;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      runtime = require('onnxruntime-node') as NudityClassifierModule;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed to load onnxruntime-node: ${(error as Error).message}`);
+      return null;
+    }
+
+    try {
+      const executionProviders =
+        Array.isArray(cnnConfig.executionProviders) && cnnConfig.executionProviders.length > 0
+          ? cnnConfig.executionProviders
+          : undefined;
+
+      const session = await runtime.InferenceSession.create(
+        modelPath,
+        executionProviders ? { executionProviders } : undefined,
+      );
+
+      const inputName = session.inputNames?.[0] ?? 'input';
+      const outputName = session.outputNames?.[0] ?? 'output';
+
+      const warmupIterations = Math.max(0, cnnConfig.warmupIterations);
+      if (warmupIterations > 0) {
+        const size = Math.max(1, cnnConfig.inputSize);
+        const zeroInput = new runtime.Tensor(
+          'float32',
+          new Float32Array(3 * size * size),
+          [1, 3, size, size],
+        );
+        for (let i = 0; i < warmupIterations; i += 1) {
+          try {
+            await session.run({ [inputName]: zeroInput });
+          } catch (warmupError) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `NSFW swimwear classifier warmup failed: ${(warmupError as Error).message}`,
+            );
+            break;
+          }
+        }
+      }
+
+      const provider =
+        (Array.isArray(cnnConfig.executionProviders) && cnnConfig.executionProviders[0]) || 'cpu';
+
+      return {
+        session,
+        inputName,
+        outputName,
+        provider,
+      };
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Failed to initialize NSFW swimwear classifier session: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  })();
+
+  return nudityClassifier;
+};
+
+const softmax = (values: readonly number[]): number[] => {
+  if (values.length === 0) {
+    return [];
+  }
+
+  const max = Math.max(...values);
+  const exps = values.map((value) => Math.exp(value - max));
+  const sum = exps.reduce((total, current) => total + current, 0);
+
+  if (sum <= 0) {
+    return new Array(values.length).fill(0);
+  }
+
+  return exps.map((value) => value / sum);
+};
+
+const expandRect = (
+  rect: { x: number; y: number; width: number; height: number },
+  imageWidth: number,
+  imageHeight: number,
+  expansionRatio: number,
+) => {
+  const padX = Math.round(rect.width * expansionRatio);
+  const padY = Math.round(rect.height * expansionRatio);
+
+  const x = Math.max(0, rect.x - padX);
+  const y = Math.max(0, rect.y - padY);
+  const width = Math.min(imageWidth - x, rect.width + padX * 2);
+  const height = Math.min(imageHeight - y, rect.height + padY * 2);
+
+  return {
+    x,
+    y,
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+  };
+};
+
+const runNudityClassifier = async (roi: OpenCvMat): Promise<NudityClassifierResult | null> => {
+  const context = await resolveNudityClassifier();
+  if (!context) {
+    return null;
+  }
+
+  const cv = await waitForOpenCv();
+  const cnnConfig = appConfig.nsfw.imageAnalysis.cnn;
+  const size = Math.max(32, cnnConfig.inputSize);
+
+  const resized = new cv.Mat();
+  cv.resize(roi, resized, new cv.Size(size, size), 0, 0, cv.INTER_AREA);
+
+  const rgb = new cv.Mat();
+  cv.cvtColor(resized, rgb, cv.COLOR_BGR2RGB);
+
+  const totalPixels = size * size;
+  const tensorData = new Float32Array(totalPixels * 3);
+  const mean = cnnConfig.mean;
+  const std = cnnConfig.std;
+  const data = rgb.data;
+
+  for (let index = 0; index < totalPixels; index += 1) {
+    const pixelIndex = index * 3;
+    const r = (data[pixelIndex] ?? 0) / 255;
+    const g = (data[pixelIndex + 1] ?? 0) / 255;
+    const b = (data[pixelIndex + 2] ?? 0) / 255;
+
+    tensorData[index] = (r - mean[0]) / std[0];
+    tensorData[totalPixels + index] = (g - mean[1]) / std[1];
+    tensorData[totalPixels * 2 + index] = (b - mean[2]) / std[2];
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const runtime = require('onnxruntime-node') as NudityClassifierModule;
+  const inputTensor = new runtime.Tensor('float32', tensorData, [1, 3, size, size]);
+
+  const startedAt = Date.now();
+  const outputs = await context.session.run({ [context.inputName]: inputTensor });
+  const duration = Date.now() - startedAt;
+
+  const rawOutput = outputs[context.outputName];
+  const outputSource = rawOutput?.data;
+  const values =
+    outputSource instanceof Float32Array ||
+    outputSource instanceof Float64Array ||
+    Array.isArray(outputSource)
+      ? Array.from(outputSource as Float32Array | Float64Array | number[]).slice(
+          0,
+          cnnConfig.labels.length,
+        )
+      : [];
+  const probabilities = softmax(values);
+
+  disposeAll([resized, rgb]);
+
+  const map = new Map<string, number>();
+  for (let i = 0; i < cnnConfig.labels.length; i += 1) {
+    const label = cnnConfig.labels[i];
+    if (!label) {
+      continue;
+    }
+    map.set(label, clamp(probabilities[i] ?? 0, 0, 1));
+  }
+
+  const nude = map.get('nude') ?? 0;
+  const swimwear = map.get('swimwear') ?? 0;
+  const ambiguous = map.get('ambiguous') ?? 0;
+
+  return {
+    nude,
+    swimwear,
+    ambiguous,
+    delta: nude - swimwear,
+    provider: context.provider,
+    inferenceMs: duration,
+  };
 };
 
 const clamp = (value: number, min: number, max: number) => {
@@ -509,6 +763,14 @@ export interface ImageAnalysisResult {
     torsoContinuity: number;
     overallCentralCoverage: number;
   };
+  cnn?: {
+    nude: number;
+    swimwear: number;
+    ambiguous: number;
+    delta: number;
+    provider: string;
+    inferenceMs: number;
+  };
   flags: string[];
 }
 
@@ -558,18 +820,19 @@ export const analyzeImageBuffer = async (
         );
 
   const thresholds = appConfig.nsfw.imageAnalysis.thresholds;
+  const cnnConfig = appConfig.nsfw.imageAnalysis.cnn;
   const hasTorso = torso.torsoPresenceConfidence >= thresholds.torsoPresenceMin;
   const hasHip = torso.hipPresenceConfidence >= thresholds.hipPresenceMin;
   const limbDominant = torso.limbDominanceConfidence >= thresholds.limbDominanceMax;
   const offCenter = torso.offCenterDistance >= thresholds.offCenterTolerance;
 
-  const adultHeuristic =
+  let adultDecision =
     skinSummary.skinRatio >= thresholds.nudeSkinRatio &&
     coverage.coverageScore <= thresholds.nudeCoverageMax &&
     hasTorso &&
     hasHip;
-  const suggestiveHeuristic =
-    !adultHeuristic &&
+  let suggestiveDecision =
+    !adultDecision &&
     skinSummary.skinRatio >= thresholds.suggestiveSkinRatio &&
     coverage.coverageScore <= thresholds.suggestiveCoverageMax &&
     (hasTorso || hasHip) &&
@@ -629,12 +892,12 @@ export const analyzeImageBuffer = async (
     skinSummary.skinRatio >= thresholds.suggestiveSkinRatio &&
     (!hasTorso || !hasHip || limbDominant || offCenter);
 
-  const adultScore = clamp(
+  let adultScore = clamp(
     skinSummary.skinRatio * (1 - coverage.coverageScore) * (0.6 + poseConfidence * 0.4) * (limbDominant ? 0.6 : 1),
     0,
     1,
   );
-  const suggestiveScore = clamp(
+  let suggestiveScore = clamp(
     Math.max(
       skinSummary.skinRatio * 0.7,
       skinSummary.dominantRegionRatio * 0.5,
@@ -643,6 +906,87 @@ export const analyzeImageBuffer = async (
     0,
     1,
   );
+
+  let needsReview =
+    (!adultDecision && !suggestiveDecision && (nearSuggestive || needsReviewPose)) ||
+    nearBoundary ||
+    (adultDecision && (limbDominant || offCenter));
+
+  let cnnResult: NudityClassifierResult | null = null;
+  if (cnnConfig.enabled && skinSummary.dominantRegionRect) {
+    try {
+      const cv = await waitForOpenCv();
+      const expanded = expandRect(
+        skinSummary.dominantRegionRect,
+        working.cols,
+        working.rows,
+        clamp(cnnConfig.cropExpansion, 0, 0.5),
+      );
+      const roi = working.roi(new cv.Rect(expanded.x, expanded.y, expanded.width, expanded.height));
+      try {
+        cnnResult = await runNudityClassifier(roi);
+      } finally {
+        roi.delete();
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`NSFW swimwear classifier inference failed: ${(error as Error).message}`);
+    }
+  }
+
+  if (cnnResult) {
+    flags.push('CNN_APPLIED');
+    const providerFlag = cnnResult.provider.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+    if (providerFlag) {
+      flags.push(`CNN_PROVIDER_${providerFlag}`);
+    }
+
+    const cnnThresholds = cnnConfig.thresholds;
+    if (cnnResult.delta >= cnnThresholds.nudeDelta) {
+      flags.push('CNN_NUDE_DELTA');
+    }
+    if (cnnResult.swimwear >= cnnThresholds.swimwearMin) {
+      flags.push('CNN_SWIMWEAR_CONFIDENT');
+    }
+    if (cnnResult.ambiguous >= cnnThresholds.ambiguousDelta) {
+      flags.push('CNN_AMBIGUOUS');
+    }
+
+    const highSkin = skinSummary.skinRatio >= thresholds.nudeSkinRatio;
+    const lowCoverage = coverage.coverageScore <= thresholds.nudeCoverageMax;
+
+    if (highSkin && lowCoverage && cnnResult.delta >= cnnThresholds.nudeDelta) {
+      adultDecision = true;
+      suggestiveDecision = false;
+    } else if (cnnResult.swimwear >= cnnThresholds.swimwearMin) {
+      adultDecision = false;
+      suggestiveDecision = true;
+    } else if (!adultDecision && !suggestiveDecision && cnnResult.delta >= cnnThresholds.reviewDelta) {
+      suggestiveDecision = true;
+    }
+
+    const cnnAdultScore = clamp(cnnResult.nude * 0.7 + Math.max(0, cnnResult.delta) * 0.5, 0, 1);
+    adultScore = clamp(adultScore * 0.55 + cnnAdultScore * 0.45, 0, 1);
+
+    const cnnSuggestiveScore = clamp(
+      cnnResult.swimwear * 0.7 + Math.max(0, -cnnResult.delta) * 0.4 + cnnResult.ambiguous * 0.15,
+      0,
+      1,
+    );
+    suggestiveScore = clamp(suggestiveScore * 0.6 + cnnSuggestiveScore * 0.4, 0, 1);
+
+    if (cnnResult.ambiguous >= cnnThresholds.ambiguousDelta) {
+      adultScore = clamp(adultScore * 0.9, 0, 1);
+      needsReview = true;
+    }
+
+    if (!needsReview) {
+      const nearDelta = Math.abs(cnnResult.delta) <= cnnThresholds.reviewDelta;
+      if (nearDelta) {
+        needsReview = true;
+      }
+    }
+  }
 
   const result: ImageAnalysisResult = {
     width: working.cols,
@@ -655,12 +999,9 @@ export const analyzeImageBuffer = async (
     edgeDensity: roundTo(coverage.edgeDensity, 4),
     colorStdDev: roundTo(coverage.colorStdDev, 4),
     decisions: {
-      isAdult: adultHeuristic,
-      isSuggestive: suggestiveHeuristic,
-      needsReview:
-        (!adultHeuristic && !suggestiveHeuristic && (nearSuggestive || needsReviewPose)) ||
-        nearBoundary ||
-        (adultHeuristic && (limbDominant || offCenter)),
+      isAdult: adultDecision,
+      isSuggestive: suggestiveDecision,
+      needsReview,
     },
     scores: {
       adult: roundTo(adultScore, 4),
@@ -668,6 +1009,17 @@ export const analyzeImageBuffer = async (
     },
     flags,
   };
+
+  if (cnnResult) {
+    result.cnn = {
+      nude: roundTo(cnnResult.nude, 4),
+      swimwear: roundTo(cnnResult.swimwear, 4),
+      ambiguous: roundTo(cnnResult.ambiguous, 4),
+      delta: roundTo(cnnResult.delta, 4),
+      provider: cnnResult.provider,
+      inferenceMs: Math.max(0, Math.round(cnnResult.inferenceMs)),
+    };
+  }
 
   if (skinSummary.dominantRegionRect && skinSummary.centroid) {
     result.region = {
