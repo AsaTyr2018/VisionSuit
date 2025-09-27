@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
-import { applyAdminSettings, getAdminSettings } from '../lib/settings';
+import { applyAdminSettings, getAdminSettings, type AdminSettings } from '../lib/settings';
 import { scheduleAdultKeywordRecalculation } from './safety';
 
 const trimmedString = z.string().trim();
@@ -72,7 +72,16 @@ settingsRouter.put('/', async (req, res, next) => {
       return;
     }
 
-    const result = await applyAdminSettings(parsed.data);
+    const existing = await getAdminSettings();
+    const payload: AdminSettings = {
+      ...parsed.data,
+      safety: {
+        ...parsed.data.safety,
+        imageAnalysis: existing.safety.imageAnalysis,
+      },
+    };
+
+    const result = await applyAdminSettings(payload);
     if (result.metadataThresholdsChanged) {
       void scheduleAdultKeywordRecalculation();
     }

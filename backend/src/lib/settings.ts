@@ -31,6 +31,10 @@ export interface AdminSettingsSafetyImageAnalysisThresholds {
   nudeCoverageMax: number;
   suggestiveCoverageMax: number;
   reviewMargin: number;
+  torsoPresenceMin: number;
+  hipPresenceMin: number;
+  limbDominanceMax: number;
+  offCenterTolerance: number;
 }
 
 export interface AdminSettingsSafetyImageAnalysisRuntime {
@@ -392,6 +396,22 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
           appConfig.nsfw.imageAnalysis.thresholds.reviewMargin,
           0.25,
         ),
+        torsoPresenceMin: sanitizeRatio(
+          incomingImageAnalysis.thresholds.torsoPresenceMin,
+          appConfig.nsfw.imageAnalysis.thresholds.torsoPresenceMin,
+        ),
+        hipPresenceMin: sanitizeRatio(
+          incomingImageAnalysis.thresholds.hipPresenceMin,
+          appConfig.nsfw.imageAnalysis.thresholds.hipPresenceMin,
+        ),
+        limbDominanceMax: sanitizeRatio(
+          incomingImageAnalysis.thresholds.limbDominanceMax,
+          appConfig.nsfw.imageAnalysis.thresholds.limbDominanceMax,
+        ),
+        offCenterTolerance: sanitizeRatio(
+          incomingImageAnalysis.thresholds.offCenterTolerance,
+          appConfig.nsfw.imageAnalysis.thresholds.offCenterTolerance,
+        ),
       },
       runtime: {
         maxWorkers: sanitizeRuntimeNumber(
@@ -453,6 +473,10 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
       previous.thresholds.nudeCoverageMax !== sanitizedImageConfig.thresholds.nudeCoverageMax ||
       previous.thresholds.suggestiveCoverageMax !== sanitizedImageConfig.thresholds.suggestiveCoverageMax ||
       previous.thresholds.reviewMargin !== sanitizedImageConfig.thresholds.reviewMargin ||
+      previous.thresholds.torsoPresenceMin !== sanitizedImageConfig.thresholds.torsoPresenceMin ||
+      previous.thresholds.hipPresenceMin !== sanitizedImageConfig.thresholds.hipPresenceMin ||
+      previous.thresholds.limbDominanceMax !== sanitizedImageConfig.thresholds.limbDominanceMax ||
+      previous.thresholds.offCenterTolerance !== sanitizedImageConfig.thresholds.offCenterTolerance ||
       previous.maxWorkingEdge !== sanitizedImageConfig.maxWorkingEdge ||
       previous.runtime.maxWorkers !== sanitizedImageConfig.runtime.maxWorkers ||
       previous.runtime.maxBatchSize !== sanitizedImageConfig.runtime.maxBatchSize ||

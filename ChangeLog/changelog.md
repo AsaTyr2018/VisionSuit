@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – [Addition] NSFW image ingestion signals
+- **Type**: Normal Change
+- **Reason**: The moderation roadmap called for automatic adult tagging beyond keyword scans so that explicit previews and gallery uploads are caught even when creators avoid sensitive terms.
+- **Change**: Wired the OpenCV heuristics analyzer into model preview and image upload flows, persisted analyzer telemetry alongside metadata, updated the keyword-based filter to honor these signals, refreshed documentation, and logged the rollout.
+
 ## 032 – [Addition] NSFW image analysis heuristics
 - **Type**: Normal Change
 - **Reason**: Extend the moderation stack beyond metadata by introducing an on-device image analyzer that scores skin exposure without requiring cloud services.

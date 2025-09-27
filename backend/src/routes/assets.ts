@@ -31,6 +31,7 @@ import {
   type MappedModerationReport,
 } from '../lib/mappers/model';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
+import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 
 type ModerationReportSource = ImageModerationReport & {
   reporter: Pick<User, 'id' | 'displayName' | 'email'>;
@@ -1646,6 +1647,8 @@ assetsRouter.post(
         return;
       }
 
+      const previewImageAnalysis = await runNsfwImageAnalysis(previewFile.buffer, { priority: 'high' });
+
       let previewMetadataPayload: Prisma.JsonObject | null = null;
       try {
         const extracted = await extractImageMetadata(previewFile);
@@ -1714,15 +1717,32 @@ assetsRouter.post(
 
       const checksum = crypto.createHash('sha256').update(modelFile.buffer).digest('hex');
       const extractedMetadata = extractModelMetadataFromFile(modelFile);
+      const previewAnalysisPayload = previewImageAnalysis ? toJsonImageAnalysis(previewImageAnalysis) : null;
+
       const metadataPayload: Prisma.JsonObject = {
         originalFileName: modelFile.originalname,
         checksum,
       };
 
+      if (previewAnalysisPayload) {
+        metadataPayload.nsfwImageAnalysis = previewAnalysisPayload;
+      }
+
       const metadataScreening = extractedMetadata?.nsfwMetadata ?? null;
 
       if (previewMetadataPayload) {
+        if (previewAnalysisPayload) {
+          const nsfwPayload = ((previewMetadataPayload.nsfw as Prisma.JsonObject | undefined) ?? {}) as Prisma.JsonObject;
+          nsfwPayload.imageAnalysis = previewAnalysisPayload;
+          previewMetadataPayload.nsfw = nsfwPayload;
+        }
         metadataPayload.preview = previewMetadataPayload;
+      } else if (previewAnalysisPayload) {
+        metadataPayload.preview = {
+          nsfw: {
+            imageAnalysis: previewAnalysisPayload,
+          },
+        } as Prisma.JsonObject;
       }
 
       if (extractedMetadata) {
@@ -1748,6 +1768,9 @@ assetsRouter.post(
               beast: metadataScreening.matches.beast.map(({ tag, count }) => ({ tag, count })),
             },
           } as Prisma.JsonObject;
+          if (previewAnalysisPayload) {
+            (metadataPayload.nsfw as Prisma.JsonObject).imageAnalysis = previewAnalysisPayload;
+          }
         }
       }
 
@@ -1847,8 +1870,10 @@ assetsRouter.post(
           metadataScreening.beastScore >= metadataThresholds.beast,
       );
 
+      const analysisAdult = Boolean(previewImageAnalysis?.decisions.isAdult);
+
       const requiresModeration = metadataMinor || metadataBeast;
-      const desiredIsAdult = keywordAdult || metadataAdult || requiresModeration;
+      const desiredIsAdult = keywordAdult || metadataAdult || requiresModeration || analysisAdult;
 
       const updatePayload: Prisma.ModelAssetUpdateInput = {};
 
