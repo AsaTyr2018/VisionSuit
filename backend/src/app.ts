@@ -1,12 +1,69 @@
 import cors from 'cors';
-import express, { NextFunction, Request, Response } from 'express';
+import express, { NextFunction, Request, RequestHandler, Response } from 'express';
 import multer from 'multer';
 import morgan from 'morgan';
+import { URL } from 'node:url';
 
 import { appConfig } from './config';
+import { PRISMA_STUDIO_COOKIE_NAME } from './devtools/constants';
+import { createPrismaStudioProxy } from './devtools/prismaStudioProxy';
+import { attachOptionalUser, requireAdmin, requireAuth } from './lib/middleware/auth';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from './lib/uploadLimits';
-import { attachOptionalUser } from './lib/middleware/auth';
 import { router } from './routes';
+
+const extractQueryToken = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry === 'string') {
+        const trimmed = entry.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const persistPrismaStudioSession: RequestHandler = (req, res, next) => {
+  const query = req.query as Record<string, unknown>;
+  const queryToken =
+    extractQueryToken(query['accessToken']) ?? extractQueryToken(query['token']);
+
+  if (!queryToken) {
+    next();
+    return;
+  }
+
+  res.cookie(PRISMA_STUDIO_COOKIE_NAME, queryToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: appConfig.env === 'production',
+    maxAge: 60 * 60 * 1000,
+    path: '/db',
+  });
+
+  try {
+    const parsed = new URL(req.originalUrl, `http://${req.headers.host ?? 'localhost'}`);
+    parsed.searchParams.delete('accessToken');
+    parsed.searchParams.delete('token');
+    const cleanedUrl = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    if (cleanedUrl !== req.originalUrl) {
+      res.redirect(cleanedUrl);
+      return;
+    }
+  } catch {
+    // ignore malformed URLs and continue
+  }
+
+  next();
+};
 
 export const createApp = () => {
   const app = express();
@@ -32,6 +89,15 @@ export const createApp = () => {
     res.setHeader('Expires', '0');
     next();
   });
+
+  app.post('/db/logout', (_req, res) => {
+    res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+    res.status(204).end();
+  });
+
+  app.use('/db', persistPrismaStudioSession);
+  app.use('/db', attachOptionalUser);
+  app.use('/db', requireAuth, requireAdmin, createPrismaStudioProxy());
 
   app.use('/api', attachOptionalUser);
   app.use('/api', router);

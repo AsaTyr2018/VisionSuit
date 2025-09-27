@@ -29,6 +29,7 @@ VisionSuit is a self-hosted platform for curated AI image galleries and LoRA saf
 ## Good to Know
 
 - Sticky shell layout with live service badges, trust metrics, and call-to-action panels for a polished product look including toast notifications for upload events.
+- Embedded Prisma Studio lives behind the `/db` route—`./dev-start.sh` boots it on port 5555, the frontend proxies access through the sidebar button, and only authenticated administrators can open a session (backed by a short-lived HttpOnly cookie).
 - Ship the MobileNet-based `models/nude_vs_swimwear.onnx` (or update its path in `config/nsfw-image-analysis.json`) before running the NSFW analyzer; when the file is missing the backend logs a warning and falls back to heuristics only.
 - Guests can browse public assets, while downloads, comments, and reactions require a signed-in account (USER role or higher). Adult-tagged models and renders stay hidden from guests and from members who leave the NSFW toggle off (default) in their account settings.
 - Administrators can disable self-service signups at any time; the **Create account** control stays visible but disabled so visitors immediately understand that registrations are closed while credentialed users continue signing in.
@@ -204,8 +205,11 @@ Default ports:
 
 - Backend: `4000` (override with `BACKEND_PORT`)
 - Front end: `5173` (override with `FRONTEND_PORT`)
+- Prisma Studio: `5555` (override with `PRISMA_STUDIO_PORT`; routed through `/db` for signed-in administrators)
 
 > Tip: Always point `HOST` to a reachable address (e.g., `HOST=192.168.1.50 ./dev-start.sh`) when accessing services from other devices or containers.
+
+When the stack is running, administrators can open Prisma Studio directly from the sidebar button (or by visiting `/db` with an access token). The backend mints a short-lived HttpOnly cookie scoped to `/db` so subsequent asset requests load without leaking tokens in the URL, and signing out clears that cookie via `POST /db/logout`.
 
 ## Bulk Import Utilities
 

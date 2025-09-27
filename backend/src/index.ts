@@ -1,5 +1,6 @@
 import { appConfig } from './config';
 import { createApp } from './app';
+import { createPrismaStudioUpgradeHandler } from './devtools/prismaStudioProxy';
 import { prisma } from './lib/prisma';
 import { initializeStorage } from './lib/storage';
 import './types/express';
@@ -17,6 +18,16 @@ const start = async () => {
   const server = app.listen(appConfig.port, appConfig.host, () => {
     // eslint-disable-next-line no-console
     console.log(`VisionSuit backend running at http://${appConfig.host}:${appConfig.port}`);
+  });
+
+  const handlePrismaUpgrade = createPrismaStudioUpgradeHandler();
+
+  server.on('upgrade', (req, socket, head) => {
+    void handlePrismaUpgrade(req, socket, head).then((handled) => {
+      if (!handled) {
+        socket.destroy();
+      }
+    });
   });
 
   const gracefulShutdown = () => {

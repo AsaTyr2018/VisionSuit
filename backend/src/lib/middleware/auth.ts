@@ -3,6 +3,10 @@ import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../prisma';
 import { toAuthUser, verifyAccessToken } from '../auth';
 import { appConfig } from '../../config';
+import { PRISMA_STUDIO_COOKIE_NAME } from '../../devtools/constants';
+
+const isPrismaStudioRequest = (req: Request) =>
+  req.baseUrl.startsWith('/db') || req.originalUrl.startsWith('/db');
 
 const extractTokenFromQuery = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -18,6 +22,37 @@ const extractTokenFromQuery = (value: unknown): string | null => {
           return trimmed;
         }
       }
+    }
+  }
+
+  return null;
+};
+
+const extractTokenFromCookies = (cookieHeader: string | undefined, cookieName: string): string | null => {
+  if (!cookieHeader || cookieHeader.trim().length === 0) {
+    return null;
+  }
+
+  const segments = cookieHeader.split(';');
+  for (const segment of segments) {
+    const [name, ...rest] = segment.split('=');
+    if (!name) {
+      continue;
+    }
+
+    if (name.trim() !== cookieName) {
+      continue;
+    }
+
+    const value = rest.join('=').trim();
+    if (value.length === 0) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
     }
   }
 
@@ -48,6 +83,13 @@ const extractToken = (req: Request): string | null => {
     return queryToken;
   }
 
+  if (isPrismaStudioRequest(req)) {
+    const cookieToken = extractTokenFromCookies(req.headers.cookie, PRISMA_STUDIO_COOKIE_NAME);
+    if (cookieToken) {
+      return cookieToken;
+    }
+  }
+
   return null;
 };
 
@@ -55,6 +97,9 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   try {
     const token = extractToken(req);
     if (!token) {
+      if (isPrismaStudioRequest(req)) {
+        res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+      }
       res.status(401).json({ message: 'Authentication token missing.' });
       return;
     }
@@ -75,6 +120,9 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     });
 
     if (!user || !user.isActive) {
+      if (isPrismaStudioRequest(req)) {
+        res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+      }
       res.status(401).json({ message: 'Benutzerkonto nicht verfügbar oder deaktiviert.' });
       return;
     }
@@ -87,11 +135,14 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     req.user = toAuthUser(user);
     next();
   } catch (error) {
+    if (isPrismaStudioRequest(req)) {
+      res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+    }
     res.status(401).json({ message: 'Token ungültig oder abgelaufen.' });
   }
 };
 
-export const attachOptionalUser = async (req: Request, _res: Response, next: NextFunction) => {
+export const attachOptionalUser = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const token = extractToken(req);
     if (!token) {
@@ -118,6 +169,9 @@ export const attachOptionalUser = async (req: Request, _res: Response, next: Nex
       req.user = toAuthUser(user);
     }
   } catch (error) {
+    if (isPrismaStudioRequest(req)) {
+      res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+    }
     if (process.env.NODE_ENV === 'development') {
       // eslint-disable-next-line no-console
       console.warn('Optional auth token rejected:', error);

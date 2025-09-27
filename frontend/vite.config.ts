@@ -164,12 +164,22 @@ const resolveApiProxy = (env: Record<string, string>) => {
     return `/${normalizedApiUrl.replace(/\/$/, '')}`
   })()
 
-  return {
+  const mappings: Record<string, ProxyOptions> = {
     [proxyKey]: {
       target: proxyTarget,
       changeOrigin: true,
-    } satisfies ProxyOptions,
+    },
   }
+
+  if (!mappings['/db']) {
+    mappings['/db'] = {
+      target: proxyTarget,
+      changeOrigin: true,
+      ws: true,
+    }
+  }
+
+  return mappings
 }
 
 export default defineConfig(({ mode }) => {

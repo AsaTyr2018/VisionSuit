@@ -1,3 +1,8 @@
+## 038 – [Standard Change] Prisma Studio service proxy
+- **Type**: Standard Change
+- **Reason**: Provide administrators with persistent database tooling without exposing the default Prisma Studio port or bypassing existing authentication flows.
+- **Change**: Launched Prisma Studio alongside the dev stack, proxied it through `/db` with admin-only JWT validation and HttpOnly session cookies, surfaced an admin sidebar shortcut, routed `/db` through the dev proxy, documented the workflow, and ensured logout clears the Studio session.
+
 ## 037 – [Standard Change] NSFW moderation workspace integration
 - **Type**: Standard Change
 - **Reason**: Align the admin moderation experience with the structured NSFW verdicts now produced by the backend so moderators can act on the new signals without conflicting UI patterns.

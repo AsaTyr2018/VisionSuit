@@ -900,6 +900,12 @@ export const appConfig = {
   host: process.env.HOST ?? '0.0.0.0',
   port: toNumber(process.env.PORT, 4000),
   databaseUrl: process.env.DATABASE_URL ?? 'file:./dev.db',
+  prismaStudio: {
+    host: process.env.PRISMA_STUDIO_HOST?.trim() && process.env.PRISMA_STUDIO_HOST.trim().length > 0
+      ? process.env.PRISMA_STUDIO_HOST.trim()
+      : '127.0.0.1',
+    port: toNumber(process.env.PRISMA_STUDIO_PORT, 5555),
+  },
   platform: {
     siteTitle: deriveSiteTitle(),
     allowRegistration: toBoolean(process.env.ALLOW_REGISTRATION, true),
