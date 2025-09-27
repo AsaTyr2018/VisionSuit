@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
+import UPNG from 'upng-js';
+
 import { analyzeImageBuffer } from '../src/lib/nsfw/imageAnalysis';
-import { PNG } from 'pngjs';
 
 const fixturePath = join(__dirname, 'image-fixtures.txt');
 const fixtureEntries = readFileSync(fixturePath, 'utf8')
@@ -68,7 +69,7 @@ describe('NSFW image analysis heuristics', () => {
   it('routes limb-dominant exposure for human review', async () => {
     const width = 160;
     const height = 160;
-    const png = new PNG({ width, height });
+    const data = new Uint8Array(width * height * 4);
     const background = { r: 20, g: 32, b: 64, a: 255 } as const;
     const skin = { r: 222, g: 188, b: 160, a: 255 } as const;
 
@@ -77,14 +78,15 @@ describe('NSFW image analysis heuristics', () => {
         const idx = (width * y + x) << 2;
         const isSkinBand = x < 32 || x > width - 33;
         const color = isSkinBand ? skin : background;
-        png.data[idx] = color.r;
-        png.data[idx + 1] = color.g;
-        png.data[idx + 2] = color.b;
-        png.data[idx + 3] = color.a;
+        data[idx] = color.r;
+        data[idx + 1] = color.g;
+        data[idx + 2] = color.b;
+        data[idx + 3] = color.a;
       }
     }
 
-    const syntheticBuffer = PNG.sync.write(png);
+    const frame = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    const syntheticBuffer = UPNG.encode([frame], width, height, 0);
     const result = await analyzeImageBuffer(Buffer.from(syntheticBuffer));
 
     assert.equal(result.decisions.isAdult, false, 'Limb-only exposure should not be auto-marked adult');

@@ -1,5 +1,5 @@
-import { PNG } from 'pngjs';
 import jpeg from 'jpeg-js';
+import UPNG from 'upng-js';
 
 import { appConfig } from '../../config';
 
@@ -79,10 +79,12 @@ const decodeImage = async (payload: Buffer): Promise<OpenCvMat> => {
   let rgba: Uint8Array | null = null;
 
   try {
-    const png = PNG.sync.read(payload);
-    width = png.width;
-    height = png.height;
-    rgba = png.data;
+    const decoded = UPNG.decode(payload);
+    width = decoded.width;
+    height = decoded.height;
+    const frames = UPNG.toRGBA8(decoded);
+    const frame = frames && frames.length > 0 ? frames[0] : null;
+    rgba = frame ? new Uint8Array(frame) : null;
   } catch (pngError) {
     try {
       const decoded = jpeg.decode(payload, { useTArray: true });
