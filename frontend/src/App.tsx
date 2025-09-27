@@ -610,6 +610,40 @@ export const App = () => {
     setIsGalleryUploadOpen(true);
   };
 
+  const handleOpenGeneratorCta = useCallback(() => {
+    if (!isAuthenticated) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    if (!canAccessGenerator) {
+      setToast({
+        type: 'error',
+        message: 'The on-site generator is limited to approved members at the moment.',
+      });
+      return;
+    }
+
+    openPrimaryView('generator');
+  }, [canAccessGenerator, isAuthenticated, openPrimaryView]);
+
+  const handleOpenModerationCta = useCallback(() => {
+    if (!isAuthenticated) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    if (authUser?.role !== 'ADMIN') {
+      setToast({
+        type: 'error',
+        message: 'Only administrators can access the moderation workspace.',
+      });
+      return;
+    }
+
+    openPrimaryView('admin');
+  }, [authUser?.role, isAuthenticated, openPrimaryView]);
+
   const handleNavigateToGallery = (galleryId: string) => {
     setFocusedGalleryId(galleryId);
     setFocusedAssetId(null);
@@ -1044,39 +1078,163 @@ export const App = () => {
     );
   });
 
-  const renderHome = () => (
-    <div className="home-grid">
-      <section className="home-section">
-        <header className="home-section__header">
-          <h2>Latest models</h2>
-          <p>The most recent uploads from the model explorer presented as compact tiles.</p>
-        </header>
-        <div className="home-section__grid">
-          {isLoading && visibleModelAssets.length === 0
-            ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
-            : modelTiles}
-        </div>
-        {!isLoading && modelTiles.length === 0 ? (
-          <p className="empty-state">No models available yet.</p>
-        ) : null}
-      </section>
+  const renderHome = () => {
+    const isCurator = authUser?.role === 'CURATOR' || authUser?.role === 'ADMIN';
+    const curatorCount = users.filter((user) => user.role === 'CURATOR' || user.role === 'ADMIN').length;
+    const flaggedModels = assets.filter((asset) => asset.moderationStatus === 'FLAGGED').length;
+    const flaggedImages = images.filter((image) => image.moderationStatus === 'FLAGGED').length;
+    const totalPublished = assets.length + images.length;
+    const pendingModeration = flaggedModels + flaggedImages;
+    const moderationCoverage =
+      totalPublished === 0
+        ? '100%'
+        : `${Math.max(0, Math.round(((totalPublished - pendingModeration) / totalPublished) * 100))}%`;
+    const services = Object.values(serviceStatus);
+    const onlineServices = services.filter((service) => service.status === 'online').length;
 
-      <section className="home-section">
-        <header className="home-section__header">
-          <h2>Latest images</h2>
-          <p>Freshly rendered references including prompt excerpts.</p>
-        </header>
-        <div className="home-section__grid">
-          {isLoading && visibleImageAssets.length === 0
-            ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
-            : imageTiles}
-        </div>
-        {!isLoading && imageTiles.length === 0 ? (
-          <p className="empty-state">No images available yet.</p>
-        ) : null}
-      </section>
-    </div>
-  );
+    const callToActions = [
+      {
+        id: 'upload-model',
+        title: isCurator ? 'Upload a new model' : 'Become a curator',
+        description: isCurator
+          ? 'Share your latest LoRA adapters with the catalog.'
+          : 'Sign in and request an upgrade to start publishing assets.',
+        onClick: isCurator ? handleOpenAssetUpload : () => setIsLoginOpen(true),
+        accent: 'violet' as const,
+      },
+      {
+        id: 'draft-gallery',
+        title: isCurator ? 'Curate a gallery' : 'Discover curated galleries',
+        description: isCurator
+          ? 'Bundle renders into themed collections ready for spotlighting.'
+          : 'Browse curated collections to learn the house style.',
+        onClick: isCurator ? handleOpenGalleryUpload : () => openPrimaryView('images'),
+        accent: 'cyan' as const,
+      },
+      {
+        id: 'queue-generator',
+        title: 'Queue a generator run',
+        description: canAccessGenerator
+          ? 'Blend prompts and LoRAs directly from the on-site generator.'
+          : 'Members can request access to queue renders without leaving the browser.',
+        onClick: handleOpenGeneratorCta,
+        accent: 'amber' as const,
+      },
+      authUser?.role === 'ADMIN'
+        ? {
+            id: 'review-moderation',
+            title: 'Review flagged assets',
+            description: 'Jump into the moderation workspace to clear pending reviews.',
+            onClick: handleOpenModerationCta,
+            accent: 'rose' as const,
+          }
+        : null,
+    ].filter(Boolean) as Array<{
+      id: string;
+      title: string;
+      description: string;
+      onClick: () => void;
+      accent: 'violet' | 'cyan' | 'amber' | 'rose';
+    }>;
+
+    return (
+      <div className="home-grid">
+        <section className="home-section home-section--callouts">
+          <header className="home-section__header">
+            <h2>Take action</h2>
+            <p>Quick links for curators and administrators to keep the catalog moving.</p>
+          </header>
+          <div className="home-cta-grid">
+            {callToActions.map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                className={`home-cta-card home-cta-card--${action.accent}`}
+                onClick={action.onClick}
+              >
+                <span className="home-cta-card__title">{action.title}</span>
+                <span className="home-cta-card__description">{action.description}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="home-section home-section--trust">
+          <header className="home-section__header">
+            <h2>Platform health</h2>
+            <p>Trust metrics covering catalog growth, moderation throughput, and live services.</p>
+          </header>
+          <div className="home-trust-panel">
+            <dl className="home-trust-metrics">
+              <div className="home-trust-metric">
+                <dt>Curated models</dt>
+                <dd>{assets.length.toLocaleString()}</dd>
+                <p>Published LoRA adapters currently available in the explorer.</p>
+              </div>
+              <div className="home-trust-metric">
+                <dt>Active curators</dt>
+                <dd>{curatorCount.toLocaleString()}</dd>
+                <p>Curators and administrators maintaining the catalog.</p>
+              </div>
+              <div className="home-trust-metric">
+                <dt>Moderation coverage</dt>
+                <dd>{moderationCoverage}</dd>
+                <p>{pendingModeration} items waiting on review across models and renders.</p>
+              </div>
+            </dl>
+            <div className="home-trust-services">
+              <h3>Live services</h3>
+              <p>
+                {onlineServices} of {services.length} services report healthy status.
+              </p>
+              <ul className="home-trust-statuses">
+                {(['frontend', 'backend', 'minio', 'gpu'] as ServiceStatusKey[]).map((key) => {
+                  const entry = serviceStatus[key];
+                  return (
+                    <li key={key} className={`home-trust-status home-trust-status--${entry.status}`}>
+                      <span className="home-trust-status__badge">{serviceBadgeLabels[key]}</span>
+                      <span className="home-trust-status__label">{entry.label}</span>
+                      <span className={`status-led status-led--${entry.status}`} aria-hidden="true" />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section className="home-section">
+          <header className="home-section__header">
+            <h2>Latest models</h2>
+            <p>The most recent uploads from the model explorer presented as compact tiles.</p>
+          </header>
+          <div className="home-section__grid">
+            {isLoading && visibleModelAssets.length === 0
+              ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+              : modelTiles}
+          </div>
+          {!isLoading && modelTiles.length === 0 ? (
+            <p className="empty-state">No models available yet.</p>
+          ) : null}
+        </section>
+
+        <section className="home-section">
+          <header className="home-section__header">
+            <h2>Latest images</h2>
+            <p>Freshly rendered references including prompt excerpts.</p>
+          </header>
+          <div className="home-section__grid">
+            {isLoading && visibleImageAssets.length === 0
+              ? Array.from({ length: 5 }).map((_, index) => <div key={index} className="skeleton skeleton--card" />)
+              : imageTiles}
+          </div>
+          {!isLoading && imageTiles.length === 0 ? (
+            <p className="empty-state">No images available yet.</p>
+          ) : null}
+        </section>
+      </div>
+    );
+  };
 
   const renderContent = () => {
     if (activeView === 'admin') {
