@@ -177,6 +177,89 @@ function Normalize-String {
   return ($Value.ToString()).Trim()
 }
 
+function Build-ModelNameKey {
+  param([string]$Value)
+
+  $normalized = Normalize-String -Value $Value
+  if (-not $normalized) {
+    return $null
+  }
+
+  return $normalized.ToLowerInvariant()
+}
+
+function Get-ExistingModelIndex {
+  param(
+    [System.Net.Http.HttpClient]$Client,
+    [Uri]$BaseUri
+  )
+
+  $modelsUri = ConvertTo-AbsoluteUri -BaseUri $BaseUri -RelativePath '/api/assets/models'
+  Write-Log "Fetching existing models from $($modelsUri.AbsoluteUri) to detect duplicates."
+
+  $response = $null
+  try {
+    $response = $Client.GetAsync($modelsUri).GetAwaiter().GetResult()
+    $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    if (-not $response.IsSuccessStatusCode) {
+      throw "Failed to query existing models (HTTP $($response.StatusCode)): $body"
+    }
+
+    $index = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+    if (-not $body) {
+      Write-Log 'No existing models returned by the API. Proceeding with an empty catalog.'
+      return $index
+    }
+
+    try {
+      $parsed = $body | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+      throw "Existing models response was not valid JSON: $($_.Exception.Message)"
+    }
+
+    $collection = @()
+    if ($parsed -is [System.Collections.IEnumerable]) {
+      $collection = @($parsed)
+    }
+    elseif ($null -ne $parsed) {
+      $collection = @($parsed)
+    }
+
+    foreach ($model in $collection) {
+      if (-not $model) { continue }
+
+      $entry = [pscustomobject]@{
+        Title = $model.title
+        Slug = $model.slug
+        Source = 'remote'
+      }
+
+      $titleKey = $null
+      if ($model.PSObject.Properties.Match('title')) {
+        $titleKey = Build-ModelNameKey -Value $model.title
+      }
+      if ($titleKey) {
+        $index[$titleKey] = $entry
+      }
+
+      $slugKey = $null
+      if ($model.PSObject.Properties.Match('slug')) {
+        $slugKey = Build-ModelNameKey -Value $model.slug
+      }
+      if ($slugKey) {
+        $index[$slugKey] = $entry
+      }
+    }
+
+    Write-Log "Loaded $($index.Count) unique model name(s) for duplicate detection."
+    return $index
+  }
+  finally {
+    if ($response) { $response.Dispose() }
+  }
+}
+
 function Normalize-Visibility {
   param([string]$Visibility, [System.Collections.Generic.List[string]]$Warnings)
   $normalized = (Normalize-String -Value $Visibility).ToLowerInvariant()
@@ -536,11 +619,24 @@ try {
     return
   }
 
+  $existingModels = Get-ExistingModelIndex -Client $client -BaseUri $baseUri
+
   $uploaded = 0
   $skipped = 0
 
   foreach ($lora in $loraFiles) {
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($lora.Name)
+    $modelKey = Build-ModelNameKey -Value $baseName
+
+    if ($modelKey -and $existingModels.ContainsKey($modelKey)) {
+      $known = $existingModels[$modelKey]
+      $knownTitle = if ($known.Title) { $known.Title } else { $baseName }
+      $knownSlug = if ($known.Slug) { $known.Slug } else { 'unknown' }
+      Write-Log "Skipping '$baseName' because model '$knownTitle' (slug: $knownSlug) already exists in VisionSuit."
+      $skipped++
+      continue
+    }
+
     $imageFolder = Join-Path -Path $imagesRoot -ChildPath $baseName
     if (-not (Test-Path -LiteralPath $imageFolder -PathType Container)) {
       Write-Log "Skipping '$baseName' because matching image folder '$imageFolder' is missing."
@@ -638,6 +734,14 @@ try {
         continue
       }
       Write-Log "Model upload complete for '$($profile.Title)'. Asset slug: $assetSlug. Gallery slug: $gallerySlug."
+
+      if ($modelKey) {
+        $existingModels[$modelKey] = [pscustomobject]@{
+          Title = $profile.Title
+          Slug = $assetSlug
+          Source = 'session'
+        }
+      }
 
       if ($otherImages.Count -gt 0) {
         $batchIndex = 0

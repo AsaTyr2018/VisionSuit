@@ -163,6 +163,11 @@
 - **Reason**: The previous Windows importer targeted a localhost-only API endpoint and skipped health verification, causing remote uploads to fail against VisionSuit deployments.
 - **Updates**: Rebuilt `scripts/bulk_import_windows.ps1` around explicit VisionSuit URLs with service status probing, first-upload preview ordering, and resilient batch handling; refreshed README guidance to highlight the new configuration flow and health checks.
 
+## 033 – [Normal Change] Windows importer duplicate guard
+- **Change Type**: Normal Change
+- **Reason**: Operators could accidentally re-upload already published LoRAs because the Windows bulk importer never compared local filenames to existing VisionSuit models.
+- **Updates**: Queried `/api/assets/models` before uploads, skipped safetensors whose filenames match existing model titles, updated the Windows script logging, and refreshed the README to document the new duplicate protection.
+
 ## 033 – [Fix] Bulk upload verification hardening (commit TBD)
 - **Change Type**: Normal Change
 - **Reason**: Bulk uploads reported success even when models failed to appear in VisionSuit, so operators could not trust the automation.
