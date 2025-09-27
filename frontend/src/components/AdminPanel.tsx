@@ -397,6 +397,7 @@ export const AdminPanel = ({
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'connections'>('general');
   const [isSettingsLoading, setIsSettingsLoading] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSavingSafetyThresholds, setIsSavingSafetyThresholds] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [adultKeywords, setAdultKeywords] = useState<AdultSafetyKeyword[]>([]);
   const [isAdultKeywordsLoading, setIsAdultKeywordsLoading] = useState(false);
@@ -611,6 +612,14 @@ export const AdminPanel = ({
   const isGeneratorDirty =
     generatorAccessMode !== generatorAccessModeFromSettings ||
     JSON.stringify(normalizedBaseModelDrafts) !== JSON.stringify(normalizedSettingsBaseModels);
+
+  const metadataThresholdsChanged = Boolean(
+    settingsDraft &&
+      initialSettings &&
+      (settingsDraft.safety.metadataThresholds.adult !== initialSettings.safety.metadataThresholds.adult ||
+        settingsDraft.safety.metadataThresholds.minor !== initialSettings.safety.metadataThresholds.minor ||
+        settingsDraft.safety.metadataThresholds.beast !== initialSettings.safety.metadataThresholds.beast),
+  );
 
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
@@ -970,6 +979,33 @@ export const AdminPanel = ({
     );
   };
 
+  const clampThresholdValue = (value: number) => Math.max(0, Math.min(250, Math.floor(value)));
+
+  const parseThresholdInput = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const updateMetadataThreshold = (
+    key: keyof AdminSettings['safety']['metadataThresholds'],
+    value: number,
+  ) => {
+    setSettingsDraft((previous) =>
+      previous
+        ? {
+            ...previous,
+            safety: {
+              ...previous.safety,
+              metadataThresholds: {
+                ...previous.safety.metadataThresholds,
+                [key]: clampThresholdValue(value),
+              },
+            },
+          }
+        : previous,
+    );
+  };
+
   const handleSaveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!token || !settingsDraft) {
@@ -1013,6 +1049,28 @@ export const AdminPanel = ({
       setStatus({ type: 'error', message });
     } finally {
       setIsSavingSettings(false);
+    }
+  };
+
+  const handleSaveSafetyThresholds = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !settingsDraft) {
+      return;
+    }
+
+    setIsSavingSafetyThresholds(true);
+    setStatus(null);
+
+    try {
+      const updated = await api.updateAdminSettings(token, settingsDraft);
+      setSettingsDraft(updated);
+      setInitialSettings(updated);
+      setStatus({ type: 'success', message: 'Metadata thresholds saved successfully.' });
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to update metadata thresholds.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsSavingSafetyThresholds(false);
     }
   };
 
@@ -2584,6 +2642,104 @@ export const AdminPanel = ({
 
       {activeTab === 'safety' ? (
         <div className="admin__panel">
+          {status && status.message ? (
+            <p className={`admin__status admin__status--${status.type}`} role="status">{status.message}</p>
+          ) : null}
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Metadata thresholds</h3>
+              <p>Tune the LoRA metadata scores that automatically route uploads into adult or moderation queues.</p>
+            </div>
+            {settingsDraft ? (
+              <form className="admin__form admin__form-grid safety-threshold-form" onSubmit={handleSaveSafetyThresholds}>
+                <label className="safety-threshold-form__field">
+                  <span>Adult score threshold</span>
+                  <div className="safety-threshold-form__controls">
+                    <input
+                      type="range"
+                      min={0}
+                      max={250}
+                      step={1}
+                      value={settingsDraft.safety.metadataThresholds.adult}
+                      onChange={(event) => updateMetadataThreshold('adult', parseThresholdInput(event.currentTarget.value))}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={250}
+                      step={1}
+                      value={settingsDraft.safety.metadataThresholds.adult}
+                      onChange={(event) => updateMetadataThreshold('adult', parseThresholdInput(event.currentTarget.value))}
+                    />
+                  </div>
+                  <p className="safety-threshold-form__hint">
+                    LoRA metadata adult scores at or above this value mark the asset as adult.
+                  </p>
+                </label>
+                <label className="safety-threshold-form__field">
+                  <span>Minor keyword threshold</span>
+                  <div className="safety-threshold-form__controls">
+                    <input
+                      type="range"
+                      min={0}
+                      max={250}
+                      step={1}
+                      value={settingsDraft.safety.metadataThresholds.minor}
+                      onChange={(event) => updateMetadataThreshold('minor', parseThresholdInput(event.currentTarget.value))}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={250}
+                      step={1}
+                      value={settingsDraft.safety.metadataThresholds.minor}
+                      onChange={(event) => updateMetadataThreshold('minor', parseThresholdInput(event.currentTarget.value))}
+                    />
+                  </div>
+                  <p className="safety-threshold-form__hint">
+                    Any LoRA metadata score meeting or exceeding this value is flagged for moderation as potential minor content.
+                  </p>
+                </label>
+                <label className="safety-threshold-form__field">
+                  <span>Bestiality keyword threshold</span>
+                  <div className="safety-threshold-form__controls">
+                    <input
+                      type="range"
+                      min={0}
+                      max={250}
+                      step={1}
+                      value={settingsDraft.safety.metadataThresholds.beast}
+                      onChange={(event) => updateMetadataThreshold('beast', parseThresholdInput(event.currentTarget.value))}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={250}
+                      step={1}
+                      value={settingsDraft.safety.metadataThresholds.beast}
+                      onChange={(event) => updateMetadataThreshold('beast', parseThresholdInput(event.currentTarget.value))}
+                    />
+                  </div>
+                  <p className="safety-threshold-form__hint">
+                    Scores at or above this level immediately move the asset into the moderation queue for review.
+                  </p>
+                </label>
+                <div className="admin__form-actions">
+                  <button
+                    type="submit"
+                    className="button button--primary"
+                    disabled={!metadataThresholdsChanged || isSavingSafetyThresholds}
+                  >
+                    {isSavingSafetyThresholds ? 'Saving…' : 'Save thresholds'}
+                  </button>
+                </div>
+              </form>
+            ) : settingsError ? (
+              <p className="admin__empty">{settingsError}</p>
+            ) : (
+              <p className="admin__empty">Safety thresholds are not available right now.</p>
+            )}
+          </section>
           <section className="admin__section">
             <div className="admin__section-intro">
               <h3>Adult prompt keywords</h3>
@@ -2591,9 +2747,6 @@ export const AdminPanel = ({
             </div>
             {adultKeywordError ? (
               <p className="admin__status admin__status--error" role="alert">{adultKeywordError}</p>
-            ) : null}
-            {status && status.message && activeTab === 'safety' ? (
-              <p className={`admin__status admin__status--${status.type}`} role="status">{status.message}</p>
             ) : null}
             <form
               className="adult-keyword-form"

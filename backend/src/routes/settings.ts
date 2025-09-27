@@ -3,8 +3,27 @@ import { z } from 'zod';
 
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { applyAdminSettings, getAdminSettings } from '../lib/settings';
+import { scheduleAdultKeywordRecalculation } from './safety';
 
 const trimmedString = z.string().trim();
+
+const metadataThresholdSchema = z.object({
+  adult: z
+    .number()
+    .int('Adult metadata threshold must be a whole number.')
+    .min(0, 'Adult metadata threshold cannot be negative.')
+    .max(250, 'Adult metadata threshold is too large.'),
+  minor: z
+    .number()
+    .int('Minor metadata threshold must be a whole number.')
+    .min(0, 'Minor metadata threshold cannot be negative.')
+    .max(250, 'Minor metadata threshold is too large.'),
+  beast: z
+    .number()
+    .int('Bestiality metadata threshold must be a whole number.')
+    .min(0, 'Bestiality metadata threshold cannot be negative.')
+    .max(250, 'Bestiality metadata threshold is too large.'),
+});
 
 const settingsSchema = z.object({
   general: z.object({
@@ -26,6 +45,9 @@ const settingsSchema = z.object({
       .optional()
       .transform((value) => (value ?? '').trim())
       .pipe(z.string().max(255, 'Domain is too long.')),
+  }),
+  safety: z.object({
+    metadataThresholds: metadataThresholdSchema,
   }),
 });
 
@@ -50,8 +72,12 @@ settingsRouter.put('/', async (req, res, next) => {
       return;
     }
 
-    const updated = await applyAdminSettings(parsed.data);
-    res.json({ settings: updated });
+    const result = await applyAdminSettings(parsed.data);
+    if (result.metadataThresholdsChanged) {
+      void scheduleAdultKeywordRecalculation();
+    }
+
+    res.json({ settings: result.settings });
   } catch (error) {
     next(error);
   }

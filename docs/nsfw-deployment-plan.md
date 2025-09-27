@@ -47,8 +47,8 @@ Flag LoRA models that are likely to contain explicit content by examining their 
 ```
 
 ### Threshold Tuning
-- [ ] Expose three numeric sliders (`adultThreshold`, `minorThreshold`, `beastThreshold`) in the Administration → Safety panel.
-- [ ] Persist overrides in the same configuration JSON and trigger `scheduleAdultKeywordRecalculation` so existing LoRAs inherit new rules.
+- [x] Expose three numeric sliders (`adultThreshold`, `minorThreshold`, `beastThreshold`) in the Administration → Safety panel.
+- [x] Persist overrides in the same configuration JSON and trigger `scheduleAdultKeywordRecalculation` so existing LoRAs inherit new rules.
 - [ ] Include a preview table that shows the number of stored LoRAs that currently exceed each threshold for quick calibration.
 
 ## 2. OpenCV Image Analysis Pipeline

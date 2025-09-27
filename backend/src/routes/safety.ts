@@ -217,7 +217,7 @@ const recalculateAdultFlagsForAllAssets = async () => {
 let adultKeywordRecalculation: Promise<void> | null = null;
 let adultKeywordRecalculationQueued = false;
 
-const scheduleAdultKeywordRecalculation = () => {
+export const scheduleAdultKeywordRecalculation = () => {
   if (adultKeywordRecalculation) {
     adultKeywordRecalculationQueued = true;
     return adultKeywordRecalculation;

@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { parse } from 'dotenv';
 
@@ -19,15 +19,27 @@ export interface AdminSettingsConnections {
   publicDomain: string;
 }
 
+export interface AdminSettingsSafetyMetadataThresholds {
+  adult: number;
+  minor: number;
+  beast: number;
+}
+
+export interface AdminSettingsSafety {
+  metadataThresholds: AdminSettingsSafetyMetadataThresholds;
+}
+
 export interface AdminSettings {
   general: AdminSettingsGeneral;
   connections: AdminSettingsConnections;
+  safety: AdminSettingsSafety;
 }
 
 const backendRoot = resolve(__dirname, '..', '..');
 const repoRoot = resolve(backendRoot, '..');
 const backendEnvPath = resolve(backendRoot, '.env');
 const frontendEnvPath = resolve(repoRoot, 'frontend', '.env');
+const metadataConfigPath = resolve(repoRoot, 'config', 'nsfw-metadata-filters.json');
 
 const booleanTrueTokens = new Set(['1', 'true', 'yes', 'on']);
 const booleanFalseTokens = new Set(['0', 'false', 'no', 'off']);
@@ -166,6 +178,24 @@ const updateEnvFile = async (filePath: string, updates: Record<string, string>) 
   await fs.writeFile(filePath, `${rewritten.join('\n')}\n`, 'utf8');
 };
 
+const ensureDirectory = async (filePath: string) => {
+  await fs.mkdir(dirname(filePath), { recursive: true });
+};
+
+const writeMetadataThresholds = async (thresholds: AdminSettingsSafetyMetadataThresholds) => {
+  const payload = {
+    metadataFilters: {
+      adultTerms: appConfig.nsfw.metadataFilters.adultTerms,
+      minorTerms: appConfig.nsfw.metadataFilters.minorTerms,
+      bestialityTerms: appConfig.nsfw.metadataFilters.bestialityTerms,
+      thresholds,
+    },
+  };
+
+  await ensureDirectory(metadataConfigPath);
+  await fs.writeFile(`${metadataConfigPath}`, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+};
+
 const resolveAdminSettings = async (): Promise<AdminSettings> => {
   const backendEnv = await readEnvValues(backendEnvPath);
   const frontendEnv = await readEnvValues(frontendEnvPath);
@@ -200,12 +230,28 @@ const resolveAdminSettings = async (): Promise<AdminSettings> => {
       generatorNode,
       publicDomain,
     },
+    safety: {
+      metadataThresholds: { ...appConfig.nsfw.metadataFilters.thresholds },
+    },
   };
 };
 
 export const getAdminSettings = async () => resolveAdminSettings();
 
-export const applyAdminSettings = async (settings: AdminSettings) => {
+export interface ApplyAdminSettingsResult {
+  settings: AdminSettings;
+  metadataThresholdsChanged: boolean;
+}
+
+const sanitizeThresholdValue = (value: number) => {
+  if (!Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+
+  return Math.floor(value);
+};
+
+export const applyAdminSettings = async (settings: AdminSettings): Promise<ApplyAdminSettingsResult> => {
   const backendUpdates: Record<string, string> = {
     SITE_TITLE: settings.general.siteTitle,
     ALLOW_REGISTRATION: toBooleanString(settings.general.allowRegistration),
@@ -229,6 +275,24 @@ export const applyAdminSettings = async (settings: AdminSettings) => {
   appConfig.platform.allowRegistration = settings.general.allowRegistration;
   appConfig.platform.maintenanceMode = settings.general.maintenanceMode;
 
-  return resolveAdminSettings();
+  const incomingThresholds = {
+    adult: sanitizeThresholdValue(settings.safety.metadataThresholds.adult),
+    minor: sanitizeThresholdValue(settings.safety.metadataThresholds.minor),
+    beast: sanitizeThresholdValue(settings.safety.metadataThresholds.beast),
+  };
+
+  const previousThresholds = appConfig.nsfw.metadataFilters.thresholds;
+  const metadataThresholdsChanged =
+    incomingThresholds.adult !== previousThresholds.adult ||
+    incomingThresholds.minor !== previousThresholds.minor ||
+    incomingThresholds.beast !== previousThresholds.beast;
+
+  if (metadataThresholdsChanged) {
+    appConfig.nsfw.metadataFilters.thresholds = incomingThresholds;
+    await writeMetadataThresholds(incomingThresholds);
+  }
+
+  const resolved = await resolveAdminSettings();
+  return { settings: resolved, metadataThresholdsChanged };
 };
 
