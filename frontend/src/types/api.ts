@@ -495,9 +495,20 @@ export interface AdminSettingsConnections {
   publicDomain: string;
 }
 
+export interface AdminSettingsSafetyMetadataThresholds {
+  adult: number;
+  minor: number;
+  beast: number;
+}
+
+export interface AdminSettingsSafety {
+  metadataThresholds: AdminSettingsSafetyMetadataThresholds;
+}
+
 export interface AdminSettings {
   general: AdminSettingsGeneral;
   connections: AdminSettingsConnections;
+  safety: AdminSettingsSafety;
 }
 
 export interface AdminSettingsResponse {

@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – [Addition] NSFW threshold controls (commit TBD)
+- **Type**: Normal Change
+- **Reason**: Extend the in-progress NSFW filter rollout with tunable LoRA metadata thresholds so moderators can react to real catalog signals without code edits.
+- **Change**: Added Administration → Safety sliders for adult/minor/bestiality thresholds, persisted overrides to `nsfw-metadata-filters.json` via the settings API, triggered adult flag recalculation on updates, refreshed documentation checklists, and highlighted the capability in the README.
+
 ## 033 – [Addition] NSFW metadata groundwork (commit TBD)
 - **Type**: Normal Change
 - **Reason**: Kick off the NSFW deployment by externalizing keyword packs and enabling deterministic scoring helpers for LoRA metadata.
