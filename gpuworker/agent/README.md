@@ -1,15 +1,15 @@
 # VisionSuit GPU Agent
 
-The VisionSuit GPU Agent turns a ComfyUI render node into a managed worker that receives jobs from VisionSIOt, materialises workflow JSON payloads, synchronises models with MinIO, executes the render, and uploads completed assets back to the requested bucket. The service is designed for headless operation and runs as a systemd daemon on the GPU host.
+The VisionSuit GPU Agent turns a ComfyUI render node into a managed worker that receives jobs from VisionSuit, materialises workflow JSON payloads, synchronises models with MinIO, executes the render, and uploads completed assets back to the requested bucket. The service is designed for headless operation and runs as a systemd daemon on the GPU host.
 
 ## Features
 
-- **Single-job enforcement** – The agent processes exactly one job at a time and immediately rejects additional submissions with HTTP 409 so VisionSIOt can preserve the queue discipline.
+- **Single-job enforcement** – The agent processes exactly one job at a time and immediately rejects additional submissions with HTTP 409 so VisionSuit can preserve the queue discipline.
 - **Workflow templating** – Supports inline workflows, on-disk templates, or MinIO-hosted JSON and applies node overrides or parameter bindings defined in the dispatch envelope.
 - **Managed asset lifecycle** – Caches base checkpoints permanently, downloads job-scoped LoRAs or auxiliary models on demand, normalises filenames to the "pretty" names supplied in the dispatch or MinIO metadata, and removes ephemeral assets once the render completes. LoRAs now land directly inside the configured `/opt/comfyui/models/loras` directory (with deterministic symlinks when the display name differs) so ComfyUI sees fresh adapters immediately, and any legacy `cache/` staging folders are migrated in the background. When the underlying filesystem blocks symlink creation (for example SMB/CIFS mounts without UNIX extensions) the agent automatically copies the cache into place so ComfyUI still sees the refreshed weights.
 - **Structured job archives** – Backs up every dispatch manifest to `<outputs>/logs/<jobId>/manifest-*.json` and appends newline-delimited status events so operators can review prompts, parameters, cancellations, and upload outcomes for each job.
 - **MinIO integration** – Pulls missing models from MinIO before execution and pushes rendered files back to user-specific prefixes with prompt metadata embedded as object metadata.
-- **Callback hooks** – Emits optional status, completion, and failure callbacks to VisionSIOt or VisionSuit so UIs can surface progress.
+- **Callback hooks** – Emits optional status, completion, and failure callbacks to VisionSuit or other control planes so UIs can surface progress.
 - **Strict ComfyUI validation** – Resolves every checkpoint, VAE, CLIP, and LoRA name against the ComfyUI `/object_info` registry (with a short-lived cache) before submission. Invalid names produce a validation failure and skip the `/prompt` call entirely.
 - **Cooperative cancellation** – Dispatchers can call `POST /jobs/cancel` with the job's `cancelToken` to request an early exit. The poll loop terminates gracefully, frees the GPU slot, and emits a `cancelled` status/failure callback pair.
 
@@ -81,7 +81,7 @@ The script performs a `git pull` from the directory that originally cloned Visio
 - The agent automatically creates `<outputs>/logs` to store per-job manifests and event logs for troubleshooting.
 - `persistent_model_keys` – Keys that should never be deleted after download (typically base checkpoints).
 - `cleanup.*` – Toggle removal of temporary LoRAs or ad-hoc models after each job.
-- `callbacks.*` – Optional `base_url` override plus TLS verification, timeout, and retry policy for VisionSIOt callback URLs.
+- `callbacks.*` – Optional `base_url` override plus TLS verification, timeout, and retry policy for VisionSuit callback URLs.
 - `workflow_defaults` – Optional metadata appended to the workflow parameter context when a dispatch omits the value. Required sampling fields (`steps`, `cfg_scale`, `sampler`, `scheduler`, `width`, `height`, and `seed`) must come directly from the generator request and cannot be provided here.
 
 Set `callbacks.base_url` when the backend publishes relative callback paths or runs behind a reverse proxy so the agent rewrites those hooks to an externally reachable host instead of the default `http://127.0.0.1`. The override now applies even when VisionSuit supplies loopback-only absolute URLs, ensuring completion and failure events land on the control plane regardless of how the backend reports its callback endpoints.
@@ -92,7 +92,7 @@ The agent exposes lightweight HTTP endpoints:
 
 - `GET /` – Health summary for platform probes. Returns `{ "status": "ok", "service": "VisionSuit GPU Agent", "busy": false }` when idle.
 - `GET /healthz` – Returns `{ "status": "ok", "busy": false }` when idle. `busy` becomes `true` while a job is running.
-- `POST /jobs` – Accepts a JSON payload that follows the dispatch envelope designed for VisionSIOt. When the agent is idle the endpoint returns HTTP 202 and starts the background job. If the agent is already running a job the endpoint returns HTTP 409.
+- `POST /jobs` – Accepts a JSON payload that follows the dispatch envelope designed for VisionSuit. When the agent is idle the endpoint returns HTTP 202 and starts the background job. If the agent is already running a job the endpoint returns HTTP 409.
 - `POST /jobs/cancel` – Accepts `{ "token": "<cancelToken>" }` to cancel the in-flight job associated with that token. Returns HTTP 404 when no running job matches.
 
 ### Dispatch envelope example

@@ -1,3 +1,8 @@
+## 043 – [Standard Change] GPU agent naming correction
+- **Type**: Standard Change
+- **Reason**: Align GPU agent documentation with the official VisionSuit brand spelling so operators can search for the correct service name across guides and scripts.
+- **Change**: Replaced the erroneous “VisionSIOt” reference in GPU agent guides, README instructions, and historical audit notes with “VisionSuit,” and clarified the audit log to record the fix.
+
 ## 042 – [Standard Change] Comprehensive project audit
 - **Type**: Standard Change
 - **Reason**: Document the current state of VisionSuit by comparing implementation details with published guidance to surface gaps, risks, and next steps.
@@ -913,7 +918,7 @@
 - **Data Changes**: None.
 
 ## 033 – [Addition] VisionSuit GPU agent service
-- **General**: Introduced a managed GPU agent package that executes VisionSIOt dispatches on the ComfyUI node and reports results back to VisionSuit.
+- **General**: Introduced a managed GPU agent package that executes VisionSuit dispatches on the ComfyUI node and reports results back to VisionSuit.
 - **Technical Changes**: Added the FastAPI-based agent with workflow templating, MinIO sync, callback handling, installer, systemd unit, configuration sample, and refreshed documentation across the GPU worker and root README files.
 - **Data Changes**: None; runtime configuration only.
 

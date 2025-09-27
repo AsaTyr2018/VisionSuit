@@ -48,7 +48,7 @@ All helpers rely on the values stored in `/etc/comfyui/minio.env`. Update that f
 
 ## GPU agent service
 
-The ComfyUI node can now be promoted to a managed VisionSuit GPU agent by installing the service in `gpuworker/agent/`. The agent runs alongside ComfyUI, exposes an authenticated queue endpoint, and speaks the dispatch envelope defined for VisionSIOt. Installation steps:
+The ComfyUI node can now be promoted to a managed VisionSuit GPU agent by installing the service in `gpuworker/agent/`. The agent runs alongside ComfyUI, exposes an authenticated queue endpoint, and speaks the dispatch envelope defined for VisionSuit. Installation steps:
 
 1. Copy `gpuworker/agent/` to the GPU host.
 2. Run `sudo ./agent/installer/install.sh` from the repository root to install dependencies, create `/opt/visionsuit-gpu-agent`, and enable the `visionsuit-gpu-agent` systemd unit.
