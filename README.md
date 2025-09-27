@@ -232,6 +232,8 @@ The script authenticates with `POST /api/auth/login`, seeds the gallery by uploa
 
 The PowerShell helper mirrors the Linux workflow: it authenticates, verifies admin privileges, stages the LoRA with a random preview, and then fans out the remaining renders in twelve-file batches until the entire collection has been imported. Health status and upload responses are validated on every step, so the run halts immediately if VisionSuit stops returning the expected asset and gallery identifiers.
 
+To protect against accidental duplicates the importer now pulls the existing model catalog before any uploads and skips a safetensor when its filename (without the extension) matches an existing model title in VisionSuit. Rename local files to match the live model name if you want the script to recognize already published assets.
+
 > **Tip:** Single-model libraries and one-image galleries are supported—the importer now treats lone safetensors and previews as proper collections so you can sanity-check uploads incrementally before scaling to larger batches.
 
 #### Metadata overrides and defaults
