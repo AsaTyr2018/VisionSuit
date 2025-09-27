@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 033 – [Addition] NSFW metadata groundwork (commit TBD)
+- **Type**: Normal Change
+- **Reason**: Kick off the NSFW deployment by externalizing keyword packs and enabling deterministic scoring helpers for LoRA metadata.
+- **Change**: Added JSON-backed metadata filter configuration, backend normalization/scoring utilities with automated tests, updated deployment checklist progress, and refreshed the README highlights.
+
 ## 032 – NSFW plan compliance clarifications
 - **Type**: Normal Change
 - **Reason**: Document reviewer feedback about prohibited datasets, queue pressure handling, and unused roadmap sections to keep the moderation plan accurate before development.
