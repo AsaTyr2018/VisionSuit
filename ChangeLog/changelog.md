@@ -1221,3 +1221,8 @@
 - **Reason**: LoRA uploads still relied on manual tag audits, so adult and disallowed themes slipped through until curators reviewed them by hand.
 - **Changes**: Extended the safetensor ingestion pipeline to normalize tag-frequency tables, persist normalized counts and score breakdowns in model metadata, compare the totals against configurable thresholds, automatically mark adult LoRAs, flag minor/bestiality matches for moderation with visibility locks, and documented the completed checklist items in the NSFW deployment plan alongside a refreshed README highlight.
 
+## 214 – [Enhancement] NSFW analyzer runtime scheduler
+- **Type**: Normal Change
+- **Reason**: The OpenCV pipeline had no way to throttle bursts of uploads, so moderators risked timeouts and inconsistent scoring when CPU pressure spiked.
+- **Changes**: Added configurable worker-pool and queue runtime settings, shipped a dedicated scheduler with retry/backoff and fast-mode degradation, exposed tuning controls through the admin safety writer, expanded NSFW image analysis options for fast heuristics, refreshed README highlights, and checked off the runtime milestones in the deployment plan with new regression tests.
+

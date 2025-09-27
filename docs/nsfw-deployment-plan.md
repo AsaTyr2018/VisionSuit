@@ -90,10 +90,10 @@ Analyze uploaded images on-premise and mark explicit content automatically while
   - [ ] Expose these fields to `determineAdultForImage` so the updated filter can combine them with textual signals.
 
 ### Runtime Considerations
-- [ ] CPU-only deployment using OpenCV with OpenMP for multi-core scaling; expect < 120 ms per 1024×1024 image on a modern 8-core CPU when processing single frames.
-- [ ] Introduce configurable worker pools with bounded batch sizes (`maxWorkers`, `maxBatchSize`) so bulk imports can saturate the pipeline without starving the API. Allow administrators to tune these values from the Safety tab and persist them in the configuration JSON.
-- [ ] Batch processing queue with retry/backoff to prevent high CPU usage from blocking uploads; store intermediate results for auditing and expose queue depth metrics to the operations dashboard.
-- [ ] Auto-detect pressure situations (queue length > soft limit) and temporarily downshift to heuristic-only scoring until the queue drains, then re-run deferred CNN passes asynchronously using BullMQ (Redis-backed) metrics for waiting, active, and job duration counts. When overload is detected, switch the analyzer to heuristic-only mode and re-enqueue deferred CNN jobs with lower priority once the queue clears.
+- [x] CPU-only deployment using OpenCV with OpenMP for multi-core scaling; expect < 120 ms per 1024×1024 image on a modern 8-core CPU when processing single frames.
+- [x] Introduce configurable worker pools with bounded batch sizes (`maxWorkers`, `maxBatchSize`) so bulk imports can saturate the pipeline without starving the API. Allow administrators to tune these values from the Safety tab and persist them in the configuration JSON.
+- [x] Batch processing queue with retry/backoff to prevent high CPU usage from blocking uploads; store intermediate results for auditing and expose queue depth metrics to the operations dashboard.
+- [x] Auto-detect pressure situations (queue length > soft limit) and temporarily downshift to heuristic-only scoring until the queue drains, then re-run deferred CNN passes asynchronously using BullMQ (Redis-backed) metrics for waiting, active, and job duration counts. When overload is detected, switch the analyzer to heuristic-only mode and re-enqueue deferred CNN jobs with lower priority once the queue clears.
 - [ ] Optional GPU acceleration via OpenCL or CUDA when deploying alongside the existing GPU worker; treat it as a drop-in accelerator for the CNN passes while keeping CPU-only processing viable.
 
 ## 3. NSFW Filter & UI Integration

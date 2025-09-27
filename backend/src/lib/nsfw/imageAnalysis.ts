@@ -107,16 +107,16 @@ const decodeImage = async (payload: Buffer): Promise<OpenCvMat> => {
   return bgr;
 };
 
-const resizeIfNeeded = async (image: OpenCvMat): Promise<OpenCvMat> => {
+const resizeIfNeeded = async (image: OpenCvMat, maxEdge: number): Promise<OpenCvMat> => {
   const cv = await waitForOpenCv();
-  const maxEdge = Math.max(image.cols, image.rows);
-  const targetEdge = appConfig.nsfw.imageAnalysis.maxWorkingEdge;
+  const currentMaxEdge = Math.max(image.cols, image.rows);
+  const targetEdge = maxEdge;
 
-  if (maxEdge <= targetEdge) {
+  if (currentMaxEdge <= targetEdge) {
     return image;
   }
 
-  const scale = targetEdge / maxEdge;
+  const scale = targetEdge / currentMaxEdge;
   const width = Math.max(1, Math.round(image.cols * scale));
   const height = Math.max(1, Math.round(image.rows * scale));
 
@@ -510,20 +510,50 @@ export interface ImageAnalysisResult {
   flags: string[];
 }
 
-export const analyzeImageBuffer = async (payload: Buffer): Promise<ImageAnalysisResult> => {
-  const cv = await waitForOpenCv();
+export type ImageAnalysisMode = 'full' | 'fast';
+
+export interface ImageAnalysisOptions {
+  mode?: ImageAnalysisMode;
+}
+
+const emptyTorsoAnalysis: TorsoAnalysis = {
+  torsoCoverage: 0,
+  hipCoverage: 0,
+  shoulderCoverage: 0,
+  torsoPresenceConfidence: 0,
+  hipPresenceConfidence: 0,
+  limbDominanceConfidence: 0,
+  offCenterDistance: 0,
+  torsoContinuity: 0,
+  overallCentralCoverage: 0,
+};
+
+export const analyzeImageBuffer = async (
+  payload: Buffer,
+  options: ImageAnalysisOptions = {},
+): Promise<ImageAnalysisResult> => {
   const decoded = await decodeImage(payload);
-  const working = await resizeIfNeeded(decoded);
+  const runtime = appConfig.nsfw.imageAnalysis.runtime;
+  const requestedMode = options.mode ?? 'full';
+  const mode: ImageAnalysisMode = requestedMode === 'fast' ? 'fast' : 'full';
+  const targetEdge =
+    mode === 'fast'
+      ? Math.min(appConfig.nsfw.imageAnalysis.maxWorkingEdge, runtime.fastModeMaxEdge)
+      : appConfig.nsfw.imageAnalysis.maxWorkingEdge;
+  const working = await resizeIfNeeded(decoded, Math.max(1, targetEdge));
 
   const skinMask = await createSkinMask(working);
   const skinSummary = await analyzeSkinRegions(working, skinMask);
   const coverage = await evaluateCoverage(working, skinMask, skinSummary.dominantRegionRect);
-  const torso = await estimateTorsoPresence(
-    working,
-    skinMask,
-    skinSummary.dominantRegionRect,
-    skinSummary.centroid,
-  );
+  const torso =
+    mode === 'fast'
+      ? emptyTorsoAnalysis
+      : await estimateTorsoPresence(
+          working,
+          skinMask,
+          skinSummary.dominantRegionRect,
+          skinSummary.centroid,
+        );
 
   const thresholds = appConfig.nsfw.imageAnalysis.thresholds;
   const hasTorso = torso.torsoPresenceConfidence >= thresholds.torsoPresenceMin;
@@ -544,6 +574,9 @@ export const analyzeImageBuffer = async (payload: Buffer): Promise<ImageAnalysis
     !limbDominant;
 
   const flags: string[] = [];
+  if (mode === 'fast') {
+    flags.push('FAST_MODE');
+  }
   if (skinSummary.skinRatio >= thresholds.nudeSkinRatio) {
     flags.push('SKIN_RATIO_HIGH');
   } else if (skinSummary.skinRatio >= thresholds.suggestiveSkinRatio) {

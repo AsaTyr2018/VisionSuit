@@ -104,4 +104,18 @@ describe('NSFW image analysis heuristics', () => {
       'Diagnostic flags should surface limb dominance to moderators',
     );
   });
+
+  it('supports a fast-mode pass for overload handling', async () => {
+    const buffer = imageFromBase64('suggestive');
+    const result = await analyzeImageBuffer(buffer, { mode: 'fast' });
+
+    assert.ok(result.flags.includes('FAST_MODE'), 'Fast mode should emit diagnostic flag');
+    assert.equal(
+      result.pose?.torsoPresenceConfidence,
+      0,
+      'Fast mode should skip pose heavy computations',
+    );
+    assert.equal(result.decisions.isAdult, false, 'Fast mode should avoid aggressive nudity calls');
+    assert.ok(result.skinRatio >= 0, 'Skin ratio remains available for heuristic scoring');
+  });
 });
