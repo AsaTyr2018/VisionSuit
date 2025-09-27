@@ -1,3 +1,13 @@
+## 036 – [Standard Change] NSFW swimwear CNN integration
+- **Type**: Standard Change
+- **Reason**: Prepare the NSFW moderation stack for its first full validation pass by pairing heuristic scoring with the trained nudity-versus-swimwear classifier.
+- **Change**: Added on-device ONNX inference with configurable thresholds, extended the image analysis configuration schema, serialized CNN outputs, refreshed README guidance, and updated the deployment checklist to reflect the completed CNN work.
+
+## 035 – [Standard Change] NSFW moderation regression tests
+- **Type**: Standard Change
+- **Reason**: Ensure the NSFW upload and rescan workflow keeps marking adult and potentially illegal content correctly.
+- **Change**: Added targeted moderation unit tests covering metadata thresholds, keyword detection, and metadata screening fallbacks.
+
 ## 001 – [Fix] Express startup fix
 - **General**: Stabilized the backend boot process after Express failed to locate the request augmentation module.
 - **Technical Changes**: Converted the Express request extension from `.d.ts` to `.ts`, refreshed backend linting, and documented the troubleshooting steps and upload endpoint in the README.
@@ -158,15 +168,60 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – [Fix] NSFW decoder dependency swap
+- **Type**: Emergency Change
+- **Reason**: Backend startup failed because the NSFW image analysis required the `pngjs` module, which was absent in new installs and broke the launch sequence.
+- **Change**: Replaced the PNG decoder with `upng-js`, updated dependency manifests, and refreshed the synthetic test fixture so the analyzer no longer depends on `pngjs`.
+
+## 032 – [Addition] NSFW image ingestion signals
+- **Type**: Normal Change
+- **Reason**: The moderation roadmap called for automatic adult tagging beyond keyword scans so that explicit previews and gallery uploads are caught even when creators avoid sensitive terms.
+- **Change**: Wired the OpenCV heuristics analyzer into model preview and image upload flows, persisted analyzer telemetry alongside metadata, updated the keyword-based filter to honor these signals, refreshed documentation, and logged the rollout.
+
+## 032 – [Addition] NSFW image analysis heuristics
+- **Type**: Normal Change
+- **Reason**: Extend the moderation stack beyond metadata by introducing an on-device image analyzer that scores skin exposure without requiring cloud services.
+- **Change**: Added an OpenCV-based TypeScript module with JPEG/PNG decoding, skin masking, coverage heuristics, admin-configurable thresholds, and regression tests that differentiate nudity from swimwear while persisting settings in `config/nsfw-image-analysis.json`.
+
+## 032 – [Addition] NSFW metadata snapshot
+- **Type**: Normal Change
+- **Reason**: Administrators needed an at-a-glance view to validate how new metadata thresholds affect existing LoRA assets.
+- **Change**: Added a safety router endpoint that aggregates metadata scores per LoRA, exposed the data via the API client, rendered a refreshed admin preview table with styling, marked the deployment plan item complete, and documented the feature in the README.
+
+## 032 – [Addition] NSFW threshold controls (commit TBD)
+- **Type**: Normal Change
+- **Reason**: Extend the in-progress NSFW filter rollout with tunable LoRA metadata thresholds so moderators can react to real catalog signals without code edits.
+- **Change**: Added Administration → Safety sliders for adult/minor/bestiality thresholds, persisted overrides to `nsfw-metadata-filters.json` via the settings API, triggered adult flag recalculation on updates, refreshed documentation checklists, and highlighted the capability in the README.
+
+## 033 – [Addition] NSFW metadata groundwork (commit TBD)
+- **Type**: Normal Change
+- **Reason**: Kick off the NSFW deployment by externalizing keyword packs and enabling deterministic scoring helpers for LoRA metadata.
+- **Change**: Added JSON-backed metadata filter configuration, backend normalization/scoring utilities with automated tests, updated deployment checklist progress, and refreshed the README highlights.
+
+## 032 – NSFW plan compliance clarifications
+- **Type**: Normal Change
+- **Reason**: Document reviewer feedback about prohibited datasets, queue pressure handling, and unused roadmap sections to keep the moderation plan accurate before development.
+- **Change**: Removed the unused "Future Enhancements" roadmap, documented the BullMQ-based overload fallback, clarified the no-train policy for minor/bestiality CNNs, and outlined the new training source for the nude vs. swimwear model.
+
 ## 032 – [Fix] Resilient gallery metadata (commit TBD)
 - **General**: Prevented gallery crashes when metadata is missing or incomplete.
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.
 - **Data Changes**: None.
 
+## 033 – [Change] NSFW deployment progress tracking
+- **Type**: Normal Change
+- **Reason**: Needed to translate the NSFW rollout blueprint into an actionable checklist with highlighted open questions before implementation begins.
+- **Change**: Converted the NSFW deployment plan into status-aware checklists, tagged unresolved dependencies with explicit questions, and kept remaining tasks pending for future execution.
+
 ## 033 – [Addition] NSFW moderation deployment plan (commit TBD)
 - **Type of Change**: Normal Change
 - **Why**: Document the roadmap required to replace the legacy keyword-only NSFW filter with a multi-signal, self-hosted system.
 - **What**: Added a deployment plan covering LoRA metadata screening heuristics, an OpenCV-based image analysis pipeline, admin fine-tuning controls, and linked the guide from the README.
+
+## 034 – [Addition] Pose-aware NSFW heuristics
+- **Type**: Normal Change
+- **Reason**: Extend the in-progress NSFW rollout with torso-aware heuristics so limb-dominant uploads are escalated instead of silently passing automated checks.
+- **Change**: Added silhouette-driven torso/hip analysis and limb-dominance review flags to `backend/src/lib/nsfw/imageAnalysis.ts`, introduced new thresholds in `config/nsfw-image-analysis.json`, expanded regression tests with synthetic limb fixtures, updated the deployment plan progress, and refreshed the README highlight for the analyzer.
 
 ## 034 – [Standard Change] Metadata tag search enhancement
 - **Why**: Searching for models by their training tags returned no results because tag-frequency metadata only exposed counts and not the tag labels to the search index.
@@ -1181,18 +1236,34 @@
 - **Reason**: Windows bulk uploads that only included one LoRA or a single preview image crashed because the script attempted to read the `.Count` property from scalar file objects.
 - **Changes**: Wrapped the Windows importer’s file enumerations in arrays so lone safetensors and preview images are counted correctly, and refreshed the README Windows workflow guidance with the single-item support tip.
 
-## 213 – [Update] NSFW swimwear heuristic realignment
+## 213 – [Enhancement] Automated NSFW metadata screening
+- **Type**: Normal Change
+- **Reason**: LoRA uploads still relied on manual tag audits, so adult and disallowed themes slipped through until curators reviewed them by hand.
+- **Changes**: Extended the safetensor ingestion pipeline to normalize tag-frequency tables, persist normalized counts and score breakdowns in model metadata, compare the totals against configurable thresholds, automatically mark adult LoRAs, flag minor/bestiality matches for moderation with visibility locks, and documented the completed checklist items in the NSFW deployment plan alongside a refreshed README highlight.
+
+## 214 – [Enhancement] NSFW analyzer runtime scheduler
+- **Type**: Normal Change
+- **Reason**: The OpenCV pipeline had no way to throttle bursts of uploads, so moderators risked timeouts and inconsistent scoring when CPU pressure spiked.
+- **Changes**: Added configurable worker-pool and queue runtime settings, shipped a dedicated scheduler with retry/backoff and fast-mode degradation, exposed tuning controls through the admin safety writer, expanded NSFW image analysis options for fast heuristics, refreshed README highlights, and checked off the runtime milestones in the deployment plan with new regression tests.
+
+## 215 – [Enhancement] NSFW upload enforcement and rescan tooling
+- **Type**: Normal Change
+- **Reason**: Adult and disallowed themes could still slip through initial ingestion, and administrators had no way to refresh legacy assets after updating heuristics.
+- **Changes**: Introduced reusable NSFW moderation helpers that automatically mark new uploads as adult or queue them for moderation when metadata, prompts, or OpenCV analysis detect minor/bestiality signals; persisted the screening payload on LoRA metadata; exposed `/api/safety/nsfw/rescan` to replay the checks across existing models and images with storage-backed analysis; added an Administration → Safety control to trigger the rescan with live summaries; and refreshed the README to highlight the automated enforcement and rescan workflow.
+
+## 216 – [Update] NSFW swimwear heuristic realignment
 - **Type**: Normal Change
 - **Reason**: The safety team confirmed we will not maintain the proposed `nude_vs_swimwear.onnx` checkpoint, so the roadmap needed to stop referencing the unavailable model.
 - **Changes**: Updated `docs/nsfw-deployment-plan.md` to focus on OpenCV heuristics and add the official decision note, and refreshed the README highlight to call out that the NSFW pipeline no longer depends on the retired ONNX model.
 
-## 214 – [Feature] OpenCV moderation heuristics enforcement
+## 217 – [Feature] OpenCV moderation heuristics enforcement
 - **Type**: Normal Change
 - **Reason**: Documentation alone left the NSFW filter ineffective because uploads still relied solely on keyword heuristics while referencing the deprecated `nude_vs_swimwear.onnx` fallback.
 - **Changes**: Added an OpenCV-inspired skin and garment analyzer (`backend/src/lib/nsfw-open-cv.ts`), wired it into image/model upload flows, generator imports, and moderation recalculations, persisted the resulting summaries in new Prisma `moderationSummary` columns, and refreshed the README highlight to note the backend now executes the heuristics on every upload.
 
-## 215 – [Fix] Prisma schema moderation summary alignment
+## 218 – [Fix] Prisma schema moderation summary alignment
 - **Type**: Normal Change
 - **Reason**: Model uploads attempted to persist OpenCV moderation summaries, but the Prisma schema lacked the `moderationSummary` field on `ModelAsset`, leaving generated clients unaware of the column and blocking writes at runtime.
 - **Changes**: Declared the `moderationSummary` JSON column on the `ModelAsset` model inside `backend/prisma/schema.prisma` and reformatted the schema with `npx prisma format` so Prisma Client exposes the field to the upload pipeline.
+
 

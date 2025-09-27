@@ -110,24 +110,182 @@ const hasAdultSignalFromTags = (
   return tags.some((entry) => matchesAdultSignals(entry.tag.label, keywords));
 };
 
-const hasAdultSignalFromModeration = (summary?: ImageModerationSummary | null) => {
-  if (!summary) {
-    return false;
+interface ImageAnalysisSummary {
+  isAdult: boolean | null;
+  isSuggestive: boolean | null;
+  needsReview: boolean | null;
+  adultScore: number | null;
+  suggestiveScore: number | null;
+}
+
+const ANALYSIS_ADULT_SCORE_THRESHOLD = 0.75;
+
+const toBooleanOrNull = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  return null;
+};
+
+const toScoreOrNull = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  return null;
+};
+
+const toAnalysisSummary = (
+  analysis?: {
+    decisions?: { isAdult?: boolean; isSuggestive?: boolean; needsReview?: boolean };
+    scores?: { adult?: number; suggestive?: number };
+  } | null,
+): ImageAnalysisSummary | null => {
+  if (!analysis) {
+    return null;
   }
 
-  if (summary.classification === 'NUDE') {
-    return true;
+  const decisions = analysis.decisions ?? {};
+  const scores = analysis.scores ?? {};
+
+  const summary: ImageAnalysisSummary = {
+    isAdult: toBooleanOrNull(decisions.isAdult),
+    isSuggestive: toBooleanOrNull(decisions.isSuggestive),
+    needsReview: toBooleanOrNull(decisions.needsReview),
+    adultScore: toScoreOrNull(scores.adult),
+    suggestiveScore: toScoreOrNull(scores.suggestive),
+  };
+
+  return summary.isAdult != null || summary.isSuggestive != null || summary.needsReview != null || summary.adultScore != null
+    ? summary
+    : null;
+};
+
+const parseAnalysisSummaryFromJson = (value: Prisma.JsonValue | null | undefined): ImageAnalysisSummary | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
   }
 
-  if (summary.adultScore >= 0.85) {
-    return true;
+  const extractFromObject = (target: Record<string, Prisma.JsonValue>): ImageAnalysisSummary | null => {
+    const decisionsRaw = target.decisions;
+    const scoresRaw = target.scores;
+
+    const normalizedDecisions: {
+      isAdult?: boolean;
+      isSuggestive?: boolean;
+      needsReview?: boolean;
+    } = {};
+
+    if (decisionsRaw && typeof decisionsRaw === 'object' && !Array.isArray(decisionsRaw)) {
+      const decisions = decisionsRaw as Record<string, Prisma.JsonValue>;
+      const isAdult = toBooleanOrNull(decisions.isAdult);
+      if (isAdult != null) {
+        normalizedDecisions.isAdult = isAdult;
+      }
+      const isSuggestive = toBooleanOrNull(decisions.isSuggestive);
+      if (isSuggestive != null) {
+        normalizedDecisions.isSuggestive = isSuggestive;
+      }
+      const needsReview = toBooleanOrNull(decisions.needsReview);
+      if (needsReview != null) {
+        normalizedDecisions.needsReview = needsReview;
+      }
+    }
+
+    const normalizedScores: { adult?: number; suggestive?: number } = {};
+    if (scoresRaw && typeof scoresRaw === 'object' && !Array.isArray(scoresRaw)) {
+      const scores = scoresRaw as Record<string, Prisma.JsonValue>;
+      const adultScore = toScoreOrNull(scores.adult);
+      if (adultScore != null) {
+        normalizedScores.adult = adultScore;
+      }
+      const suggestiveScore = toScoreOrNull(scores.suggestive);
+      if (suggestiveScore != null) {
+        normalizedScores.suggestive = suggestiveScore;
+      }
+    }
+
+    const summaryInput: {
+      decisions?: { isAdult?: boolean; isSuggestive?: boolean; needsReview?: boolean };
+      scores?: { adult?: number; suggestive?: number };
+    } = {};
+
+    if (Object.keys(normalizedDecisions).length > 0) {
+      summaryInput.decisions = normalizedDecisions;
+    }
+    if (Object.keys(normalizedScores).length > 0) {
+      summaryInput.scores = normalizedScores;
+    }
+
+    if (summaryInput.decisions || summaryInput.scores) {
+      return toAnalysisSummary(summaryInput);
+    }
+
+    return null;
+  };
+
+  const source = value as Record<string, Prisma.JsonValue>;
+  const candidate = extractFromObject(source);
+  if (candidate) {
+    return candidate;
   }
 
-  if (summary.classification === 'BORDERLINE' && summary.adultScore >= 0.75 && summary.torsoSkinRatio > 0.55) {
-    return true;
+  if (source.imageAnalysis) {
+    const nested = parseAnalysisSummaryFromJson(source.imageAnalysis);
+    if (nested) {
+      return nested;
+    }
   }
 
-  return false;
+  if (source.nsfwImageAnalysis) {
+    const nested = parseAnalysisSummaryFromJson(source.nsfwImageAnalysis);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  if (source.nsfw && typeof source.nsfw === 'object' && !Array.isArray(source.nsfw)) {
+    const nsfw = source.nsfw as Record<string, Prisma.JsonValue>;
+    const nested = extractFromObject(nsfw) ?? parseAnalysisSummaryFromJson(nsfw.imageAnalysis ?? nsfw.nsfwImageAnalysis);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  if (source.preview && typeof source.preview === 'object' && !Array.isArray(source.preview)) {
+    const preview = source.preview as Record<string, Prisma.JsonValue>;
+    const nested =
+      extractFromObject(preview) ??
+      parseAnalysisSummaryFromJson(preview.nsfwImageAnalysis ?? preview.nsfw);
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+};
+
+const resolveImageAnalysisSummary = (
+  analysis:
+    | {
+        decisions?: { isAdult?: boolean; isSuggestive?: boolean; needsReview?: boolean };
+        scores?: { adult?: number; suggestive?: number };
+      }
+    | undefined,
+  metadataSources: Array<Prisma.JsonValue | null | undefined>,
+): ImageAnalysisSummary | null => {
+  const direct = toAnalysisSummary(analysis ?? null);
+  if (direct) {
+    return direct;
+  }
+
+  for (const source of metadataSources) {
+    const candidate = parseAnalysisSummaryFromJson(source);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
 };
 
 export const determineAdultForImage = (input: {
@@ -142,7 +300,10 @@ export const determineAdultForImage = (input: {
   additionalTexts?: string[];
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   adultKeywords?: string[];
-  moderation?: ImageModerationSummary | null;
+  imageAnalysis?: {
+    decisions?: { isAdult?: boolean; isSuggestive?: boolean; needsReview?: boolean };
+    scores?: { adult?: number; suggestive?: number };
+  };
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
@@ -160,9 +321,11 @@ export const determineAdultForImage = (input: {
   ], adultKeywords);
 
   const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
-  const adultFromModeration = hasAdultSignalFromModeration(input.moderation);
+  const analysisSummary = resolveImageAnalysisSummary(input.imageAnalysis, metadataSources);
+  const adultFromAnalysis = Boolean(analysisSummary?.isAdult) ||
+    (analysisSummary?.adultScore != null && analysisSummary.adultScore >= ANALYSIS_ADULT_SCORE_THRESHOLD);
 
-  return adultFromTexts || adultFromTags || adultFromModeration;
+  return adultFromTexts || adultFromTags || adultFromAnalysis;
 };
 
 export const determineAdultForModel = (input: {

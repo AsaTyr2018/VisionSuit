@@ -5,6 +5,8 @@ import imageSize from 'image-size';
 import { parse as parseExif } from 'exifr';
 import type { Prisma } from '@prisma/client';
 
+import { evaluateLoRaMetadata, type MetadataEvaluationResult } from './nsfw/metadata';
+
 export interface ImageMetadataResult {
   width?: number;
   height?: number;
@@ -23,6 +25,7 @@ export interface SafetensorsMetadataResult {
   baseModel?: string | null;
   modelName?: string | null;
   modelAliases?: string[];
+  nsfwMetadata?: MetadataEvaluationResult;
 }
 
 export const toJsonImageMetadata = (metadata?: ImageMetadataResult | null): Prisma.JsonObject | null => {
@@ -792,6 +795,19 @@ export const extractSafetensorsMetadata = (buffer: Buffer): SafetensorsMetadataR
   }
 
   const payload: SafetensorsMetadataResult = { metadata: normalizedMetadata };
+
+  try {
+    const evaluation = evaluateLoRaMetadata({
+      ss_tag_frequency: normalizedMetadata.ss_tag_frequency,
+      tag_frequency: normalizedMetadata.tag_frequency,
+    });
+
+    if (evaluation.normalized.length > 0) {
+      payload.nsfwMetadata = evaluation;
+    }
+  } catch {
+    // ignore evaluation errors so metadata extraction still succeeds
+  }
 
   payload.baseModel = primary ?? null;
   payload.modelName = preferredName ?? null;

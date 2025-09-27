@@ -1,0 +1,44 @@
+{
+  "imageAnalysis": {
+    "maxWorkingEdge": 1280,
+    "thresholds": {
+      "nudeSkinRatio": 0.35,
+      "suggestiveSkinRatio": 0.2,
+      "nudeCoverageMax": 0.12,
+      "suggestiveCoverageMax": 0.6,
+      "reviewMargin": 0.05,
+      "torsoPresenceMin": 0.35,
+      "hipPresenceMin": 0.25,
+      "limbDominanceMax": 0.45,
+      "offCenterTolerance": 0.2
+    },
+    "runtime": {
+      "maxWorkers": 2,
+      "maxBatchSize": 4,
+      "queueSoftLimit": 24,
+      "queueHardLimit": 64,
+      "maxRetries": 1,
+      "backoffMs": 150,
+      "pressureCooldownMs": 45000,
+      "fastModeMaxEdge": 960,
+      "pressureHeuristicOnly": true
+    },
+    "cnn": {
+      "enabled": true,
+      "modelPath": "models/nude_vs_swimwear.onnx",
+      "inputSize": 224,
+      "cropExpansion": 0.18,
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225],
+      "executionProviders": ["cpu"],
+      "warmupIterations": 1,
+      "labels": ["nude", "swimwear", "ambiguous"],
+      "thresholds": {
+        "nudeDelta": 0.2,
+        "swimwearMin": 0.45,
+        "ambiguousDelta": 0.25,
+        "reviewDelta": 0.12
+      }
+    }
+  }
+}

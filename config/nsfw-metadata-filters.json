@@ -1,0 +1,72 @@
+{
+  "metadataFilters": {
+    "adultTerms": [
+      "nsfw",
+      "nude",
+      "nudity",
+      "naked",
+      "topless",
+      "bottomless",
+      "areola",
+      "nipples",
+      "breasts",
+      "cleavage",
+      "underboob",
+      "sideboob",
+      "panties",
+      "lingerie",
+      "thong",
+      "strip",
+      "masturbation",
+      "sex",
+      "intercourse",
+      "adult",
+      "explicit",
+      "bedroom",
+      "erotic",
+      "sexy",
+      "sensual",
+      "bare",
+      "dominatrix",
+      "bondage",
+      "bdsm",
+      "fetish",
+      "nsfw_lora"
+    ],
+    "minorTerms": [
+      "child",
+      "children",
+      "kid",
+      "kiddo",
+      "infant",
+      "toddler",
+      "teen",
+      "teenager",
+      "young_girl",
+      "young_boy",
+      "loli",
+      "shota",
+      "underage",
+      "schoolgirl",
+      "schoolboy"
+    ],
+    "bestialityTerms": [
+      "beast",
+      "bestiality",
+      "zoophilia",
+      "animal_sex",
+      "animal_intercourse",
+      "beastman",
+      "beastgirl",
+      "beastboy",
+      "feral_mating",
+      "beastial",
+      "animal_mating"
+    ],
+    "thresholds": {
+      "adult": 15,
+      "minor": 1,
+      "beast": 1
+    }
+  }
+}

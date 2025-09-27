@@ -1,12 +1,12 @@
 import crypto from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
+import { ModerationStatus } from '@prisma/client';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
@@ -19,12 +19,8 @@ import {
   type ImageMetadataResult,
   type SafetensorsMetadataResult,
 } from '../lib/metadata';
-import {
-  analyzeImageModeration,
-  serializeModerationSummary,
-  type ImageModerationSummary,
-} from '../lib/nsfw-open-cv';
-
+import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
+import { evaluateImageModeration, evaluateModelModeration } from '../lib/nsfw/moderation';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -494,6 +490,11 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       );
 
       if (payload.assetType === 'lora') {
+        const previewAnalysis = previewEntry?.file
+          ? await runNsfwImageAnalysis(previewEntry.file.buffer, { priority: 'high' })
+          : null;
+        const previewAnalysisPayload = previewAnalysis ? toJsonImageAnalysis(previewAnalysis) : null;
+
         const slug = await buildUniqueSlug(
           payload.title,
           (candidate) => tx.modelAsset.findUnique({ where: { slug: candidate } }).then(Boolean),
@@ -506,9 +507,24 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           draftId: draft.id,
         };
 
+        if (previewAnalysisPayload) {
+          modelMetadataPayload.nsfwImageAnalysis = previewAnalysisPayload;
+        }
+
         const previewMetadataPayload = toJsonImageMetadata(previewEntry?.imageMetadata ?? null);
         if (previewMetadataPayload) {
+          if (previewAnalysisPayload) {
+            const nsfwPayload = ((previewMetadataPayload.nsfw as Prisma.JsonObject | undefined) ?? {}) as Prisma.JsonObject;
+            nsfwPayload.imageAnalysis = previewAnalysisPayload;
+            previewMetadataPayload.nsfw = nsfwPayload;
+          }
           modelMetadataPayload.preview = previewMetadataPayload;
+        } else if (previewAnalysisPayload) {
+          modelMetadataPayload.preview = {
+            nsfw: {
+              imageAnalysis: previewAnalysisPayload,
+            },
+          } as Prisma.JsonObject;
         }
 
         if (previewEntry?.moderationSummary) {
@@ -525,47 +541,64 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           if (extracted.metadata && typeof extracted.metadata === 'object') {
             modelMetadataPayload.extracted = extracted.metadata as Prisma.JsonObject;
           }
+          if (extracted.nsfwMetadata) {
+            modelMetadataPayload.nsfwMetadata = JSON.parse(
+              JSON.stringify(extracted.nsfwMetadata),
+            ) as Prisma.JsonValue;
+          }
         }
 
-        const modelAdult = determineAdultForModel({
+        const metadataList: Prisma.JsonValue[] = [];
+        if (previewMetadataPayload) {
+          metadataList.push(previewMetadataPayload);
+        }
+
+        const moderationDecision = evaluateModelModeration({
           title: payload.title,
           description: payload.description ?? null,
           trigger: payload.trigger ?? null,
           metadata: modelMetadataPayload,
-          ...(previewMetadataPayload ? { metadataList: [previewMetadataPayload] } : {}),
+          metadataList,
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
-          moderationSummaries: [
-            ...(previewEntry?.moderationSummary ? [previewEntry.moderationSummary] : []),
-            ...moderationSummaries,
-          ],
+          analysis: previewAnalysis ? { decisions: previewAnalysis.decisions, scores: previewAnalysis.scores } : null,
         });
 
-        const primaryModeration = previewEntry?.moderationSummary ?? moderationSummaries[0] ?? null;
-        const serializedPrimaryModeration = serializeModerationSummary(primaryModeration);
+        if (moderationDecision.metadataScreening) {
+          modelMetadataPayload.nsfwMetadata = JSON.parse(
+            JSON.stringify(moderationDecision.metadataScreening),
+          ) as Prisma.JsonValue;
+        }
+
+        const requiresModeration = moderationDecision.requiresModeration;
+        const modelIsAdult = moderationDecision.isAdult;
+
+        const modelData: Prisma.ModelAssetCreateInput = {
+          slug,
+          title: payload.title,
+          description: payload.description ?? null,
+          trigger: payload.trigger ?? null,
+          version: '1.0.0',
+          fileSize: primaryFile.size,
+          checksum: checksum ?? null,
+          storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
+          previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
+          metadata: modelMetadataPayload,
+          isPublic: requiresModeration ? false : payload.visibility === 'public',
+          isAdult: modelIsAdult,
+          owner: { connect: { id: actor.id } },
+          tags: {
+            create: tagIds.map((tagId) => ({ tagId })),
+          },
+        };
+
+        if (requiresModeration) {
+          modelData.moderationStatus = ModerationStatus.FLAGGED;
+          modelData.flaggedAt = new Date();
+        }
 
         const modelAsset = await tx.modelAsset.create({
-          data: {
-            slug,
-            title: payload.title,
-            description: payload.description ?? null,
-            trigger: payload.trigger ?? null,
-            version: '1.0.0',
-            fileSize: primaryFile.size,
-            checksum: checksum ?? null,
-            storagePath: toS3Uri(primaryStored.bucket, primaryStored.objectName),
-            previewImage: previewStored ? toS3Uri(previewStored.bucket, previewStored.objectName) : null,
-            metadata: modelMetadataPayload,
-            isPublic: payload.visibility === 'public',
-            isAdult: modelAdult,
-            ...(serializedPrimaryModeration !== null
-              ? { moderationSummary: serializedPrimaryModeration }
-              : {}),
-            owner: { connect: { id: actor.id } },
-            tags: {
-              create: tagIds.map((tagId) => ({ tagId })),
-            },
-          },
+          data: modelData,
         });
 
         const entry = await tx.galleryEntry.create({
@@ -623,50 +656,64 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           imageMetadataPayload.extras = metadata.extras as Prisma.JsonObject;
         }
 
-        if (entry.moderationSummary) {
-          imageMetadataPayload.moderation = serializeModerationSummary(entry.moderationSummary);
+        const imageAnalysis = await runNsfwImageAnalysis(source.buffer, { priority: 'normal' });
+        if (imageAnalysis) {
+          imageMetadataPayload.nsfwImageAnalysis = toJsonImageAnalysis(imageAnalysis);
         }
 
-        const serializedImageModeration = serializeModerationSummary(entry.moderationSummary ?? null);
+        const metadataList: Prisma.JsonValue[] = [];
+        const resolvedMetadata = Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null;
 
-        const imageAdult = determineAdultForImage({
+        if (resolvedMetadata) {
+          metadataList.push(resolvedMetadata);
+        }
+
+        const imageModeration = evaluateImageModeration({
+
           title,
           description: payload.description ?? null,
           prompt: metadata?.prompt ?? null,
           negativePrompt: metadata?.negativePrompt ?? null,
           model: metadata?.model ?? null,
           sampler: metadata?.sampler ?? null,
-          metadata: Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null,
+          metadata: resolvedMetadata,
+          metadataList,
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
-          moderation: entry.moderationSummary ?? null,
+          analysis: imageAnalysis,
         });
 
-        const imageAsset = await tx.imageAsset.create({
-          data: {
-            title,
-            description: payload.description ?? null,
-            width: metadata?.width ?? null,
-            height: metadata?.height ?? null,
-            fileSize: source.size,
-            storagePath: toS3Uri(stored.bucket, stored.objectName),
-            prompt: metadata?.prompt ?? null,
-            negativePrompt: metadata?.negativePrompt ?? null,
-            seed: metadata?.seed ?? null,
-            model: metadata?.model ?? null,
-            sampler: metadata?.sampler ?? null,
+        const imageAdultFinal = imageModeration.isAdult;
+
+        const imageData: Prisma.ImageAssetCreateInput = {
+          title,
+          description: payload.description ?? null,
+          width: metadata?.width ?? null,
+          height: metadata?.height ?? null,
+          fileSize: source.size,
+          storagePath: toS3Uri(stored.bucket, stored.objectName),
+          prompt: metadata?.prompt ?? null,
+          negativePrompt: metadata?.negativePrompt ?? null,
+          seed: metadata?.seed ?? null,
+          model: metadata?.model ?? null,
+          sampler: metadata?.sampler ?? null,
           cfgScale: metadata?.cfgScale ?? null,
           steps: metadata?.steps ?? null,
-          isPublic: payload.visibility === 'public',
-          isAdult: imageAdult,
-          ...(serializedImageModeration !== null
-            ? { moderationSummary: serializedImageModeration }
-            : {}),
+          isPublic: imageModeration.requiresModeration ? false : payload.visibility === 'public',
+          isAdult: imageAdultFinal,
           owner: { connect: { id: actor.id } },
           tags: {
             create: tagIds.map((tagId) => ({ tagId })),
           },
-        },
+        };
+
+        if (imageModeration.requiresModeration) {
+          imageData.moderationStatus = ModerationStatus.FLAGGED;
+          imageData.flaggedAt = new Date();
+        }
+
+        const imageAsset = await tx.imageAsset.create({
+          data: imageData,
         });
 
         const entryRecord = await tx.galleryEntry.create({

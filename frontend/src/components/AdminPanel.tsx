@@ -22,6 +22,8 @@ import type {
   User,
   AdminSettings,
   PlatformConfig,
+  MetadataThresholdPreview,
+  NsfwRescanSummary,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
 import { ImageAssetEditDialog } from './ImageAssetEditDialog';
@@ -62,6 +64,24 @@ const roleSummaries: Record<
     ],
   },
 };
+
+const metadataPreviewCategories = [
+  {
+    id: 'adult' as const,
+    label: 'Adult keywords',
+    note: 'LoRAs marked adult for catalog visibility and safe-mode filters.',
+  },
+  {
+    id: 'minor' as const,
+    label: 'Minor-coded keywords',
+    note: 'Assets automatically hidden and queued for moderation review.',
+  },
+  {
+    id: 'beast' as const,
+    label: 'Bestiality keywords',
+    note: 'Assets automatically hidden and queued for moderation review.',
+  },
+] as const;
 
 const RoleSummaryDialog = ({ role, isOpen, onClose }: { role: User['role']; isOpen: boolean; onClose: () => void }) => {
   if (!isOpen) {
@@ -397,7 +417,13 @@ export const AdminPanel = ({
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'connections'>('general');
   const [isSettingsLoading, setIsSettingsLoading] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isSavingSafetyThresholds, setIsSavingSafetyThresholds] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [metadataPreview, setMetadataPreview] = useState<MetadataThresholdPreview | null>(null);
+  const [isMetadataPreviewLoading, setIsMetadataPreviewLoading] = useState(false);
+  const [metadataPreviewError, setMetadataPreviewError] = useState<string | null>(null);
+  const [isRescanningNsfw, setIsRescanningNsfw] = useState(false);
+  const [nsfwRescanSummary, setNsfwRescanSummary] = useState<NsfwRescanSummary | null>(null);
   const [adultKeywords, setAdultKeywords] = useState<AdultSafetyKeyword[]>([]);
   const [isAdultKeywordsLoading, setIsAdultKeywordsLoading] = useState(false);
   const [adultKeywordError, setAdultKeywordError] = useState<string | null>(null);
@@ -612,6 +638,58 @@ export const AdminPanel = ({
     generatorAccessMode !== generatorAccessModeFromSettings ||
     JSON.stringify(normalizedBaseModelDrafts) !== JSON.stringify(normalizedSettingsBaseModels);
 
+  const metadataThresholdsChanged = Boolean(
+    settingsDraft &&
+      initialSettings &&
+      (settingsDraft.safety.metadataThresholds.adult !== initialSettings.safety.metadataThresholds.adult ||
+        settingsDraft.safety.metadataThresholds.minor !== initialSettings.safety.metadataThresholds.minor ||
+        settingsDraft.safety.metadataThresholds.beast !== initialSettings.safety.metadataThresholds.beast),
+  );
+
+  const fetchMetadataPreview = useCallback(
+    async (options?: { signal?: AbortSignal; silent?: boolean }) => {
+      setMetadataPreviewError(null);
+
+      if (!token) {
+        setMetadataPreview(null);
+        if (!options?.silent) {
+          setIsMetadataPreviewLoading(false);
+        }
+        return;
+      }
+
+      if (!options?.silent) {
+        setIsMetadataPreviewLoading(true);
+      }
+
+      try {
+        const preview = await api.getMetadataThresholdPreview(token);
+        if (options?.signal?.aborted) {
+          return;
+        }
+        setMetadataPreview(preview);
+      } catch (error) {
+        if (options?.signal?.aborted) {
+          return;
+        }
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : 'Failed to load metadata screening snapshot.';
+        setMetadataPreviewError(message);
+        setMetadataPreview(null);
+      } finally {
+        if (options?.signal?.aborted) {
+          return;
+        }
+        if (!options?.silent) {
+          setIsMetadataPreviewLoading(false);
+        }
+      }
+    },
+    [token],
+  );
+
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
   useEffect(() => {
@@ -659,6 +737,14 @@ export const AdminPanel = ({
       isMounted = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchMetadataPreview({ signal: controller.signal });
+    return () => {
+      controller.abort();
+    };
+  }, [fetchMetadataPreview]);
 
   useEffect(() => {
     if (rankingSettings) {
@@ -970,6 +1056,33 @@ export const AdminPanel = ({
     );
   };
 
+  const clampThresholdValue = (value: number) => Math.max(0, Math.min(250, Math.floor(value)));
+
+  const parseThresholdInput = (value: string) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
+  const updateMetadataThreshold = (
+    key: keyof AdminSettings['safety']['metadataThresholds'],
+    value: number,
+  ) => {
+    setSettingsDraft((previous) =>
+      previous
+        ? {
+            ...previous,
+            safety: {
+              ...previous.safety,
+              metadataThresholds: {
+                ...previous.safety.metadataThresholds,
+                [key]: clampThresholdValue(value),
+              },
+            },
+          }
+        : previous,
+    );
+  };
+
   const handleSaveSettings = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!token || !settingsDraft) {
@@ -1015,6 +1128,52 @@ export const AdminPanel = ({
       setIsSavingSettings(false);
     }
   };
+
+  const handleSaveSafetyThresholds = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || !settingsDraft) {
+      return;
+    }
+
+    setIsSavingSafetyThresholds(true);
+    setStatus(null);
+
+    try {
+      const updated = await api.updateAdminSettings(token, settingsDraft);
+      setSettingsDraft(updated);
+      setInitialSettings(updated);
+      setStatus({ type: 'success', message: 'Metadata thresholds saved successfully.' });
+      void fetchMetadataPreview();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'Failed to update metadata thresholds.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsSavingSafetyThresholds(false);
+    }
+  };
+
+  const handleTriggerNsfwRescan = useCallback(async () => {
+    if (!token) {
+      setStatus({ type: 'error', message: 'Authentication required to trigger the NSFW rescan.' });
+      return;
+    }
+
+    setIsRescanningNsfw(true);
+    setStatus(null);
+
+    try {
+      const summary = await api.triggerNsfwRescan(token);
+      setNsfwRescanSummary(summary);
+      setStatus({ type: 'success', message: 'NSFW rescan completed successfully.' });
+      void fetchMetadataPreview({ silent: true });
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to trigger the NSFW rescan.';
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsRescanningNsfw(false);
+    }
+  }, [token, fetchMetadataPreview]);
 
   const loadAdultKeywords = useCallback(async () => {
     if (!token) {
@@ -2584,6 +2743,259 @@ export const AdminPanel = ({
 
       {activeTab === 'safety' ? (
         <div className="admin__panel">
+          {status && status.message ? (
+            <p className={`admin__status admin__status--${status.type}`} role="status">{status.message}</p>
+          ) : null}
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Metadata thresholds</h3>
+              <p>Tune the LoRA metadata scores that automatically route uploads into adult or moderation queues.</p>
+            </div>
+            {settingsDraft ? (
+              <>
+                <form className="admin__form admin__form-grid safety-threshold-form" onSubmit={handleSaveSafetyThresholds}>
+                  <label className="safety-threshold-form__field">
+                    <span>Adult score threshold</span>
+                    <div className="safety-threshold-form__controls">
+                      <input
+                        type="range"
+                        min={0}
+                        max={250}
+                        step={1}
+                        value={settingsDraft.safety.metadataThresholds.adult}
+                        onChange={(event) => updateMetadataThreshold('adult', parseThresholdInput(event.currentTarget.value))}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        max={250}
+                        step={1}
+                        value={settingsDraft.safety.metadataThresholds.adult}
+                        onChange={(event) => updateMetadataThreshold('adult', parseThresholdInput(event.currentTarget.value))}
+                      />
+                    </div>
+                    <p className="safety-threshold-form__hint">
+                      LoRA metadata adult scores at or above this value mark the asset as adult.
+                    </p>
+                  </label>
+                  <label className="safety-threshold-form__field">
+                    <span>Minor keyword threshold</span>
+                    <div className="safety-threshold-form__controls">
+                      <input
+                        type="range"
+                        min={0}
+                        max={250}
+                        step={1}
+                        value={settingsDraft.safety.metadataThresholds.minor}
+                        onChange={(event) => updateMetadataThreshold('minor', parseThresholdInput(event.currentTarget.value))}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        max={250}
+                        step={1}
+                        value={settingsDraft.safety.metadataThresholds.minor}
+                        onChange={(event) => updateMetadataThreshold('minor', parseThresholdInput(event.currentTarget.value))}
+                      />
+                    </div>
+                    <p className="safety-threshold-form__hint">
+                      Any LoRA metadata score meeting or exceeding this value is flagged for moderation as potential minor content.
+                    </p>
+                  </label>
+                  <label className="safety-threshold-form__field">
+                    <span>Bestiality keyword threshold</span>
+                    <div className="safety-threshold-form__controls">
+                      <input
+                        type="range"
+                        min={0}
+                        max={250}
+                        step={1}
+                        value={settingsDraft.safety.metadataThresholds.beast}
+                        onChange={(event) => updateMetadataThreshold('beast', parseThresholdInput(event.currentTarget.value))}
+                      />
+                      <input
+                        type="number"
+                        min={0}
+                        max={250}
+                        step={1}
+                        value={settingsDraft.safety.metadataThresholds.beast}
+                        onChange={(event) => updateMetadataThreshold('beast', parseThresholdInput(event.currentTarget.value))}
+                      />
+                    </div>
+                    <p className="safety-threshold-form__hint">
+                      Scores at or above this level immediately move the asset into the moderation queue for review.
+                    </p>
+                  </label>
+                  <div className="admin__form-actions">
+                    <button
+                      type="submit"
+                      className="button button--primary"
+                      disabled={!metadataThresholdsChanged || isSavingSafetyThresholds}
+                    >
+                      {isSavingSafetyThresholds ? 'Saving…' : 'Save thresholds'}
+                    </button>
+                  </div>
+                </form>
+                <div className="safety-threshold-preview">
+                  <div className="safety-threshold-preview__header">
+                    <h4>Metadata screening snapshot</h4>
+                    <button
+                      type="button"
+                      className="button button--ghost"
+                      onClick={() => {
+                        void fetchMetadataPreview();
+                      }}
+                      disabled={isMetadataPreviewLoading}
+                    >
+                      {isMetadataPreviewLoading ? 'Refreshing…' : 'Refresh snapshot'}
+                    </button>
+                  </div>
+                  <p className="safety-threshold-preview__description">
+                    Review how many stored LoRAs currently exceed the configured metadata thresholds.
+                  </p>
+                  {metadataPreviewError ? (
+                    <p className="admin__status admin__status--error" role="alert">{metadataPreviewError}</p>
+                  ) : null}
+                  {isMetadataPreviewLoading ? (
+                    <p className="admin__loading" role="status">
+                      Calculating metadata scores…
+                    </p>
+                  ) : metadataPreview ? (
+                    <>
+                      <p className="safety-threshold-preview__meta">
+                        Evaluated {metadataPreview.evaluatedModelCount} of {metadataPreview.totalModelCount} LoRAs on{' '}
+                        {new Date(metadataPreview.generatedAt).toLocaleString('en-US')}.
+                      </p>
+                      <table className="admin__table safety-threshold-preview__table">
+                        <thead>
+                          <tr>
+                            <th scope="col">Category</th>
+                            <th scope="col">Threshold</th>
+                            <th scope="col">LoRAs above limit</th>
+                            <th scope="col">Sample matches</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {metadataPreviewCategories.map((category) => {
+                            const snapshot = metadataPreview.categories[category.id];
+                            return (
+                              <tr key={category.id}>
+                                <th scope="row">
+                                  <span className="safety-threshold-preview__category">{category.label}</span>
+                                  <span className="safety-threshold-preview__category-note">{category.note}</span>
+                                </th>
+                                <td>
+                                  {snapshot.isEnabled ? (
+                                    <>
+                                      ≥ <strong>{snapshot.threshold}</strong>
+                                    </>
+                                  ) : (
+                                    <span className="safety-threshold-preview__disabled">Disabled</span>
+                                  )}
+                                </td>
+                                <td>{snapshot.isEnabled ? snapshot.matchingModelCount : '—'}</td>
+                                <td>
+                                  {snapshot.isEnabled ? (
+                                    snapshot.sample.length > 0 ? (
+                                      <ul className="safety-threshold-preview__sample-list">
+                                        {snapshot.sample.map((item) => (
+                                          <li key={item.id} className="safety-threshold-preview__sample-item">
+                                            <span className="safety-threshold-preview__sample-title">{item.title}</span>
+                                            <span className="safety-threshold-preview__sample-score">Score {item.score}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <span className="safety-threshold-preview__empty">No matches</span>
+                                    )
+                                  ) : (
+                                    <span className="safety-threshold-preview__empty">Threshold disabled</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </>
+                  ) : (
+                    <p className="admin__empty">Metadata screening metrics are not available right now.</p>
+                  )}
+                </div>
+              </>
+            ) : settingsError ? (
+              <p className="admin__empty">{settingsError}</p>
+            ) : (
+              <p className="admin__empty">Safety thresholds are not available right now.</p>
+            )}
+          </section>
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>NSFW rescan</h3>
+              <p>Re-run the on-upload checks across existing LoRAs and gallery images.</p>
+            </div>
+            <div className="admin__form-actions admin__form-actions--inline">
+              <button
+                type="button"
+                className="button button--primary"
+                onClick={() => {
+                  void handleTriggerNsfwRescan();
+                }}
+                disabled={isRescanningNsfw}
+              >
+                {isRescanningNsfw ? 'Rescanning…' : 'Rescan catalog'}
+              </button>
+            </div>
+            {nsfwRescanSummary ? (
+              <div className="nsfw-rescan-summary">
+                <table className="admin__table nsfw-rescan-summary__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Category</th>
+                      <th scope="col">Scanned</th>
+                      <th scope="col">Adult ↑</th>
+                      <th scope="col">Adult ↓</th>
+                      <th scope="col">Flagged</th>
+                      <th scope="col">Unflagged</th>
+                      <th scope="col">Errors</th>
+                      <th scope="col">Analysis failures</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nsfwRescanSummary.models ? (
+                      <tr>
+                        <th scope="row">Models</th>
+                        <td>{nsfwRescanSummary.models.scanned}</td>
+                        <td>{nsfwRescanSummary.models.adultMarked}</td>
+                        <td>{nsfwRescanSummary.models.adultCleared}</td>
+                        <td>{nsfwRescanSummary.models.flagged}</td>
+                        <td>{nsfwRescanSummary.models.unflagged}</td>
+                        <td>{nsfwRescanSummary.models.errors}</td>
+                        <td>—</td>
+                      </tr>
+                    ) : null}
+                    {nsfwRescanSummary.images ? (
+                      <tr>
+                        <th scope="row">Images</th>
+                        <td>{nsfwRescanSummary.images.scanned}</td>
+                        <td>{nsfwRescanSummary.images.adultMarked}</td>
+                        <td>{nsfwRescanSummary.images.adultCleared}</td>
+                        <td>{nsfwRescanSummary.images.flagged}</td>
+                        <td>{nsfwRescanSummary.images.unflagged}</td>
+                        <td>{nsfwRescanSummary.images.errors}</td>
+                        <td>{nsfwRescanSummary.images.analysisFailed}</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+                <p className="admin__footnote">
+                  Summary reflects the most recent rescan triggered from this session.
+                </p>
+              </div>
+            ) : (
+              <p className="admin__footnote">No NSFW rescan has run in this session.</p>
+            )}
+          </section>
           <section className="admin__section">
             <div className="admin__section-intro">
               <h3>Adult prompt keywords</h3>
@@ -2591,9 +3003,6 @@ export const AdminPanel = ({
             </div>
             {adultKeywordError ? (
               <p className="admin__status admin__status--error" role="alert">{adultKeywordError}</p>
-            ) : null}
-            {status && status.message && activeTab === 'safety' ? (
-              <p className={`admin__status admin__status--${status.type}`} role="status">{status.message}</p>
             ) : null}
             <form
               className="adult-keyword-form"

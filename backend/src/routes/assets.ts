@@ -17,6 +17,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
+import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { getAdultKeywordLabels } from '../lib/adult-keywords';
@@ -37,6 +38,7 @@ import {
   type ImageModerationSummary,
 } from '../lib/nsfw-open-cv';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
+import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 
 type ModerationReportSource = ImageModerationReport & {
   reporter: Pick<User, 'id' | 'displayName' | 'email'>;
@@ -1654,6 +1656,8 @@ assetsRouter.post(
         return;
       }
 
+      const previewImageAnalysis = await runNsfwImageAnalysis(previewFile.buffer, { priority: 'high' });
+
       let previewMetadataPayload: Prisma.JsonObject | null = null;
       let previewModerationSummary: ImageModerationSummary | null = null;
       try {
@@ -1679,6 +1683,7 @@ assetsRouter.post(
           owner: { select: { id: true, displayName: true, email: true } },
           tags: { include: { tag: true } },
           versions: { orderBy: { createdAt: 'desc' } },
+          flaggedBy: { select: { id: true, displayName: true, email: true } },
         },
       });
 
@@ -1732,13 +1737,32 @@ assetsRouter.post(
 
       const checksum = crypto.createHash('sha256').update(modelFile.buffer).digest('hex');
       const extractedMetadata = extractModelMetadataFromFile(modelFile);
+      const previewAnalysisPayload = previewImageAnalysis ? toJsonImageAnalysis(previewImageAnalysis) : null;
+
       const metadataPayload: Prisma.JsonObject = {
         originalFileName: modelFile.originalname,
         checksum,
       };
 
+      if (previewAnalysisPayload) {
+        metadataPayload.nsfwImageAnalysis = previewAnalysisPayload;
+      }
+
+      const metadataScreening = extractedMetadata?.nsfwMetadata ?? null;
+
       if (previewMetadataPayload) {
+        if (previewAnalysisPayload) {
+          const nsfwPayload = ((previewMetadataPayload.nsfw as Prisma.JsonObject | undefined) ?? {}) as Prisma.JsonObject;
+          nsfwPayload.imageAnalysis = previewAnalysisPayload;
+          previewMetadataPayload.nsfw = nsfwPayload;
+        }
         metadataPayload.preview = previewMetadataPayload;
+      } else if (previewAnalysisPayload) {
+        metadataPayload.preview = {
+          nsfw: {
+            imageAnalysis: previewAnalysisPayload,
+          },
+        } as Prisma.JsonObject;
       }
 
       if (previewModerationSummary) {
@@ -1753,6 +1777,24 @@ assetsRouter.post(
         }
         if (extractedMetadata.metadata && typeof extractedMetadata.metadata === 'object') {
           metadataPayload.extracted = extractedMetadata.metadata as Prisma.JsonObject;
+        }
+        if (metadataScreening && metadataScreening.normalized.length > 0) {
+          metadataPayload.nsfw = {
+            normalized: metadataScreening.normalized.map(({ tag, count }) => ({ tag, count })),
+            scores: {
+              adult: metadataScreening.adultScore,
+              minor: metadataScreening.minorScore,
+              beast: metadataScreening.beastScore,
+            },
+            matches: {
+              adult: metadataScreening.matches.adult.map(({ tag, count }) => ({ tag, count })),
+              minor: metadataScreening.matches.minor.map(({ tag, count }) => ({ tag, count })),
+              beast: metadataScreening.matches.beast.map(({ tag, count }) => ({ tag, count })),
+            },
+          } as Prisma.JsonObject;
+          if (previewAnalysisPayload) {
+            (metadataPayload.nsfw as Prisma.JsonObject).imageAnalysis = previewAnalysisPayload;
+          }
         }
       }
 
@@ -1802,6 +1844,7 @@ assetsRouter.post(
               owner: { select: { id: true, displayName: true, email: true } },
               tags: { include: { tag: true } },
               versions: { orderBy: { createdAt: 'desc' } },
+              flaggedBy: { select: { id: true, displayName: true, email: true } },
             },
           });
         });
@@ -1829,7 +1872,7 @@ assetsRouter.post(
         ...versionMetadataList,
       ]);
 
-      const nextIsAdult = determineAdultForModel({
+      const keywordAdult = determineAdultForModel({
         title: updatedAsset.title,
         description: updatedAsset.description,
         trigger: updatedAsset.trigger,
@@ -1840,16 +1883,68 @@ assetsRouter.post(
         moderationSummaries,
       });
 
+      const metadataThresholds = appConfig.nsfw.metadataFilters.thresholds;
+      const metadataAdult = Boolean(
+        metadataScreening &&
+          metadataThresholds.adult > 0 &&
+          metadataScreening.adultScore >= metadataThresholds.adult,
+      );
+      const metadataMinor = Boolean(
+        metadataScreening &&
+          metadataThresholds.minor > 0 &&
+          metadataScreening.minorScore >= metadataThresholds.minor,
+      );
+      const metadataBeast = Boolean(
+        metadataScreening &&
+          metadataThresholds.beast > 0 &&
+          metadataScreening.beastScore >= metadataThresholds.beast,
+      );
+
+      const analysisAdult = Boolean(previewImageAnalysis?.decisions.isAdult);
+
+      const requiresModeration = metadataMinor || metadataBeast;
+      const desiredIsAdult = keywordAdult || metadataAdult || requiresModeration || analysisAdult;
+
+      const updatePayload: Prisma.ModelAssetUpdateInput = {};
+
+      if (updatedAsset.isAdult !== desiredIsAdult) {
+        updatePayload.isAdult = desiredIsAdult;
+      }
+
+      const shouldFlag = requiresModeration && updatedAsset.moderationStatus !== ModerationStatus.FLAGGED;
+
+      if (requiresModeration) {
+        if (shouldFlag) {
+          updatePayload.moderationStatus = ModerationStatus.FLAGGED;
+          updatePayload.flaggedAt = new Date();
+          updatePayload.flaggedBy = { disconnect: true };
+        }
+        if (updatedAsset.isPublic) {
+          updatePayload.isPublic = false;
+        }
+      }
+
       let finalAsset = updatedAsset;
-      if (updatedAsset.isAdult !== nextIsAdult) {
+      if (Object.keys(updatePayload).length > 0) {
         finalAsset = await prisma.modelAsset.update({
           where: { id: updatedAsset.id },
-          data: { isAdult: nextIsAdult },
+          data: updatePayload,
           include: {
             owner: { select: { id: true, displayName: true, email: true } },
             tags: { include: { tag: true } },
             versions: { orderBy: { createdAt: 'desc' } },
+            flaggedBy: { select: { id: true, displayName: true, email: true } },
           },
+        });
+      }
+
+      if (shouldFlag) {
+        await createModerationLogEntry({
+          entityType: ModerationEntityType.MODEL,
+          entityId: finalAsset.id,
+          action: ModerationActionType.FLAGGED,
+          targetUserId: finalAsset.owner.id,
+          message: 'Automatically flagged by NSFW metadata screening.',
         });
       }
 

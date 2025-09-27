@@ -38,6 +38,604 @@ const toBoolean = (value: string | undefined, fallback: boolean): boolean => {
   return fallback;
 };
 
+interface MetadataThresholdConfig {
+  adult: number;
+  minor: number;
+  beast: number;
+}
+
+interface MetadataFilterConfig {
+  adultTerms: string[];
+  minorTerms: string[];
+  bestialityTerms: string[];
+  thresholds: MetadataThresholdConfig;
+}
+
+interface ImageAnalysisThresholdConfig {
+  nudeSkinRatio: number;
+  suggestiveSkinRatio: number;
+  nudeCoverageMax: number;
+  suggestiveCoverageMax: number;
+  reviewMargin: number;
+  torsoPresenceMin: number;
+  hipPresenceMin: number;
+  limbDominanceMax: number;
+  offCenterTolerance: number;
+}
+
+interface ImageAnalysisRuntimeConfig {
+  maxWorkers: number;
+  maxBatchSize: number;
+  queueSoftLimit: number;
+  queueHardLimit: number;
+  maxRetries: number;
+  backoffMs: number;
+  pressureCooldownMs: number;
+  fastModeMaxEdge: number;
+  pressureHeuristicOnly: boolean;
+}
+
+interface ImageAnalysisCnnThresholdConfig {
+  nudeDelta: number;
+  swimwearMin: number;
+  ambiguousDelta: number;
+  reviewDelta: number;
+}
+
+interface ImageAnalysisCnnConfig {
+  enabled: boolean;
+  modelPath: string;
+  inputSize: number;
+  cropExpansion: number;
+  mean: [number, number, number];
+  std: [number, number, number];
+  executionProviders: string[];
+  warmupIterations: number;
+  labels: string[];
+  thresholds: ImageAnalysisCnnThresholdConfig;
+}
+
+interface ImageAnalysisConfig {
+  maxWorkingEdge: number;
+  thresholds: ImageAnalysisThresholdConfig;
+  runtime: ImageAnalysisRuntimeConfig;
+  cnn: ImageAnalysisCnnConfig;
+}
+
+const defaultMetadataFilterConfig: MetadataFilterConfig = {
+  adultTerms: [
+    'nsfw',
+    'nude',
+    'nudity',
+    'naked',
+    'topless',
+    'bottomless',
+    'areola',
+    'nipples',
+    'breasts',
+    'cleavage',
+    'underboob',
+    'sideboob',
+    'panties',
+    'lingerie',
+    'thong',
+    'strip',
+    'masturbation',
+    'sex',
+    'intercourse',
+    'adult',
+    'explicit',
+    'bedroom',
+    'erotic',
+    'sexy',
+    'sensual',
+    'bare',
+    'dominatrix',
+    'bondage',
+    'bdsm',
+    'fetish',
+    'nsfw_lora',
+  ],
+  minorTerms: [
+    'child',
+    'children',
+    'kid',
+    'kiddo',
+    'infant',
+    'toddler',
+    'teen',
+    'teenager',
+    'young_girl',
+    'young_boy',
+    'loli',
+    'shota',
+    'underage',
+    'schoolgirl',
+    'schoolboy',
+  ],
+  bestialityTerms: [
+    'beast',
+    'bestiality',
+    'zoophilia',
+    'animal_sex',
+    'animal_intercourse',
+    'beastman',
+    'beastgirl',
+    'beastboy',
+    'feral_mating',
+    'beastial',
+    'animal_mating',
+  ],
+  thresholds: {
+    adult: 15,
+    minor: 1,
+    beast: 1,
+  },
+};
+
+const defaultImageAnalysisCnnConfig: ImageAnalysisCnnConfig = {
+  enabled: true,
+  modelPath: path.resolve(process.cwd(), 'models/nude_vs_swimwear.onnx'),
+  inputSize: 224,
+  cropExpansion: 0.18,
+  mean: [0.485, 0.456, 0.406],
+  std: [0.229, 0.224, 0.225],
+  executionProviders: ['cpu'],
+  warmupIterations: 1,
+  labels: ['nude', 'swimwear', 'ambiguous'],
+  thresholds: {
+    nudeDelta: 0.2,
+    swimwearMin: 0.45,
+    ambiguousDelta: 0.25,
+    reviewDelta: 0.12,
+  },
+};
+
+const defaultImageAnalysisConfig: ImageAnalysisConfig = {
+  maxWorkingEdge: 1280,
+  thresholds: {
+    nudeSkinRatio: 0.35,
+    suggestiveSkinRatio: 0.2,
+    nudeCoverageMax: 0.12,
+    suggestiveCoverageMax: 0.6,
+    reviewMargin: 0.05,
+    torsoPresenceMin: 0.35,
+    hipPresenceMin: 0.25,
+    limbDominanceMax: 0.45,
+    offCenterTolerance: 0.2,
+  },
+  runtime: {
+    maxWorkers: 2,
+    maxBatchSize: 4,
+    queueSoftLimit: 24,
+    queueHardLimit: 64,
+    maxRetries: 1,
+    backoffMs: 150,
+    pressureCooldownMs: 45000,
+    fastModeMaxEdge: 960,
+    pressureHeuristicOnly: true,
+  },
+  cnn: defaultImageAnalysisCnnConfig,
+};
+
+const resolveConfigPath = (relativePath: string): string | undefined => {
+  const candidates = [
+    path.resolve(process.cwd(), relativePath),
+    path.resolve(process.cwd(), `backend/${relativePath}`),
+    path.resolve(__dirname, `../${relativePath}`),
+    path.resolve(__dirname, `../../${relativePath}`),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed to inspect configuration path "${candidate}": ${(error as Error).message}`);
+    }
+  }
+
+  return undefined;
+};
+
+const sanitizeTermList = (value: unknown, fallback: string[]): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+
+    const trimmed = entry.trim().toLowerCase();
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    normalized.add(trimmed);
+  }
+
+  return normalized.size > 0 ? Array.from(normalized) : fallback;
+};
+
+const sanitizeThreshold = (value: unknown, fallback: number): number => {
+  if (typeof value !== 'number') {
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+    return fallback;
+  }
+
+  if (Number.isNaN(value) || !Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+
+  return Math.floor(value);
+};
+
+const sanitizePercentage = (value: unknown, fallback: number, clampRange: [number, number] = [0, 1]): number => {
+  const [min, max] = clampRange;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      return Math.min(max, Math.max(min, parsed));
+    }
+  }
+
+  return fallback;
+};
+
+const sanitizePositiveInteger = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+};
+
+const sanitizeNonNegativeInteger = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isNaN(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+};
+
+const sanitizeBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+};
+
+const sanitizeNumber = (value: unknown, fallback: number, clampRange?: [number, number]): number => {
+  let numeric: number | null = null;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    numeric = value;
+  } else if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      numeric = parsed;
+    }
+  }
+
+  if (numeric == null) {
+    return fallback;
+  }
+
+  if (clampRange) {
+    const [min, max] = clampRange;
+    return Math.min(max, Math.max(min, numeric));
+  }
+
+  return numeric;
+};
+
+const sanitizeNumberArray = (
+  value: unknown,
+  fallback: number[],
+  clampRange?: [number, number],
+): number[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = fallback.slice();
+  let updated = false;
+
+  for (let i = 0; i < normalized.length && i < value.length; i += 1) {
+    const candidate = sanitizeNumber(value[i], Number.NaN, clampRange);
+    if (!Number.isNaN(candidate)) {
+      normalized[i] = candidate;
+      updated = true;
+    }
+  }
+
+  return updated ? normalized : fallback;
+};
+
+const sanitizeStringArray = (value: unknown, fallback: string[], lowercase = false): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    normalized.add(lowercase ? trimmed.toLowerCase() : trimmed);
+  }
+
+  return normalized.size > 0 ? Array.from(normalized) : fallback;
+};
+
+const sanitizeFilePath = (value: unknown, fallback: string): string => {
+  const candidate = typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
+  const resolved = resolveConfigPath(candidate);
+  if (resolved) {
+    return resolved;
+  }
+
+  return path.isAbsolute(candidate) ? candidate : path.resolve(process.cwd(), candidate);
+};
+
+const loadMetadataFilterConfig = (): MetadataFilterConfig => {
+  const resolvedPath = resolveConfigPath('config/nsfw-metadata-filters.json');
+  if (!resolvedPath) {
+    return defaultMetadataFilterConfig;
+  }
+
+  try {
+    const payload = fs.readFileSync(resolvedPath, 'utf-8');
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    const rawFilters = parsed?.metadataFilters as Record<string, unknown> | undefined;
+
+    if (!rawFilters) {
+      return defaultMetadataFilterConfig;
+    }
+
+    const thresholds = rawFilters.thresholds as Record<string, unknown> | undefined;
+
+    return {
+      adultTerms: sanitizeTermList(rawFilters.adultTerms, defaultMetadataFilterConfig.adultTerms),
+      minorTerms: sanitizeTermList(rawFilters.minorTerms, defaultMetadataFilterConfig.minorTerms),
+      bestialityTerms: sanitizeTermList(
+        rawFilters.bestialityTerms,
+        defaultMetadataFilterConfig.bestialityTerms,
+      ),
+      thresholds: {
+        adult: sanitizeThreshold(thresholds?.adult, defaultMetadataFilterConfig.thresholds.adult),
+        minor: sanitizeThreshold(thresholds?.minor, defaultMetadataFilterConfig.thresholds.minor),
+        beast: sanitizeThreshold(thresholds?.beast, defaultMetadataFilterConfig.thresholds.beast),
+      },
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `Failed to parse NSFW metadata filter configuration at "${resolvedPath}": ${(error as Error).message}`,
+    );
+    return defaultMetadataFilterConfig;
+  }
+};
+
+const loadImageAnalysisConfig = (): ImageAnalysisConfig => {
+  const resolvedPath = resolveConfigPath('config/nsfw-image-analysis.json');
+  if (!resolvedPath) {
+    return defaultImageAnalysisConfig;
+  }
+
+  try {
+    const payload = fs.readFileSync(resolvedPath, 'utf-8');
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    const rawConfig = parsed?.imageAnalysis as Record<string, unknown> | undefined;
+    if (!rawConfig) {
+      return defaultImageAnalysisConfig;
+    }
+
+    const thresholds = rawConfig.thresholds as Record<string, unknown> | undefined;
+    const runtime = rawConfig.runtime as Record<string, unknown> | undefined;
+    const cnn = rawConfig.cnn as Record<string, unknown> | undefined;
+    const cnnThresholds = cnn?.thresholds as Record<string, unknown> | undefined;
+
+    const cnnLabels = sanitizeStringArray(cnn?.labels, defaultImageAnalysisConfig.cnn.labels, true);
+    const requiredLabels = defaultImageAnalysisConfig.cnn.labels;
+    const labelSet = new Set<string>(cnnLabels);
+    for (const label of requiredLabels) {
+      if (!labelSet.has(label)) {
+        cnnLabels.push(label);
+        labelSet.add(label);
+      }
+    }
+
+    return {
+      maxWorkingEdge: sanitizePositiveInteger(
+        rawConfig.maxWorkingEdge,
+        defaultImageAnalysisConfig.maxWorkingEdge,
+      ),
+      thresholds: {
+        nudeSkinRatio: sanitizePercentage(
+          thresholds?.nudeSkinRatio,
+          defaultImageAnalysisConfig.thresholds.nudeSkinRatio,
+        ),
+        suggestiveSkinRatio: sanitizePercentage(
+          thresholds?.suggestiveSkinRatio,
+          defaultImageAnalysisConfig.thresholds.suggestiveSkinRatio,
+        ),
+        nudeCoverageMax: sanitizePercentage(
+          thresholds?.nudeCoverageMax,
+          defaultImageAnalysisConfig.thresholds.nudeCoverageMax,
+        ),
+        suggestiveCoverageMax: sanitizePercentage(
+          thresholds?.suggestiveCoverageMax,
+          defaultImageAnalysisConfig.thresholds.suggestiveCoverageMax,
+        ),
+        reviewMargin: sanitizePercentage(
+          thresholds?.reviewMargin,
+          defaultImageAnalysisConfig.thresholds.reviewMargin,
+          [0, 0.25],
+        ),
+        torsoPresenceMin: sanitizePercentage(
+          thresholds?.torsoPresenceMin,
+          defaultImageAnalysisConfig.thresholds.torsoPresenceMin,
+        ),
+        hipPresenceMin: sanitizePercentage(
+          thresholds?.hipPresenceMin,
+          defaultImageAnalysisConfig.thresholds.hipPresenceMin,
+        ),
+        limbDominanceMax: sanitizePercentage(
+          thresholds?.limbDominanceMax,
+          defaultImageAnalysisConfig.thresholds.limbDominanceMax,
+        ),
+        offCenterTolerance: sanitizePercentage(
+          thresholds?.offCenterTolerance,
+          defaultImageAnalysisConfig.thresholds.offCenterTolerance,
+          [0, 0.5],
+        ),
+      },
+      runtime: {
+        maxWorkers: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.maxWorkers, defaultImageAnalysisConfig.runtime.maxWorkers),
+        ),
+        maxBatchSize: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.maxBatchSize, defaultImageAnalysisConfig.runtime.maxBatchSize),
+        ),
+        queueSoftLimit: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.queueSoftLimit, defaultImageAnalysisConfig.runtime.queueSoftLimit),
+        ),
+        queueHardLimit: Math.max(
+          1,
+          sanitizePositiveInteger(runtime?.queueHardLimit, defaultImageAnalysisConfig.runtime.queueHardLimit),
+        ),
+        maxRetries: sanitizeNonNegativeInteger(
+          runtime?.maxRetries,
+          defaultImageAnalysisConfig.runtime.maxRetries,
+        ),
+        backoffMs: sanitizeNonNegativeInteger(
+          runtime?.backoffMs,
+          defaultImageAnalysisConfig.runtime.backoffMs,
+        ),
+        pressureCooldownMs: sanitizeNonNegativeInteger(
+          runtime?.pressureCooldownMs,
+          defaultImageAnalysisConfig.runtime.pressureCooldownMs,
+        ),
+        fastModeMaxEdge: sanitizePositiveInteger(
+          runtime?.fastModeMaxEdge,
+          defaultImageAnalysisConfig.runtime.fastModeMaxEdge,
+        ),
+        pressureHeuristicOnly: sanitizeBoolean(
+          runtime?.pressureHeuristicOnly,
+          defaultImageAnalysisConfig.runtime.pressureHeuristicOnly,
+        ),
+      },
+      cnn: {
+        enabled: sanitizeBoolean(cnn?.enabled, defaultImageAnalysisConfig.cnn.enabled),
+        modelPath: sanitizeFilePath(cnn?.modelPath, defaultImageAnalysisConfig.cnn.modelPath),
+        inputSize: Math.max(
+          32,
+          sanitizePositiveInteger(cnn?.inputSize, defaultImageAnalysisConfig.cnn.inputSize),
+        ),
+        cropExpansion: sanitizePercentage(
+          cnn?.cropExpansion,
+          defaultImageAnalysisConfig.cnn.cropExpansion,
+          [0, 0.5],
+        ),
+        mean: sanitizeNumberArray(cnn?.mean, defaultImageAnalysisConfig.cnn.mean, [0, 1]) as [
+          number,
+          number,
+          number,
+        ],
+        std: sanitizeNumberArray(cnn?.std, defaultImageAnalysisConfig.cnn.std, [0.01, 1]) as [
+          number,
+          number,
+          number,
+        ],
+        executionProviders: sanitizeStringArray(
+          cnn?.executionProviders,
+          defaultImageAnalysisConfig.cnn.executionProviders,
+        ),
+        warmupIterations: Math.max(
+          0,
+          sanitizeNonNegativeInteger(
+            cnn?.warmupIterations,
+            defaultImageAnalysisConfig.cnn.warmupIterations,
+          ),
+        ),
+        labels: cnnLabels,
+        thresholds: {
+          nudeDelta: sanitizeNumber(
+            cnnThresholds?.nudeDelta,
+            defaultImageAnalysisConfig.cnn.thresholds.nudeDelta,
+            [0, 1],
+          ),
+          swimwearMin: sanitizePercentage(
+            cnnThresholds?.swimwearMin,
+            defaultImageAnalysisConfig.cnn.thresholds.swimwearMin,
+          ),
+          ambiguousDelta: sanitizePercentage(
+            cnnThresholds?.ambiguousDelta,
+            defaultImageAnalysisConfig.cnn.thresholds.ambiguousDelta,
+          ),
+          reviewDelta: sanitizePercentage(
+            cnnThresholds?.reviewDelta,
+            defaultImageAnalysisConfig.cnn.thresholds.reviewDelta,
+          ),
+        },
+      },
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `Failed to parse NSFW image analysis configuration at "${resolvedPath}": ${(error as Error).message}`,
+    );
+    return defaultImageAnalysisConfig;
+  }
+};
+
 const requireString = (value: string | undefined, key: string, fallback?: string): string => {
   if (value && value.trim().length > 0) {
     return value.trim();
@@ -284,6 +882,8 @@ const parsedWorkflowParameterBindings = parseWorkflowParameterBindings(process.e
 const workflowParameterBindings =
   parsedWorkflowParameterBindings.length > 0 ? parsedWorkflowParameterBindings : defaultWorkflowParameterBindings;
 const workflowOverrides = parseWorkflowOverrides(process.env.GENERATOR_WORKFLOW_OVERRIDES);
+const metadataFilterConfig = loadMetadataFilterConfig();
+const imageAnalysisConfig = loadImageAnalysisConfig();
 
 const deriveMinioPublicUrl = () => {
   const explicitUrl = process.env.MINIO_PUBLIC_URL;
@@ -370,5 +970,9 @@ export const appConfig = {
     callbacks: {
       baseUrl: deriveGeneratorCallbackBaseUrl(),
     },
+  },
+  nsfw: {
+    metadataFilters: metadataFilterConfig,
+    imageAnalysis: imageAnalysisConfig,
   },
 };

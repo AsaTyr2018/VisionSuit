@@ -443,6 +443,49 @@ export interface AdultSafetyKeyword {
   updatedAt: string;
 }
 
+export interface MetadataThresholdPreviewSample {
+  id: string;
+  title: string;
+  score: number;
+}
+
+export interface MetadataThresholdPreviewCategory {
+  threshold: number;
+  isEnabled: boolean;
+  matchingModelCount: number;
+  sample: MetadataThresholdPreviewSample[];
+}
+
+export interface MetadataThresholdPreview {
+  generatedAt: string;
+  totalModelCount: number;
+  evaluatedModelCount: number;
+  categories: {
+    adult: MetadataThresholdPreviewCategory;
+    minor: MetadataThresholdPreviewCategory;
+    beast: MetadataThresholdPreviewCategory;
+  };
+}
+
+export interface NsfwRescanStats {
+  scanned: number;
+  adultMarked: number;
+  adultCleared: number;
+  flagged: number;
+  unflagged: number;
+  errors: number;
+}
+
+export interface NsfwImageRescanStats extends NsfwRescanStats {
+  analysisFailed: number;
+}
+
+export interface NsfwRescanSummary {
+  target: 'all' | 'models' | 'images';
+  models?: NsfwRescanStats;
+  images?: NsfwImageRescanStats;
+}
+
 export interface MetaStats {
   modelCount: number;
   imageCount: number;
@@ -495,9 +538,20 @@ export interface AdminSettingsConnections {
   publicDomain: string;
 }
 
+export interface AdminSettingsSafetyMetadataThresholds {
+  adult: number;
+  minor: number;
+  beast: number;
+}
+
+export interface AdminSettingsSafety {
+  metadataThresholds: AdminSettingsSafetyMetadataThresholds;
+}
+
 export interface AdminSettings {
   general: AdminSettingsGeneral;
   connections: AdminSettingsConnections;
+  safety: AdminSettingsSafety;
 }
 
 export interface AdminSettingsResponse {
