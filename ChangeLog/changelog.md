@@ -1,3 +1,8 @@
+## 041 – [Standard Change] Trigger enforcement & flagged asset privacy
+- **Type**: Standard Change
+- **Reason**: Align moderation-critical behaviours with documented expectations by enforcing trigger keywords during edits and keeping flagged assets private to moderators and owners.
+- **Change**: Required trigger values throughout the edit flow, tightened backend validation, introduced viewer-aware moderation visibility helpers, filtered explorers and profiles to hide flagged assets from the community, and documented the remediation in the January 14 sanity report follow-up.
+
 ## 040 – [Standard Change] Documentation sanity review refresh
 - **Type**: Standard Change
 - **Reason**: Capture the latest comparison between README claims and the implemented application to guide upcoming documentation or feature adjustments.

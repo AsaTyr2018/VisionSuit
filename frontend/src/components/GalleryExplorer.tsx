@@ -5,7 +5,7 @@ import type { AssetComment, Gallery, ImageAsset, ModelAsset, User } from '../typ
 
 import { api, ApiError } from '../lib/api';
 import { resolveCachedStorageUrl } from '../lib/storage';
-import { isAuditPlaceholderForViewer } from '../lib/moderation';
+import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from '../lib/moderation';
 
 import { FilterChip } from './FilterChip';
 import { GalleryEditDialog } from './GalleryEditDialog';
@@ -118,16 +118,29 @@ const getGalleryOwner = (gallery: Gallery) => {
   return owner ?? null;
 };
 
-const matchesSearch = (gallery: Gallery, query: string) => {
+const matchesSearch = (gallery: Gallery, query: string, viewer?: User | null) => {
   if (!query) return true;
   const entries = getGalleryEntries(gallery);
+  const visibleEntries = entries.filter((entry) => {
+    const image = entry.imageAsset;
+    if (image && isAuditHiddenFromViewer(image.moderationStatus, image.owner.id, viewer)) {
+      return false;
+    }
+
+    const model = entry.modelAsset;
+    if (model && isAuditHiddenFromViewer(model.moderationStatus, model.owner.id, viewer)) {
+      return false;
+    }
+
+    return true;
+  });
   const owner = getGalleryOwner(gallery);
   const haystack = [
     gallery.title,
     gallery.slug,
     gallery.description ?? '',
     owner?.displayName ?? '',
-    ...entries.flatMap((entry) => {
+    ...visibleEntries.flatMap((entry) => {
       const texts: string[] = [];
       if (entry.modelAsset?.title) texts.push(entry.modelAsset.title);
       if (entry.imageAsset?.title) texts.push(entry.imageAsset.title);
@@ -150,8 +163,16 @@ const matchesSearch = (gallery: Gallery, query: string) => {
   return haystack.includes(query);
 };
 
-const galleryHasImage = (gallery: Gallery) => getGalleryEntries(gallery).some((entry) => Boolean(entry.imageAsset));
-const galleryHasModel = (gallery: Gallery) => getGalleryEntries(gallery).some((entry) => Boolean(entry.modelAsset));
+const galleryHasImage = (gallery: Gallery, viewer?: User | null) =>
+  getGalleryEntries(gallery).some((entry) => {
+    const image = entry.imageAsset;
+    return Boolean(image) && !isAuditHiddenFromViewer(image.moderationStatus, image.owner.id, viewer);
+  });
+const galleryHasModel = (gallery: Gallery, viewer?: User | null) =>
+  getGalleryEntries(gallery).some((entry) => {
+    const model = entry.modelAsset;
+    return Boolean(model) && !isAuditHiddenFromViewer(model.moderationStatus, model.owner.id, viewer);
+  });
 
 const getImageEntries = (gallery: Gallery): GalleryImageEntry[] =>
   getGalleryEntries(gallery)
@@ -189,7 +210,7 @@ const buildSeededIndex = (seed: string, length: number) => {
 
 const selectPreviewImage = (gallery: Gallery, viewer?: User | null) => {
   const imageEntries = getImageEntries(gallery).filter(
-    (entry) => !isAuditPlaceholderForViewer(entry.image.moderationStatus, entry.image.owner.id, viewer),
+    (entry) => !isAuditHiddenFromViewer(entry.image.moderationStatus, entry.image.owner.id, viewer),
   );
   if (imageEntries.length === 0) {
     return null;
@@ -280,15 +301,15 @@ export const GalleryExplorer = ({
   const filteredGalleries = useMemo(() => {
     const filtered = galleries.filter((gallery) => {
       const entries = getGalleryEntries(gallery);
-      if (!matchesSearch(gallery, normalizedQuery)) return false;
+      if (!matchesSearch(gallery, normalizedQuery, currentUser)) return false;
 
       if (visibility !== 'all' && gallery.isPublic !== (visibility === 'public')) return false;
 
       const owner = getGalleryOwner(gallery);
       if (ownerId !== 'all' && owner?.id !== ownerId) return false;
 
-      if (entryFilter === 'with-image' && !galleryHasImage(gallery)) return false;
-      if (entryFilter === 'with-model' && !galleryHasModel(gallery)) return false;
+      if (entryFilter === 'with-image' && !galleryHasImage(gallery, currentUser)) return false;
+      if (entryFilter === 'with-model' && !galleryHasModel(gallery, currentUser)) return false;
       if (entryFilter === 'empty' && entries.length !== 0) return false;
 
       return true;
@@ -302,7 +323,7 @@ export const GalleryExplorer = ({
     };
 
     return filtered.sort(sorters[sortOption]);
-  }, [entryFilter, galleries, normalizedQuery, ownerId, sortOption, visibility]);
+  }, [currentUser, entryFilter, galleries, normalizedQuery, ownerId, sortOption, visibility]);
 
   useEffect(() => {
     setVisibleLimit(GALLERY_BATCH_SIZE);
@@ -325,7 +346,15 @@ export const GalleryExplorer = ({
     [activeGalleryId, galleries],
   );
 
-  const activeGalleryImages = useMemo(() => (activeGallery ? getImageEntries(activeGallery) : []), [activeGallery]);
+  const activeGalleryImages = useMemo(
+    () =>
+      activeGallery
+        ? getImageEntries(activeGallery).filter(
+            (entry) => !isAuditHiddenFromViewer(entry.image.moderationStatus, entry.image.owner.id, currentUser),
+          )
+        : [],
+    [activeGallery, currentUser],
+  );
 
   const activeGalleryModels = useMemo(() => {
     if (!activeGallery) {
@@ -335,11 +364,13 @@ export const GalleryExplorer = ({
     const map = new Map<string, ModelAsset>();
     getGalleryEntries(activeGallery).forEach((entry) => {
       if (entry.modelAsset) {
-        map.set(entry.modelAsset.id, entry.modelAsset);
+        if (!isAuditHiddenFromViewer(entry.modelAsset.moderationStatus, entry.modelAsset.owner.id, currentUser)) {
+          map.set(entry.modelAsset.id, entry.modelAsset);
+        }
       }
     });
     return Array.from(map.values());
-  }, [activeGallery]);
+  }, [activeGallery, currentUser]);
 
   const activeGalleryOwner = useMemo(() => (activeGallery ? getGalleryOwner(activeGallery) : null), [activeGallery]);
   const canLikeImages = useMemo(() => Boolean(authToken && currentUser), [authToken, currentUser]);

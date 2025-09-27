@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { resolveAvatarUrl } from '../lib/avatar';
 import { resolveCachedStorageUrl } from '../lib/storage';
-import { isAuditPlaceholderForViewer } from '../lib/moderation';
+import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from '../lib/moderation';
 import type {
   User,
   UserProfile as UserProfileResponse,
@@ -305,6 +305,16 @@ export const UserProfile = ({
     };
   }, [profile]);
 
+  const visibleModels = useMemo(() => {
+    if (!profile) {
+      return [] as UserProfileModelSummary[];
+    }
+
+    return profile.models.filter(
+      (model) => !isAuditHiddenFromViewer(model.moderationStatus, profile.id, viewer),
+    );
+  }, [profile, viewer]);
+
   return (
     <section className="profile-view">
       <header className="profile-view__header">
@@ -420,11 +430,11 @@ export const UserProfile = ({
           <section className="profile-view__section">
             <div className="profile-view__section-heading">
               <h3>Uploaded models</h3>
-              <span className="profile-view__section-count">{profile.models.length}</span>
+              <span className="profile-view__section-count">{visibleModels.length}</span>
             </div>
-            {profile.models.length > 0 ? (
+            {visibleModels.length > 0 ? (
               <div className="profile-view__model-grid" role="list">
-                {profile.models.map((model) =>
+                {visibleModels.map((model) =>
                   renderModelCard(model, {
                     onOpenModel,
                     viewerCanAudit: canAudit,

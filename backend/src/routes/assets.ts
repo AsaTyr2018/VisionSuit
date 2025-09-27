@@ -397,19 +397,7 @@ const updateModelSchema = z.object({
 
       return value.length > 0 ? value : null;
     }),
-  trigger: z
-    .string()
-    .trim()
-    .max(180)
-    .nullable()
-    .optional()
-    .transform((value) => {
-      if (value == null) {
-        return null;
-      }
-
-      return value.length > 0 ? value : null;
-    }),
+  trigger: z.string().trim().min(1).max(180).optional(),
   version: z.string().trim().max(80).optional(),
   tags: z.array(z.string()).optional(),
   ownerId: z.string().trim().min(1).optional(),
