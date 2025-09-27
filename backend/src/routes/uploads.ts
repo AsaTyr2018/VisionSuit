@@ -19,8 +19,14 @@ import {
   type ImageMetadataResult,
   type SafetensorsMetadataResult,
 } from '../lib/metadata';
-import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
-import { evaluateImageModeration, evaluateModelModeration } from '../lib/nsfw/moderation';
+import {
+  analyzeImageModeration,
+  serializeModerationSummary,
+  type ImageModerationSummary,
+} from '../lib/nsfw-open-cv';
+import { runImageModerationWorkflow } from '../lib/nsfw/workflow';
+import { toJsonImageAnalysis } from '../lib/nsfw/service';
+import { evaluateModelModeration } from '../lib/nsfw/moderation';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -656,34 +662,35 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           imageMetadataPayload.extras = metadata.extras as Prisma.JsonObject;
         }
 
-        const imageAnalysis = await runNsfwImageAnalysis(source.buffer, { priority: 'normal' });
-        if (imageAnalysis) {
-          imageMetadataPayload.nsfwImageAnalysis = toJsonImageAnalysis(imageAnalysis);
-        }
-
-        const metadataList: Prisma.JsonValue[] = [];
         const resolvedMetadata = Object.keys(imageMetadataPayload).length > 0 ? imageMetadataPayload : null;
 
+        const metadataList: Prisma.JsonValue[] = [];
         if (resolvedMetadata) {
           metadataList.push(resolvedMetadata);
         }
 
-        const imageModeration = evaluateImageModeration({
-
-          title,
-          description: payload.description ?? null,
-          prompt: metadata?.prompt ?? null,
-          negativePrompt: metadata?.negativePrompt ?? null,
-          model: metadata?.model ?? null,
-          sampler: metadata?.sampler ?? null,
-          metadata: resolvedMetadata,
-          metadataList,
-          tags: assignedTags.map((tag) => ({ tag })),
+        const workflow = await runImageModerationWorkflow({
+          buffer: source.buffer,
           adultKeywords,
-          analysis: imageAnalysis,
+          existingSummary: entry.moderationSummary ?? null,
+          context: {
+            title,
+            description: payload.description ?? null,
+            prompt: metadata?.prompt ?? null,
+            negativePrompt: metadata?.negativePrompt ?? null,
+            model: metadata?.model ?? null,
+            sampler: metadata?.sampler ?? null,
+            metadata: resolvedMetadata,
+            metadataList,
+            tags: assignedTags.map((tag) => ({ tag })),
+          },
         });
 
-        const imageAdultFinal = imageModeration.isAdult;
+        if (workflow.analysis) {
+          imageMetadataPayload.nsfwImageAnalysis = toJsonImageAnalysis(workflow.analysis);
+        }
+
+        const imageAdultFinal = workflow.decision.isAdult;
 
         const imageData: Prisma.ImageAssetCreateInput = {
           title,
@@ -699,7 +706,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           sampler: metadata?.sampler ?? null,
           cfgScale: metadata?.cfgScale ?? null,
           steps: metadata?.steps ?? null,
-          isPublic: imageModeration.requiresModeration ? false : payload.visibility === 'public',
+          isPublic: workflow.decision.requiresModeration ? false : payload.visibility === 'public',
           isAdult: imageAdultFinal,
           owner: { connect: { id: actor.id } },
           tags: {
@@ -707,7 +714,11 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           },
         };
 
-        if (imageModeration.requiresModeration) {
+        if (workflow.serializedSummary) {
+          imageData.moderationSummary = workflow.serializedSummary;
+        }
+
+        if (workflow.decision.requiresModeration) {
           imageData.moderationStatus = ModerationStatus.FLAGGED;
           imageData.flaggedAt = new Date();
         }

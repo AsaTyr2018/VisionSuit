@@ -119,6 +119,28 @@ interface ImageAnalysisSummary {
 }
 
 const ANALYSIS_ADULT_SCORE_THRESHOLD = 0.75;
+const MODERATION_ADULT_SCORE_THRESHOLD = 0.78;
+
+const hasAdultSignalFromModeration = (summary: ImageModerationSummary | null | undefined) => {
+  if (!summary) {
+    return false;
+  }
+
+  if (summary.classification === 'NUDE') {
+    return true;
+  }
+
+  if (summary.adultScore >= MODERATION_ADULT_SCORE_THRESHOLD) {
+    return true;
+  }
+
+  if (summary.classification === 'BORDERLINE') {
+    const highSkin = summary.skinRatio >= 0.55 || summary.torsoSkinRatio >= 0.6;
+    return highSkin && summary.adultScore >= 0.6;
+  }
+
+  return false;
+};
 
 const toBooleanOrNull = (value: unknown): boolean | null => {
   if (typeof value === 'boolean') {
@@ -304,6 +326,7 @@ export const determineAdultForImage = (input: {
     decisions?: { isAdult?: boolean; isSuggestive?: boolean; needsReview?: boolean };
     scores?: { adult?: number; suggestive?: number };
   };
+  moderation?: ImageModerationSummary | null;
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
@@ -324,8 +347,9 @@ export const determineAdultForImage = (input: {
   const analysisSummary = resolveImageAnalysisSummary(input.imageAnalysis, metadataSources);
   const adultFromAnalysis = Boolean(analysisSummary?.isAdult) ||
     (analysisSummary?.adultScore != null && analysisSummary.adultScore >= ANALYSIS_ADULT_SCORE_THRESHOLD);
+  const adultFromModeration = hasAdultSignalFromModeration(input.moderation ?? null);
 
-  return adultFromTexts || adultFromTags || adultFromAnalysis;
+  return adultFromTexts || adultFromTags || adultFromAnalysis || adultFromModeration;
 };
 
 export const determineAdultForModel = (input: {

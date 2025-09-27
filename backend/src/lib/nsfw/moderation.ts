@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 
 import { appConfig } from '../../config';
 import { determineAdultForImage, determineAdultForModel } from '../adult-content';
+import type { ImageModerationSummary } from '../nsfw-open-cv';
 import type { MetadataEvaluationResult } from './metadata';
 import { evaluateLoRaMetadata } from './metadata';
 import type { ImageAnalysisResult } from './imageAnalysis';
@@ -212,6 +213,7 @@ export interface ImageModerationContext {
   adultKeywords: string[];
   analysis?: ImageAnalysisResult | null;
   additionalTexts?: string[];
+  moderation?: ImageModerationSummary | null;
 }
 
 export interface ImageModerationDecision {
@@ -249,6 +251,7 @@ export const evaluateImageModeration = (
     adultKeywords: context.adultKeywords,
     additionalTexts,
     ...analysisInput,
+    moderation: context.moderation ?? null,
   });
 
   const analysisAdult = Boolean(context.analysis?.decisions?.isAdult);

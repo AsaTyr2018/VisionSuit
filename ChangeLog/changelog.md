@@ -1271,4 +1271,9 @@
 - **Reason**: The backend crashed on startup because `prisma.imageAsset.findMany` attempted to include the scalar `moderationSummary` field as a relation, triggering a PrismaClientValidationError.
 - **Changes**: Updated `backend/src/routes/assets.ts` to stop including `moderationSummary` via `buildImageInclude`, allowing Prisma to hydrate the scalar field without throwing during image queries.
 
+## 220 – [Enhancement] Centralized NSFW moderation workflow
+- **Type**: Normal Change
+- **Reason**: OpenCV heuristics ran in isolated spots, leaving gallery uploads, generator imports, and rescan jobs out of sync and preventing legacy images from storing moderation summaries or triggering automatic flags.
+- **Changes**: Introduced a reusable NSFW workflow helper that fans buffers through the scheduler-backed analyzer and OpenCV heuristics, updated uploads, generator imports, and the `/api/safety/nsfw/rescan` route to persist moderation summaries and reuse the shared decisions, locked generator imports when minor/bestiality cues appear, refreshed README highlights, and documented the rollout in this changelog.
+
 

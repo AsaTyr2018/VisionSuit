@@ -1,4 +1,4 @@
-import { Prisma, GeneratorAccessMode } from '@prisma/client';
+import { Prisma, GeneratorAccessMode, ModerationStatus } from '@prisma/client';
 import type { GeneratorQueueState } from '@prisma/client';
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
@@ -7,7 +7,6 @@ import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 
 import { appConfig } from '../config';
-import { determineAdultForImage } from '../lib/adult-content';
 import { getAdultKeywordLabels } from '../lib/adult-keywords';
 import { extractImageMetadata } from '../lib/metadata';
 import {
@@ -16,6 +15,8 @@ import {
   serializeModerationSummary,
   type ImageModerationSummary,
 } from '../lib/nsfw-open-cv';
+import { evaluateImageModeration } from '../lib/nsfw/moderation';
+import { runImageModerationWorkflow } from '../lib/nsfw/workflow';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { mapModelAsset, type HydratedModelAsset } from '../lib/mappers/model';
@@ -2403,27 +2404,55 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
       ? [(imageMetadata.extras as unknown) as Prisma.JsonValue]
       : [];
 
+    let workflow: Awaited<ReturnType<typeof runImageModerationWorkflow>> | null = null;
+    if (objectBuffer) {
+      workflow = await runImageModerationWorkflow({
+        buffer: objectBuffer,
+        adultKeywords,
+        existingSummary: moderationSummary,
+        context: {
+          title: finalTitle,
+          description: null,
+          prompt: promptValue,
+          negativePrompt: negativePromptValue,
+          model: modelValue,
+          sampler: samplerValue,
+          metadata: null,
+          metadataList,
+          tags: [],
+          additionalTexts,
+        },
+      });
+    }
+
     const moderation =
+      workflow?.summary ??
       moderationSummary ??
       (imageMetadata?.extras
         ? normalizeModerationSummary((imageMetadata.extras as unknown) as Prisma.JsonValue)
         : null);
-    const serializedModeration = moderation ? serializeModerationSummary(moderation) : null;
+    const serializedModeration =
+      workflow?.serializedSummary ?? (moderation ? serializeModerationSummary(moderation) : null);
 
-    const isAdult = determineAdultForImage({
-      title: finalTitle,
-      description: null,
-      prompt: promptValue,
-      negativePrompt: negativePromptValue,
-      model: modelValue,
-      sampler: samplerValue,
-      metadata: null,
-      metadataList,
-      additionalTexts,
-      tags: [],
-      adultKeywords,
-      moderation,
-    });
+    const decision = workflow?.decision ??
+      evaluateImageModeration({
+        title: finalTitle,
+        description: null,
+        prompt: promptValue,
+        negativePrompt: negativePromptValue,
+        model: modelValue,
+        sampler: samplerValue,
+        metadata: null,
+        metadataList,
+        tags: [],
+        adultKeywords,
+        analysis: workflow?.analysis ?? null,
+        moderation,
+        additionalTexts,
+      });
+
+    const isAdult = decision.isAdult;
+    const requiresModeration = decision.requiresModeration;
 
     const galleryDescription = payload.galleryDescription ?? null;
     const galleryVisibility = payload.galleryVisibility === 'public' ? 'public' : 'private';
@@ -2477,26 +2506,36 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
         orderBy: { position: 'desc' },
       });
 
+      const imageData: Prisma.ImageAssetCreateInput = {
+        title: finalTitle,
+        description: null,
+        width: widthValue,
+        height: heightValue,
+        ...(fileSize != null ? { fileSize } : {}),
+        storagePath,
+        prompt: promptValue,
+        negativePrompt: negativePromptValue,
+        seed: seedValue,
+        model: modelValue,
+        sampler: samplerValue,
+        cfgScale: cfgScaleValue,
+        steps: stepsValue,
+        isPublic: requiresModeration ? false : activeGallery.isPublic,
+        isAdult,
+        owner: { connect: { id: ownerId } },
+      };
+
+      if (serializedModeration !== null) {
+        imageData.moderationSummary = serializedModeration;
+      }
+
+      if (requiresModeration) {
+        imageData.moderationStatus = ModerationStatus.FLAGGED;
+        imageData.flaggedAt = new Date();
+      }
+
       const image = await tx.imageAsset.create({
-        data: {
-          title: finalTitle,
-          description: null,
-          width: widthValue,
-          height: heightValue,
-          ...(fileSize != null ? { fileSize } : {}),
-          storagePath,
-          prompt: promptValue,
-          negativePrompt: negativePromptValue,
-          seed: seedValue,
-          model: modelValue,
-          sampler: samplerValue,
-          cfgScale: cfgScaleValue,
-          steps: stepsValue,
-          isPublic: activeGallery.isPublic,
-          isAdult,
-          ...(serializedModeration !== null ? { moderationSummary: serializedModeration } : {}),
-          owner: { connect: { id: ownerId } },
-        },
+        data: imageData,
       });
 
       await tx.galleryEntry.create({
