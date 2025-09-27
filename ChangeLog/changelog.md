@@ -1266,4 +1266,9 @@
 - **Reason**: Model uploads attempted to persist OpenCV moderation summaries, but the Prisma schema lacked the `moderationSummary` field on `ModelAsset`, leaving generated clients unaware of the column and blocking writes at runtime.
 - **Changes**: Declared the `moderationSummary` JSON column on the `ModelAsset` model inside `backend/prisma/schema.prisma` and reformatted the schema with `npx prisma format` so Prisma Client exposes the field to the upload pipeline.
 
+## 219 – [Fix] Image moderation summary include correction
+- **Type**: Emergency Change
+- **Reason**: The backend crashed on startup because `prisma.imageAsset.findMany` attempted to include the scalar `moderationSummary` field as a relation, triggering a PrismaClientValidationError.
+- **Changes**: Updated `backend/src/routes/assets.ts` to stop including `moderationSummary` via `buildImageInclude`, allowing Prisma to hydrate the scalar field without throwing during image queries.
+
 

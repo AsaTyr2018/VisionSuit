@@ -73,7 +73,6 @@ const buildImageInclude = (viewerId?: string | null) => ({
   owner: { select: { id: true, displayName: true, email: true } },
   flaggedBy: { select: { id: true, displayName: true, email: true } },
   _count: { select: { likes: true } },
-  moderationSummary: true,
   ...(viewerId
     ? {
         likes: {
