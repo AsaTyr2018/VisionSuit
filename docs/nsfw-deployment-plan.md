@@ -54,7 +54,7 @@ Flag LoRA models that are likely to contain explicit content by examining their 
 ## 2. OpenCV Image Analysis Pipeline
 
 ### Objective
-Analyze uploaded images on-premise and mark explicit content automatically while tolerating swimwear or lingerie that covers primary anatomy.
+Analyze uploaded images on-premise and mark explicit content automatically while tolerating swimwear or lingerie that covers primary anatomy. The production implementation lives in `backend/src/lib/nsfw-open-cv.ts` and runs automatically during uploads and generator imports.
 
 ### Processing Stages
 - [x] **Pre-processing**

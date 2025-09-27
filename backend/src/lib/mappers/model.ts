@@ -10,6 +10,7 @@ export type HydratedModelAsset = ModelAsset & {
   moderationReports?: (ModelModerationReport & {
     reporter: Pick<User, 'id' | 'displayName' | 'email'>;
   })[];
+  moderationSummary?: Prisma.JsonValue | null;
 };
 
 export type MappedModerationReport = {

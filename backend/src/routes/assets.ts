@@ -30,6 +30,13 @@ import {
   type HydratedModelAsset,
   type MappedModerationReport,
 } from '../lib/mappers/model';
+import {
+  analyzeImageModeration,
+  collectModerationSummaries,
+  normalizeModerationSummary,
+  serializeModerationSummary,
+  type ImageModerationSummary,
+} from '../lib/nsfw-open-cv';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 
@@ -44,6 +51,7 @@ type HydratedImageAsset = ImageAsset & {
   _count: { likes: number };
   likes?: { userId: string }[];
   moderationReports?: ModerationReportSource[];
+  moderationSummary?: Prisma.JsonValue | null;
 };
 
 type CommentAuthor = Pick<User, 'id' | 'displayName' | 'avatarUrl' | 'role'>;
@@ -65,6 +73,7 @@ const buildImageInclude = (viewerId?: string | null) => ({
   owner: { select: { id: true, displayName: true, email: true } },
   flaggedBy: { select: { id: true, displayName: true, email: true } },
   _count: { select: { likes: true } },
+  moderationSummary: true,
   ...(viewerId
     ? {
         likes: {
@@ -1650,11 +1659,22 @@ assetsRouter.post(
       const previewImageAnalysis = await runNsfwImageAnalysis(previewFile.buffer, { priority: 'high' });
 
       let previewMetadataPayload: Prisma.JsonObject | null = null;
+      let previewModerationSummary: ImageModerationSummary | null = null;
       try {
         const extracted = await extractImageMetadata(previewFile);
         previewMetadataPayload = toJsonImageMetadata(extracted);
       } catch {
         previewMetadataPayload = null;
+      }
+
+      try {
+        previewModerationSummary = await analyzeImageModeration(previewFile.buffer);
+      } catch (error) {
+        console.warn('Failed to analyze model preview for moderation heuristics.', {
+          modelId: assetId,
+          error,
+        });
+        previewModerationSummary = null;
       }
 
       const asset = await prisma.modelAsset.findUnique({
@@ -1743,6 +1763,10 @@ assetsRouter.post(
             imageAnalysis: previewAnalysisPayload,
           },
         } as Prisma.JsonObject;
+      }
+
+      if (previewModerationSummary) {
+        metadataPayload.moderation = serializeModerationSummary(previewModerationSummary);
       }
 
       if (extractedMetadata) {
@@ -1842,6 +1866,11 @@ assetsRouter.post(
       const versionMetadataList = updatedAsset.versions
         .map((entry) => entry.metadata ?? null)
         .filter((entry): entry is Prisma.JsonValue => entry != null);
+      const moderationSummaries = collectModerationSummaries([
+        updatedAsset.moderationSummary ?? null,
+        updatedAsset.metadata ?? null,
+        ...versionMetadataList,
+      ]);
 
       const keywordAdult = determineAdultForModel({
         title: updatedAsset.title,
@@ -1851,6 +1880,7 @@ assetsRouter.post(
         metadataList: versionMetadataList,
         tags: updatedAsset.tags,
         adultKeywords,
+        moderationSummaries,
       });
 
       const metadataThresholds = appConfig.nsfw.metadataFilters.thresholds;
@@ -1990,7 +2020,7 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCur
       return;
     }
 
-    const updatedAsset = await prisma.$transaction(async (tx) => {
+    const updatedAssetRaw = await prisma.$transaction(async (tx) => {
       if (versionId === asset.id) {
         return tx.modelAsset.update({
           where: { id: asset.id },
@@ -2018,6 +2048,8 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCur
         },
       });
     });
+
+    const updatedAsset = updatedAssetRaw as HydratedModelAsset;
 
     res.json(mapModelAsset(updatedAsset));
   } catch (error) {
@@ -2068,7 +2100,7 @@ assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, r
       return;
     }
 
-    const updatedAsset = await prisma.$transaction(async (tx) => {
+    const updatedAssetRaw = await prisma.$transaction(async (tx) => {
       await tx.modelVersion.update({
         where: { id: targetVersion.id },
         data: {
@@ -2099,6 +2131,8 @@ assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, r
         },
       });
     });
+
+    const updatedAsset = updatedAssetRaw as HydratedModelAsset;
 
     res.json(mapModelAsset(updatedAsset));
   } catch (error) {
@@ -2152,7 +2186,7 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
     const versionStorage = resolveStorageLocation(targetVersion.storagePath);
     const versionPreview = resolveStorageLocation(targetVersion.previewImage);
 
-    const updatedAsset = await prisma.$transaction(async (tx) => {
+    const updatedAssetRaw = await prisma.$transaction(async (tx) => {
       await tx.modelVersion.delete({ where: { id: targetVersion.id } });
 
       if (versionStorage.objectName) {
@@ -2181,6 +2215,8 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
       });
     });
 
+    const updatedAsset = updatedAssetRaw as HydratedModelAsset;
+
     await Promise.all([
       removeStorageObject(versionStorage.bucket, versionStorage.objectName),
       removeStorageObject(versionPreview.bucket, versionPreview.objectName),
@@ -2190,6 +2226,11 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
     const versionMetadataList = updatedAsset.versions
       .map((entry) => entry.metadata ?? null)
       .filter((entry): entry is Prisma.JsonValue => entry != null);
+    const moderationSummaries = collectModerationSummaries([
+      updatedAsset.moderationSummary ?? null,
+      updatedAsset.metadata ?? null,
+      ...versionMetadataList,
+    ]);
 
     const nextIsAdult = determineAdultForModel({
       title: updatedAsset.title,
@@ -2199,6 +2240,7 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
       metadataList: versionMetadataList,
       tags: updatedAsset.tags,
       adultKeywords,
+      moderationSummaries,
     });
 
     let finalAsset = updatedAsset;
@@ -2360,7 +2402,7 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         }
       }
 
-      const updatedAsset = await tx.modelAsset.update({
+      const updatedAsset = (await tx.modelAsset.update({
         where: { id: asset.id },
         data,
         include: {
@@ -2368,12 +2410,17 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
           owner: { select: { id: true, displayName: true, email: true } },
           versions: { orderBy: { createdAt: 'desc' } },
         },
-      });
+      })) as HydratedModelAsset;
 
       const adultKeywords = await getAdultKeywordLabels(tx);
       const versionMetadataList = updatedAsset.versions
         .map((entry) => entry.metadata ?? null)
         .filter((entry): entry is Prisma.JsonValue => entry != null);
+      const moderationSummaries = collectModerationSummaries([
+        updatedAsset.moderationSummary ?? null,
+        updatedAsset.metadata ?? null,
+        ...versionMetadataList,
+      ]);
 
       const nextIsAdult = determineAdultForModel({
         title: updatedAsset.title,
@@ -2383,10 +2430,11 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         metadataList: versionMetadataList,
         tags: updatedAsset.tags,
         adultKeywords,
+        moderationSummaries,
       });
 
       if (updatedAsset.isAdult !== nextIsAdult) {
-        return tx.modelAsset.update({
+        return (await tx.modelAsset.update({
           where: { id: updatedAsset.id },
           data: { isAdult: nextIsAdult },
           include: {
@@ -2394,13 +2442,15 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
             owner: { select: { id: true, displayName: true, email: true } },
             versions: { orderBy: { createdAt: 'desc' } },
           },
-        });
+        })) as HydratedModelAsset;
       }
 
       return updatedAsset;
     });
 
-    res.json(mapModelAsset(updated));
+    const hydrated = updated as HydratedModelAsset;
+
+    res.json(mapModelAsset(hydrated));
   } catch (error) {
     next(error);
   }
@@ -2666,6 +2716,7 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
       }
 
       const metadataInput = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
+      const moderationSummary = normalizeModerationSummary(updatedImage.moderationSummary);
 
       const adultKeywords = await getAdultKeywordLabels(tx);
 
@@ -2679,6 +2730,7 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
         metadata: metadataInput,
         tags: updatedImage.tags,
         adultKeywords,
+        moderation: moderationSummary,
       });
 
       if (updatedImage.isAdult !== nextIsAdult) {

@@ -21,7 +21,6 @@ import {
 } from '../lib/metadata';
 import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 import { evaluateImageModeration, evaluateModelModeration } from '../lib/nsfw/moderation';
-
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -49,6 +48,7 @@ type StoredUploadFile = {
   };
   imageMetadata?: ImageMetadataResult;
   modelMetadata?: SafetensorsMetadataResult | null;
+  moderationSummary?: ImageModerationSummary | null;
 };
 
 const ensureTags = async (tx: Prisma.TransactionClient, tags: string[], category?: string | null) => {
@@ -287,9 +287,18 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         const storageId = crypto.randomUUID();
         const objectName = storageId;
 
-        const [imageMetadata, modelMetadata] = await Promise.all([
+        const [imageMetadata, modelMetadata, moderationSummary] = await Promise.all([
           isImage ? extractImageMetadata(file).catch(() => undefined) : Promise.resolve(undefined),
           !isImage ? Promise.resolve(extractModelMetadataFromFile(file)) : Promise.resolve(null),
+          isImage
+            ? analyzeImageModeration(file.buffer).catch((error) => {
+                console.warn('Failed to analyze image for moderation heuristics.', {
+                  file: file.originalname,
+                  error,
+                });
+                return null;
+              })
+            : Promise.resolve(null),
         ]);
 
         await storageClient.putObject(bucket, objectName, file.buffer, file.size, {
@@ -317,6 +326,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
 
         if (modelMetadata) {
           entry.modelMetadata = modelMetadata;
+        }
+
+        if (moderationSummary) {
+          entry.moderationSummary = moderationSummary;
         }
 
         return entry;
@@ -361,6 +374,9 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
     const previewEntry = storedEntries.find((entry) => entry.isImage);
     const previewStored = previewEntry?.storage ?? null;
     const imageFiles = storedEntries.filter((entry) => entry.isImage);
+    const moderationSummaries = imageFiles
+      .map((entry) => entry.moderationSummary)
+      .filter((entry): entry is ImageModerationSummary => Boolean(entry));
 
     const result = await prisma.$transaction(async (tx) => {
       const gallery = await resolveGallery(
@@ -424,6 +440,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           }
 
           json.metadata = metadata;
+        }
+
+        if (entry.moderationSummary) {
+          json.moderation = serializeModerationSummary(entry.moderationSummary);
         }
 
         return json;
@@ -505,6 +525,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
               imageAnalysis: previewAnalysisPayload,
             },
           } as Prisma.JsonObject;
+        }
+
+        if (previewEntry?.moderationSummary) {
+          modelMetadataPayload.moderation = serializeModerationSummary(previewEntry.moderationSummary);
         }
 
         if (modelEntry?.modelMetadata) {
@@ -645,6 +669,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         }
 
         const imageModeration = evaluateImageModeration({
+
           title,
           description: payload.description ?? null,
           prompt: metadata?.prompt ?? null,

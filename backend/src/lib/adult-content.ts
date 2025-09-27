@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
+import type { ImageModerationSummary } from './nsfw-open-cv';
+
 const BASE_ADULT_PATTERNS: RegExp[] = [
   /\bnsfw\b/i,
   /\bnude(s)?\b/i,
@@ -335,6 +337,7 @@ export const determineAdultForModel = (input: {
   additionalTexts?: string[];
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
   adultKeywords?: string[];
+  moderationSummaries?: ImageModerationSummary[];
 }) => {
   const adultKeywords = normalizeKeywords(input.adultKeywords ?? []);
   const metadataSources = [input.metadata, ...(input.metadataList ?? [])];
@@ -349,6 +352,9 @@ export const determineAdultForModel = (input: {
   ], adultKeywords);
 
   const adultFromTags = hasAdultSignalFromTags(input.tags, adultKeywords);
+  const adultFromModeration = (input.moderationSummaries ?? []).some((summary) =>
+    hasAdultSignalFromModeration(summary),
+  );
 
-  return adultFromTexts || adultFromTags;
+  return adultFromTexts || adultFromTags || adultFromModeration;
 };
