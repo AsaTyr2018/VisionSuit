@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – [Fix] NSFW decoder dependency swap
+- **Type**: Emergency Change
+- **Reason**: Backend startup failed because the NSFW image analysis required the `pngjs` module, which was absent in new installs and broke the launch sequence.
+- **Change**: Replaced the PNG decoder with `upng-js`, updated dependency manifests, and refreshed the synthetic test fixture so the analyzer no longer depends on `pngjs`.
+
 ## 032 – [Addition] NSFW image ingestion signals
 - **Type**: Normal Change
 - **Reason**: The moderation roadmap called for automatic adult tagging beyond keyword scans so that explicit previews and gallery uploads are caught even when creators avoid sensitive terms.
