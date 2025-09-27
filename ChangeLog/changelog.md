@@ -1,3 +1,8 @@
+## 042 – [Standard Change] Comprehensive project audit
+- **Type**: Standard Change
+- **Reason**: Document the current state of VisionSuit by comparing implementation details with published guidance to surface gaps, risks, and next steps.
+- **Change**: Added the 2025-09-27 project audit report capturing architecture alignment, documentation gaps, high-impact risks, and remediation recommendations, and linked the latest audits from the README for easy discovery.
+
 ## 041 – [Standard Change] Trigger enforcement & flagged asset privacy
 - **Type**: Standard Change
 - **Reason**: Align moderation-critical behaviours with documented expectations by enforcing trigger keywords during edits and keeping flagged assets private to moderators and owners.
