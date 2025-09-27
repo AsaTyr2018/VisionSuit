@@ -16,6 +16,7 @@ Flag LoRA models that are likely to contain explicit content by examining their 
 - [ ] **Metadata Extraction**
   - [ ] Extend the backend ingestion worker so that LoRA uploads normalize the two frequency tables into a canonical lowercase key/value array (`tag` → `count`).
   - [ ] Persist the normalized arrays in the LoRA metadata JSON for re-use by moderation tooling and search.
+  - [x] Introduce reusable normalization helpers (`backend/src/lib/nsfw/metadata.ts`) to merge safetensor tables ahead of wiring them into the ingestion worker.
 - [ ] **Heuristic Evaluation**
   - [ ] Iterate over the normalized tag list and compute:
     - [ ] `adultScore = Σ count(tag) for tag ∈ NSFW_FILTER_TERMS`.
@@ -28,7 +29,7 @@ Flag LoRA models that are likely to contain explicit content by examining their 
   - [ ] Otherwise leave `adult=false` and let downstream checks (image previews, user flags) provide additional signals.
 
 ### Default Filter Lists
-- [ ] Store these seed lists as JSON under `config/nsfw-metadata-filters.json` so administrators can tune them in the UI.
+- [x] Store these seed lists as JSON under `config/nsfw-metadata-filters.json` so administrators can tune them in the UI.
 
 **NSFW_FILTER_TERMS**
 ```

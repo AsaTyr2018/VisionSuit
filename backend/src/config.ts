@@ -38,6 +38,191 @@ const toBoolean = (value: string | undefined, fallback: boolean): boolean => {
   return fallback;
 };
 
+interface MetadataThresholdConfig {
+  adult: number;
+  minor: number;
+  beast: number;
+}
+
+interface MetadataFilterConfig {
+  adultTerms: string[];
+  minorTerms: string[];
+  bestialityTerms: string[];
+  thresholds: MetadataThresholdConfig;
+}
+
+const defaultMetadataFilterConfig: MetadataFilterConfig = {
+  adultTerms: [
+    'nsfw',
+    'nude',
+    'nudity',
+    'naked',
+    'topless',
+    'bottomless',
+    'areola',
+    'nipples',
+    'breasts',
+    'cleavage',
+    'underboob',
+    'sideboob',
+    'panties',
+    'lingerie',
+    'thong',
+    'strip',
+    'masturbation',
+    'sex',
+    'intercourse',
+    'adult',
+    'explicit',
+    'bedroom',
+    'erotic',
+    'sexy',
+    'sensual',
+    'bare',
+    'dominatrix',
+    'bondage',
+    'bdsm',
+    'fetish',
+    'nsfw_lora',
+  ],
+  minorTerms: [
+    'child',
+    'children',
+    'kid',
+    'kiddo',
+    'infant',
+    'toddler',
+    'teen',
+    'teenager',
+    'young_girl',
+    'young_boy',
+    'loli',
+    'shota',
+    'underage',
+    'schoolgirl',
+    'schoolboy',
+  ],
+  bestialityTerms: [
+    'beast',
+    'bestiality',
+    'zoophilia',
+    'animal_sex',
+    'animal_intercourse',
+    'beastman',
+    'beastgirl',
+    'beastboy',
+    'feral_mating',
+    'beastial',
+    'animal_mating',
+  ],
+  thresholds: {
+    adult: 15,
+    minor: 1,
+    beast: 1,
+  },
+};
+
+const resolveConfigPath = (relativePath: string): string | undefined => {
+  const candidates = [
+    path.resolve(process.cwd(), relativePath),
+    path.resolve(process.cwd(), `backend/${relativePath}`),
+    path.resolve(__dirname, `../${relativePath}`),
+    path.resolve(__dirname, `../../${relativePath}`),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed to inspect configuration path "${candidate}": ${(error as Error).message}`);
+    }
+  }
+
+  return undefined;
+};
+
+const sanitizeTermList = (value: unknown, fallback: string[]): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+
+  const normalized = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== 'string') {
+      continue;
+    }
+
+    const trimmed = entry.trim().toLowerCase();
+    if (trimmed.length === 0) {
+      continue;
+    }
+
+    normalized.add(trimmed);
+  }
+
+  return normalized.size > 0 ? Array.from(normalized) : fallback;
+};
+
+const sanitizeThreshold = (value: unknown, fallback: number): number => {
+  if (typeof value !== 'number') {
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed) && parsed >= 0) {
+        return parsed;
+      }
+    }
+    return fallback;
+  }
+
+  if (Number.isNaN(value) || !Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+
+  return Math.floor(value);
+};
+
+const loadMetadataFilterConfig = (): MetadataFilterConfig => {
+  const resolvedPath = resolveConfigPath('config/nsfw-metadata-filters.json');
+  if (!resolvedPath) {
+    return defaultMetadataFilterConfig;
+  }
+
+  try {
+    const payload = fs.readFileSync(resolvedPath, 'utf-8');
+    const parsed = JSON.parse(payload) as Record<string, unknown>;
+    const rawFilters = parsed?.metadataFilters as Record<string, unknown> | undefined;
+
+    if (!rawFilters) {
+      return defaultMetadataFilterConfig;
+    }
+
+    const thresholds = rawFilters.thresholds as Record<string, unknown> | undefined;
+
+    return {
+      adultTerms: sanitizeTermList(rawFilters.adultTerms, defaultMetadataFilterConfig.adultTerms),
+      minorTerms: sanitizeTermList(rawFilters.minorTerms, defaultMetadataFilterConfig.minorTerms),
+      bestialityTerms: sanitizeTermList(
+        rawFilters.bestialityTerms,
+        defaultMetadataFilterConfig.bestialityTerms,
+      ),
+      thresholds: {
+        adult: sanitizeThreshold(thresholds?.adult, defaultMetadataFilterConfig.thresholds.adult),
+        minor: sanitizeThreshold(thresholds?.minor, defaultMetadataFilterConfig.thresholds.minor),
+        beast: sanitizeThreshold(thresholds?.beast, defaultMetadataFilterConfig.thresholds.beast),
+      },
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `Failed to parse NSFW metadata filter configuration at "${resolvedPath}": ${(error as Error).message}`,
+    );
+    return defaultMetadataFilterConfig;
+  }
+};
+
 const requireString = (value: string | undefined, key: string, fallback?: string): string => {
   if (value && value.trim().length > 0) {
     return value.trim();
@@ -284,6 +469,7 @@ const parsedWorkflowParameterBindings = parseWorkflowParameterBindings(process.e
 const workflowParameterBindings =
   parsedWorkflowParameterBindings.length > 0 ? parsedWorkflowParameterBindings : defaultWorkflowParameterBindings;
 const workflowOverrides = parseWorkflowOverrides(process.env.GENERATOR_WORKFLOW_OVERRIDES);
+const metadataFilterConfig = loadMetadataFilterConfig();
 
 const deriveMinioPublicUrl = () => {
   const explicitUrl = process.env.MINIO_PUBLIC_URL;
@@ -370,5 +556,8 @@ export const appConfig = {
     callbacks: {
       baseUrl: deriveGeneratorCallbackBaseUrl(),
     },
+  },
+  nsfw: {
+    metadataFilters: metadataFilterConfig,
   },
 };
