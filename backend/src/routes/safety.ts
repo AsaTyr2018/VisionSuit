@@ -7,8 +7,8 @@ import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { prisma } from '../lib/prisma';
 import { getAdultKeywordLabels, listAdultSafetyKeywords } from '../lib/adult-keywords';
 import { appConfig } from '../config';
-import { evaluateImageModeration, evaluateModelModeration } from '../lib/nsfw/moderation';
-import { runNsfwImageAnalysis } from '../lib/nsfw/service';
+import { evaluateModelModeration } from '../lib/nsfw/moderation';
+import { runImageModerationWorkflow } from '../lib/nsfw/workflow';
 import { resolveStorageLocation, storageClient } from '../lib/storage';
 import type { MetadataEvaluationResult } from '../lib/nsfw/metadata';
 export const safetyRouter = Router();
@@ -647,14 +647,7 @@ const rescanImagesForNsfw = async (adultKeywords: string[], limit?: number) => {
           continue;
         }
 
-        const analysis = await runNsfwImageAnalysis(
-          await readObjectToBuffer(location.bucket, location.objectName),
-          { mode: 'fast' },
-        );
-
-        if (!analysis) {
-          stats.analysisFailed += 1;
-        }
+        const objectBuffer = await readObjectToBuffer(location.bucket, location.objectName);
 
         const metadataPayload: Prisma.JsonObject = {};
         if (image.seed) {
@@ -669,20 +662,39 @@ const rescanImagesForNsfw = async (adultKeywords: string[], limit?: number) => {
 
         const resolvedMetadata = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
 
-        const decision = evaluateImageModeration({
-          title: image.title,
-          description: image.description,
-          prompt: image.prompt,
-          negativePrompt: image.negativePrompt,
-          model: image.model,
-          sampler: image.sampler,
-          metadata: resolvedMetadata,
-          tags: image.tags,
+        const metadataList: Prisma.JsonValue[] = [];
+        if (resolvedMetadata) {
+          metadataList.push(resolvedMetadata);
+        }
+
+        const workflow = await runImageModerationWorkflow({
+          buffer: objectBuffer,
           adultKeywords,
-          analysis: analysis,
+          analysisOptions: { mode: 'fast' },
+          context: {
+            title: image.title,
+            description: image.description,
+            prompt: image.prompt,
+            negativePrompt: image.negativePrompt,
+            model: image.model,
+            sampler: image.sampler,
+            metadata: resolvedMetadata,
+            metadataList,
+            tags: image.tags,
+          },
         });
 
+        if (!workflow.analysis) {
+          stats.analysisFailed += 1;
+        }
+
+        const decision = workflow.decision;
+
         const updatePayload: Prisma.ImageAssetUpdateInput = {};
+
+        if (workflow.serializedSummary) {
+          updatePayload.moderationSummary = workflow.serializedSummary;
+        }
 
         if (image.isAdult !== decision.isAdult) {
           updatePayload.isAdult = decision.isAdult;
