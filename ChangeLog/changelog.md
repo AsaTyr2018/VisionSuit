@@ -158,6 +158,11 @@
 - **Technical Changes**: Added modal navigation with backdrop/escape handling, parent callbacks, responsive CSS, and README updates.
 - **Data Changes**: None.
 
+## 032 – NSFW plan compliance clarifications
+- **Type**: Normal Change
+- **Reason**: Document reviewer feedback about prohibited datasets, queue pressure handling, and unused roadmap sections to keep the moderation plan accurate before development.
+- **Change**: Removed the unused "Future Enhancements" roadmap, documented the BullMQ-based overload fallback, clarified the no-train policy for minor/bestiality CNNs, and outlined the new training source for the nude vs. swimwear model.
+
 ## 032 – [Fix] Resilient gallery metadata (commit TBD)
 - **General**: Prevented gallery crashes when metadata is missing or incomplete.
 - **Technical Changes**: Made metadata fields optional in types, guarded lightbox and card rendering with optional chaining, and documented the resilience improvement.

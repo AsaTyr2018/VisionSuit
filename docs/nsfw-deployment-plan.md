@@ -69,16 +69,15 @@ Analyze uploaded images on-premise and mark explicit content automatically while
     - [ ] High skin ratio limited to limbs or head without torso exposure → treat as non-blocking.
 - [ ] **Swimwear vs. Full Nudity**
   - [ ] Use edge density and color variance inside detected torso regions to infer clothing coverage: bikinis, lingerie, tattoos, and patterned fabric introduce strong contrast edges along straps and waistbands, while pure skin regions with low variance suggest nudity.
-  - [?] Feed the torso crop into a lightweight ONNX-hosted CNN (`nude_vs_swimwear.onnx`, MobileNetV3-small backbone) to reinforce the heuristic. The model should return calibrated probabilities for `nude`, `swimwear`, and `ambiguous` so skin-tone and edge-based heuristics remain advisory rather than the sole decision makers.
-    - Question: Do we already maintain a labeled dataset or existing checkpoint to produce `nude_vs_swimwear.onnx`, or is a new training effort required?
+  - [ ] Feed the torso crop into a lightweight ONNX-hosted CNN (`nude_vs_swimwear.onnx`, MobileNetV3-small backbone) to reinforce the heuristic. The model should return calibrated probabilities for `nude`, `swimwear`, and `ambiguous` so skin-tone and edge-based heuristics remain advisory rather than the sole decision makers.
+    - Decision: We do not maintain an existing checkpoint for `nude_vs_swimwear.onnx`, so a new lightweight training effort will use MobileNetV3-small with three classes (nude, swimwear, ambiguous) trained on curated, licensed torso crops from adult stock, swimwear stock, and art nude datasets.
   - [ ] Maintain thresholds (combine heuristic + model outputs):
     - [ ] `skinRatio ≥ 0.35`, `coverageScore ≤ 0.25`, **and** `P(nude) - P(swimwear) ≥ 0.2` → flag as `adult=true` (full nudity).
     - [ ] `skinRatio ≥ 0.2` with either `coverageScore > 0.25` **or** `P(swimwear) ≥ 0.45` → mark as `suggestive` but keep `adult=false` for bikini-tier content.
     - [ ] When the CNN returns `ambiguous`, down-rank the adult score slightly and surface a "Needs review" soft flag so moderators can adjudicate unusual cases (body paint, lingerie sets, cosplay armor, etc.).
 - [ ] **Disallowed Content Detection**
   - [ ] Scan prompts, filenames, and tag metadata for minor/bestiality keywords (reuse the lists above).
-  - [?] Incorporate a CNN classifier (e.g., MobileNet-based) fine-tuned for `minor` and `bestiality` cues; run it locally via ONNX Runtime on the CPU.
-    - Question: Which internal or third-party dataset will we leverage to train and validate the minor/bestiality detector while meeting compliance constraints?
+  - [ ] Avoid training or hosting a dedicated `minor`/`bestiality` CNN. Instead, combine hard text/meta blockers (tags, filenames, LoRA metadata), neutral detectors (human/animal/nudity presence) with rule combos, and general-purpose NSFW classifiers so the system stays legal and keeps false positives manageable without prohibited datasets.
   - [ ] Add context disambiguation rules for terms such as `teen`, `schoolgirl`, and `schoolboy`:
     - [ ] Require co-occurring maturity markers (e.g., `adult`, `cosplay`, `college`) or explicit age metadata before treating the content as safe.
     - [ ] When textual context is neutral but imagery is suggestive, down-rank the result into a manual review bucket rather than a hard block to avoid false positives on age-play or cosplay LoRAs.
@@ -91,8 +90,7 @@ Analyze uploaded images on-premise and mark explicit content automatically while
 - [ ] CPU-only deployment using OpenCV with OpenMP for multi-core scaling; expect < 120 ms per 1024×1024 image on a modern 8-core CPU when processing single frames.
 - [ ] Introduce configurable worker pools with bounded batch sizes (`maxWorkers`, `maxBatchSize`) so bulk imports can saturate the pipeline without starving the API. Allow administrators to tune these values from the Safety tab and persist them in the configuration JSON.
 - [ ] Batch processing queue with retry/backoff to prevent high CPU usage from blocking uploads; store intermediate results for auditing and expose queue depth metrics to the operations dashboard.
-- [?] Auto-detect pressure situations (queue length > soft limit) and temporarily downshift to heuristic-only scoring until the queue drains, then re-run deferred CNN passes asynchronously.
-  - Question: Which existing queueing infrastructure (e.g., BullMQ, custom worker) should expose the pressure metrics needed to trigger the heuristic-only fallback?
+- [ ] Auto-detect pressure situations (queue length > soft limit) and temporarily downshift to heuristic-only scoring until the queue drains, then re-run deferred CNN passes asynchronously using BullMQ (Redis-backed) metrics for waiting, active, and job duration counts. When overload is detected, switch the analyzer to heuristic-only mode and re-enqueue deferred CNN jobs with lower priority once the queue clears.
 - [ ] Optional GPU acceleration via OpenCL or CUDA when deploying alongside the existing GPU worker; treat it as a drop-in accelerator for the CNN passes while keeping CPU-only processing viable.
 
 ## 3. NSFW Filter & UI Integration
@@ -132,13 +130,6 @@ Analyze uploaded images on-premise and mark explicit content automatically while
   - [ ] Processes existing images through the OpenCV pipeline.
   - [ ] Updates adult flags and moderation queue entries accordingly.
 - [ ] Document operational runbooks for tuning thresholds, reviewing audit logs, and handling false positives.
-
-## 4. Future Enhancements
-
-- [ ] Integrate specialized ONNX models (e.g., `open_nsfw2`, body-part detectors) as optional modules that can supersede heuristic scores when higher precision is required. Each module should register with the scoring engine via a plug-in contract so future detectors (face obscuration, gesture classification) can be added without refactoring the core pipeline.
-- [ ] Maintain a continuous learning loop: archive moderator decisions and false positive reports to a feedback dataset that can periodically refresh the swimwear and minor/bestiality classifiers.
-- [?] Explore federated sharing of anonymized moderation fingerprints across trusted deployments to accelerate warm starts when rolling out new detectors.
-  - Question: Do we have legal clearance and infrastructure guidance to exchange anonymized moderation signals across deployments while complying with privacy policies?
 
 ## Rollout & Monitoring
 
