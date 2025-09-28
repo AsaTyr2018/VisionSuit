@@ -1,3 +1,8 @@
+## 059 – [Normal Change] Windows bulk uploader catalog resilience
+- **Type**: Normal Change
+- **Reason**: Import runs against older VisionSuit builds crashed because the `/api/assets/models` response omitted `title`, causing the duplicate detection to dereference a missing property.
+- **Change**: Guarded remote catalog parsing with a helper that safely reads optional properties and documented the resilience boost in the README so PowerShell uploads continue even when optional fields are absent.
+
 ## 058 – [Normal Change] Prisma client regeneration for GPU toggle
 - **Type**: Normal Change
 - **Reason**: Toggling the GPU module failed because the Prisma client still referenced the older schema and rejected the new `isGpuEnabled` field.

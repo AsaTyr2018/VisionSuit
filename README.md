@@ -52,7 +52,7 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
 
 ## Bulk Import Helpers
 
-- **Windows (`scripts/bulk_import_windows.ps1`)** – Pre-validates upload files, disables the implicit `Expect: 100-continue` header to keep self-hosted API proxies happy, and unwraps transport exceptions so failures such as `Error while copying content to a stream` surface the underlying cause. Populate `./loras` and `./images` and run the script from PowerShell 7+.
+- **Windows (`scripts/bulk_import_windows.ps1`)** – Pre-validates upload files, disables the implicit `Expect: 100-continue` header to keep self-hosted API proxies happy, unwraps transport exceptions so failures such as `Error while copying content to a stream` surface the underlying cause, and tolerates remote catalog responses that omit optional `title`/`slug` fields while still detecting duplicates. Populate `./loras` and `./images` and run the script from PowerShell 7+.
 - **Linux/macOS (`scripts/bulk_import_linux.sh`)** – Uses `curl` for the same two-phase workflow; consult the script header for usage flags and environment overrides.
 
 ## Repository Layout
