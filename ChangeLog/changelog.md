@@ -1492,3 +1492,8 @@
 - **Type**: Normal Change
 - **Reason**: Adult prompt filters needed to stay view-only while illegal keywords must block uploads pending moderation, requiring separate management and review flows.
 - **Changes**: Replaced the single adult keyword table with a categorized safety keyword schema and migration, refreshed backend moderation pipelines to use both adult and illegal keyword sets across uploads, rescans, and generator workflows, expanded the admin safety panel with dedicated management for both queues, and updated documentation to describe the split keyword enforcement.
+
+## 240 – [Update] Moderation keyword management layout
+- **Type**: Normal Change
+- **Reason**: Stacked panels forced extra scrolling as the adult and illegal keyword lists grew, slowing moderators reviewing safety filters.
+- **Changes**: Combined both keyword managers into a responsive two-column layout with shared styling tweaks so the lists stay visible side by side on wide screens while preserving form and table spacing.
