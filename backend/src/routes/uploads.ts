@@ -25,7 +25,7 @@ import {
   type ImageModerationSummary,
 } from '../lib/nsfw-open-cv';
 import { runImageModerationWorkflow } from '../lib/nsfw/workflow';
-import { toJsonImageAnalysis } from '../lib/nsfw/service';
+import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 import { evaluateModelModeration } from '../lib/nsfw/moderation';
 import type { AutoTaggingJobInput } from '../lib/tagging/service';
 import { enqueueAutoTaggingJob } from '../lib/tagging/service';

@@ -553,6 +553,7 @@ export interface AdminSettingsGeneral {
   siteTitle: string;
   allowRegistration: boolean;
   maintenanceMode: boolean;
+  bypassNsfwFilter: boolean;
 }
 
 export interface AdminSettingsConnections {

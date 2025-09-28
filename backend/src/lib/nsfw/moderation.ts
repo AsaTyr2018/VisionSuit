@@ -9,6 +9,8 @@ import type { ImageAnalysisResult } from './imageAnalysis';
 
 type TagReference = Array<{ tag: { label: string; isAdult: boolean } }>;
 
+const isBypassEnabled = () => appConfig.nsfw.bypassFilter;
+
 const normalizeString = (value: string | null | undefined) =>
   typeof value === 'string' ? value.trim().toLowerCase() : '';
 
@@ -157,6 +159,17 @@ export interface ModelModerationDecision {
 export const evaluateModelModeration = (
   context: ModelModerationContext,
 ): ModelModerationDecision => {
+  if (isBypassEnabled()) {
+    return {
+      isAdult: false,
+      requiresModeration: false,
+      metadataScreening: null,
+      metadataAdult: false,
+      metadataMinor: false,
+      metadataBeast: false,
+    };
+  }
+
   const screening = resolveMetadataScreening(context.metadata ?? null);
   const thresholds = metadataThresholds();
 
@@ -226,6 +239,15 @@ export interface ImageModerationDecision {
 export const evaluateImageModeration = (
   context: ImageModerationContext,
 ): ImageModerationDecision => {
+  if (isBypassEnabled()) {
+    return {
+      isAdult: false,
+      requiresModeration: false,
+      illegalMinor: false,
+      illegalBeast: false,
+    };
+  }
+
   const metadataList = context.metadataList ?? [];
   const analysisInput = context.analysis
     ? { imageAnalysis: { decisions: context.analysis.decisions, scores: context.analysis.scores } }

@@ -978,6 +978,7 @@ export const appConfig = {
     },
   },
   nsfw: {
+    bypassFilter: toBoolean(process.env.BYPASS_NSFW_FILTER, false),
     metadataFilters: metadataFilterConfig,
     imageAnalysis: imageAnalysisConfig,
   },
