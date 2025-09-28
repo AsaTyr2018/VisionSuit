@@ -1342,3 +1342,8 @@
 - **Type**: Normal Change
 - **Reason**: Prompt-free renders skipped NSFW screening because the moderation workflow relies on textual cues that were missing from those uploads.
 - **Changes**: Added a CPU-backed SmilingWolf/wd-swinv2 tagger that downloads on startup when absent, queued promptless gallery uploads behind a “Scan in Progress” placeholder until tagging and moderation complete, persisted scan status and auto-tag summaries in Prisma, exposed the state via the API and front end, and refreshed the README to document the workflow.
+
+## 224 – [Fix] Hugging Face redirect handling
+- **Type**: Emergency Change
+- **Reason**: The backend failed to start because Hugging Face returned relative redirect URLs for the auto tagger assets, causing the download helper to throw an invalid URL error and abort initialization.
+- **Changes**: Updated `backend/src/lib/tagging/wdSwinv2.ts` to resolve relative redirects against the original request URL before retrying the download and to report redirect resolution failures clearly.

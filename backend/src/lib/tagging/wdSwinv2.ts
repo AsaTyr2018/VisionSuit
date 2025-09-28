@@ -73,7 +73,20 @@ const downloadFile = async (url: string, targetPath: string): Promise<void> => {
       const redirectedLocation = response.headers.location;
       if (response.statusCode >= 300 && response.statusCode < 400 && redirectedLocation) {
         response.resume();
-        downloadFile(redirectedLocation, targetPath).then(resolve).catch(reject);
+        const redirectedUrl = (() => {
+          try {
+            return new URL(redirectedLocation, url).toString();
+          } catch (error) {
+            reject(new Error(`Failed to resolve redirect for ${url}: ${(error as Error).message}`));
+            return null;
+          }
+        })();
+
+        if (!redirectedUrl) {
+          return;
+        }
+
+        downloadFile(redirectedUrl, targetPath).then(resolve).catch(reject);
         return;
       }
 
