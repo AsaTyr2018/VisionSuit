@@ -25,6 +25,35 @@ interface InternalAutoTaggingJob extends AutoTaggingJobInput {
 
 const tagger = new WdSwinv2Tagger();
 
+let autoTaggerReady = false;
+let autoTaggerInitializationError: Error | null = null;
+
+const getAutoTaggerFailureMessage = () =>
+  autoTaggerInitializationError?.message ??
+  'Auto-tagging is currently unavailable because the ONNX Runtime backend could not be initialized.';
+
+const markAutoTaggingJobAsFailed = async (
+  job: AutoTaggingJobInput,
+  failureMessage: string,
+) => {
+  try {
+    await prisma.imageAsset.update({
+      where: { id: job.imageId },
+      data: {
+        tagScanPending: false,
+        tagScanStatus: 'failed',
+        tagScanCompletedAt: new Date(),
+        tagScanError: failureMessage,
+        moderationStatus: ModerationStatus.FLAGGED,
+        isPublic: false,
+      },
+    });
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[autoTagger] Failed to mark job as failed', job.imageId, error);
+  }
+};
+
 const clampSummary = (summary: AutoTagSummary): AutoTagSummary => ({
   general: summary.general.slice(0, 50),
   characters: summary.characters.slice(0, 25),
@@ -155,10 +184,30 @@ class AutoTaggingQueue {
 
 const queue = new AutoTaggingQueue();
 
-export const initializeAutoTagger = async () => {
-  await tagger.initialize();
+export const initializeAutoTagger = async (): Promise<boolean> => {
+  try {
+    await tagger.initialize();
+    autoTaggerReady = true;
+    autoTaggerInitializationError = null;
+    return true;
+  } catch (error) {
+    autoTaggerReady = false;
+    autoTaggerInitializationError = error instanceof Error ? error : new Error('Auto-tagging failed to initialize.');
+    const message = getAutoTaggerFailureMessage();
+    // eslint-disable-next-line no-console
+    console.error('[startup] Auto tagger disabled:', message);
+    return false;
+  }
 };
 
 export const enqueueAutoTaggingJob = (job: AutoTaggingJobInput) => {
+  if (!autoTaggerReady) {
+    const failureMessage = getAutoTaggerFailureMessage();
+    // eslint-disable-next-line no-console
+    console.warn('[autoTagger] Skipping queued job because auto-tagging is disabled:', job.imageId);
+    void markAutoTaggingJobAsFailed(job, failureMessage);
+    return;
+  }
+
   queue.enqueue(job);
 };
