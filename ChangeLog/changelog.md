@@ -1,3 +1,8 @@
+## 056 – [Emergency Change] Maintenance lock hardening
+- **Type**: Emergency Change
+- **Reason**: The maintenance toggle still exposed dashboards to guests and members because the frontend never enforced the admin-only lockout, defeating the purpose of scheduled downtime windows.
+- **Change**: Force maintenance mode to show only the admin login dialog, automatically sign out non-admin accounts when the lock engages, surface a prominent "Maintenance active. Admin Only" notice inside the login form, and add supporting styles for the dedicated notice banner.
+
 ## 055 – [Normal Change] Image edit dialog owner fallback hardening
 - **Type**: Normal Change
 - **Reason**: Opening the image edit dialog from gallery contexts crashed because curator owner options were not supplied, leaving the ownership selector without data.

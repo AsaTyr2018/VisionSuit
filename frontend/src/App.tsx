@@ -243,6 +243,10 @@ export const App = () => {
     return generatorAccessMode === 'MEMBERS';
   }, [authUser, generatorAccessMode, isAuthenticated]);
 
+  const userRole = authUser?.role ?? null;
+  const isAdminUser = userRole === 'ADMIN';
+  const isMaintenanceLocked = platformConfig.maintenanceMode && !isAdminUser;
+
   const availableViews = useMemo<PrimaryViewKey[]>(() => {
     const views: PrimaryViewKey[] = ['home', 'models', 'images'];
     if (canAccessGenerator) {
@@ -948,7 +952,7 @@ export const App = () => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     void fetch('/db/logout', { method: 'POST', credentials: 'include' }).catch((error) => {
       console.warn('Failed to clear Prisma Studio session on logout:', error);
     });
@@ -961,7 +965,21 @@ export const App = () => {
     setIsAccountSettingsOpen(false);
     openPrimaryView('home');
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
-  };
+  }, [logout, openPrimaryView, refreshData]);
+
+  useEffect(() => {
+    if (!platformConfig.maintenanceMode) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      return;
+    }
+
+    if (userRole && userRole !== 'ADMIN') {
+      handleLogout();
+    }
+  }, [platformConfig.maintenanceMode, isAuthenticated, userRole, handleLogout]);
 
   const handleAdultPreferenceToggle = async (event: ChangeEvent<HTMLInputElement>) => {
     if (!authUser || !token) {
@@ -1559,6 +1577,22 @@ export const App = () => {
       ? `Featuring ${activeProfile.stats.modelCount} model${activeProfile.stats.modelCount === 1 ? '' : 's'} and ${activeProfile.stats.galleryCount} collection${activeProfile.stats.galleryCount === 1 ? '' : 's'}.`
       : currentMeta.description;
   const currentYear = new Date().getFullYear();
+
+  if (isMaintenanceLocked) {
+    return (
+      <div className="app app--maintenance">
+        <LoginDialog
+          isOpen
+          onClose={() => undefined}
+          onSubmit={handleLoginSubmit}
+          isSubmitting={isLoggingIn}
+          errorMessage={loginError}
+          noticeMessage="Maintenance active. Admin Only"
+          isDismissible={false}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="app">
