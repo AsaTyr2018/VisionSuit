@@ -1,3 +1,8 @@
+## 049 – [Standard Change] Windows bulk uploader stream guard
+- **Type**: Standard Change
+- **Reason**: The Windows bulk importer intermittently crashed with `Error while copying content to a stream`, leaving operators without insight into the failing file or HTTP transport issue.
+- **Change**: Hardened file preparation with explicit stream guards, disabled implicit 100-continue negotiation, wrapped upload calls to surface deep transport errors, and refreshed the README with the troubleshooting guidance.
+
 ## 048 – [Standard Change] ONNX runtime fallback for auto tagger
 - **Type**: Standard Change
 - **Reason**: Backend startup crashed on hosts without the native ONNX Runtime CPU provider, preventing the SmilingWolf auto tagger from loading.

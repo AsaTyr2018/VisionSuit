@@ -40,6 +40,11 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 
+## Bulk Import Helpers
+
+- **Windows (`scripts/bulk_import_windows.ps1`)** – Pre-validates upload files, disables the implicit `Expect: 100-continue` header to keep self-hosted API proxies happy, and unwraps transport exceptions so failures such as `Error while copying content to a stream` surface the underlying cause. Populate `./loras` and `./images` and run the script from PowerShell 7+.
+- **Linux/macOS (`scripts/bulk_import_linux.sh`)** – Uses `curl` for the same two-phase workflow; consult the script header for usage flags and environment overrides.
+
 ## Repository Layout
 
 - `backend/` – Node.js API, Prisma schema, moderation services, and generator dispatch logic.

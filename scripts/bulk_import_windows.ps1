@@ -498,6 +498,23 @@ function Build-UploadProfile {
   }
 }
 
+function Get-DeepExceptionMessage {
+  param([System.Exception]$Exception)
+
+  if (-not $Exception) { return '' }
+
+  $messages = New-Object System.Collections.Generic.List[string]
+  $current = $Exception
+  while ($current) {
+    if ($current.Message -and -not $messages.Contains($current.Message)) {
+      $messages.Add($current.Message)
+    }
+    $current = $current.InnerException
+  }
+
+  return ($messages -join ' | ')
+}
+
 function New-MultipartForm {
   param(
     [hashtable]$Fields,
@@ -505,28 +522,78 @@ function New-MultipartForm {
   )
 
   $content = [System.Net.Http.MultipartFormDataContent]::new()
-  $streams = New-Object System.Collections.Generic.List[System.IDisposable]
+  $disposables = New-Object System.Collections.Generic.List[System.IDisposable]
 
   foreach ($key in $Fields.Keys) {
     $value = $Fields[$key]
     if ($null -eq $value -or $value -eq '') { continue }
-    $stringContent = [System.Net.Http.StringContent]::new($value, [System.Text.Encoding]::UTF8)
+    $stringContent = [System.Net.Http.StringContent]::new([string]$value, [System.Text.Encoding]::UTF8)
     $content.Add($stringContent, $key)
   }
 
   foreach ($filePart in $FileParts) {
-    $stream = [System.IO.File]::OpenRead($filePart.Path)
-    $streams.Add($stream)
-    $streamContent = [System.Net.Http.StreamContent]::new($stream)
+    try {
+      $fileInfo = Get-Item -LiteralPath $filePart.Path -ErrorAction Stop
+    }
+    catch {
+      throw "Unable to prepare file '${filePart.Path}' for upload: $($_.Exception.Message)"
+    }
+
+    try {
+      $stream = [System.IO.FileStream]::new(
+        $fileInfo.FullName,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read
+      )
+    }
+    catch {
+      throw "Unable to open file '${filePart.Path}' for upload: $($_.Exception.Message)"
+    }
+
+    $disposables.Add($stream)
+
+    try {
+      $streamContent = [System.Net.Http.StreamContent]::new($stream)
+    }
+    catch {
+      $stream.Dispose()
+      throw "Unable to stream file '${filePart.Path}' during upload preparation: $($_.Exception.Message)"
+    }
+
     if ($filePart.MimeType) {
       $streamContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse($filePart.MimeType)
     }
-    $content.Add($streamContent, 'files', [System.IO.Path]::GetFileName($filePart.Path))
+
+    if ($fileInfo.Length -ge 0) {
+      $streamContent.Headers.ContentLength = $fileInfo.Length
+    }
+
+    $content.Add($streamContent, 'files', $fileInfo.Name)
+    $disposables.Add($streamContent)
   }
 
   return [pscustomobject]@{
     Content = $content
-    Disposables = $streams
+    Disposables = $disposables
+  }
+}
+
+function Invoke-HttpPost {
+  param(
+    [System.Net.Http.HttpClient]$Client,
+    [Uri]$Uri,
+    [System.Net.Http.HttpContent]$Content,
+    [string]$Context
+  )
+
+  try {
+    return $Client.PostAsync($Uri, $Content).GetAwaiter().GetResult()
+  }
+  catch {
+    $message = Get-DeepExceptionMessage -Exception $_.Exception
+    if (-not $message) { $message = $_.Exception.Message }
+    throw "HTTP POST failed for ${Context}: ${message}"
   }
 }
 
@@ -605,6 +672,7 @@ $handler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [
 $client = [System.Net.Http.HttpClient]::new($handler)
 $client.BaseAddress = $baseUri
 $client.Timeout = [TimeSpan]::FromMinutes(10)
+$client.DefaultRequestHeaders.ExpectContinue = $false
 $client.DefaultRequestHeaders.Accept.Clear()
 $client.DefaultRequestHeaders.Accept.Add([System.Net.Http.Headers.MediaTypeWithQualityHeaderValue]::new('application/json'))
 
@@ -765,7 +833,14 @@ try {
       }
 
       Write-Log "Uploading '$($profile.Title)' with preview '$(Split-Path -Leaf $preview.FullName)'."
-      $response = $client.PostAsync($uploadUri, $multipart.Content).GetAwaiter().GetResult()
+      try {
+        $response = Invoke-HttpPost -Client $client -Uri $uploadUri -Content $multipart.Content -Context "model '$($profile.Title)'"
+      }
+      catch {
+        Write-Log "Upload request failed for '$($profile.Title)': $($_.Exception.Message)"
+        $skipped++
+        continue
+      }
       $bodyText = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
       if (-not $response.IsSuccessStatusCode) {
         Write-Log "Upload failed for '$($profile.Title)' (HTTP $($response.StatusCode)): $bodyText"
@@ -837,7 +912,15 @@ try {
             }
 
             $batchIndex++
-            $batchResponse = $client.PostAsync($uploadUri, $batchContent.Content).GetAwaiter().GetResult()
+            try {
+              $batchResponse = Invoke-HttpPost -Client $client -Uri $uploadUri -Content $batchContent.Content -Context "gallery batch for '$($profile.Title)'"
+            }
+            catch {
+              Write-Log "Upload request failed for image batch $batchIndex of '$($profile.Title)': $($_.Exception.Message)"
+              $skipped++
+              $batchFailed = $true
+              break
+            }
             $batchBody = $batchResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult()
             if (-not $batchResponse.IsSuccessStatusCode) {
               Write-Log "Image batch $batchIndex failed for '$($profile.Title)' (HTTP $($batchResponse.StatusCode)): $batchBody"
