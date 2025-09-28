@@ -1432,3 +1432,8 @@
 - **Type**: Emergency Change
 - **Reason**: The temporary NSFW bypass disabled prompt and metadata screening, exposing guests to adult-tagged assets while the ONNX analyzer was offline.
 - **Changes**: Kept the bypass scoped to ONNX image analysis so textual filters always run, prevented moderation summaries from contributing when bypassed, reworked the image moderation workflow to reuse the fallback logic, expanded tests to cover bypass scenarios, and updated the README to highlight the always-on guest protection.
+
+## 232 – [Update] Support footer polish
+- **Type**: Normal Change
+- **Reason**: The Support and credits footer looked improvised and needed a more intentional presentation for operators and community members.
+- **Changes**: Reoriented the floating footer into a three-column layout with a descriptive support panel, refreshed icon button styling, grouped credits alongside service health badges, and tuned responsive behavior for compact screens.

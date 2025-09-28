@@ -71,4 +71,4 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
 
 ## Community & Support
 
-VisionSuit is actively evolving. Contributions, issues, and deployment learnings are welcome—open a discussion or pull request to share feedback and improvements.
+VisionSuit is actively evolving. Contributions, issues, and deployment learnings are welcome—open a discussion or pull request to share feedback and improvements. The floating support footer keeps Discord, GitHub, and live service status links within reach for rapid triage.
