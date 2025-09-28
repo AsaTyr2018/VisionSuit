@@ -1,3 +1,8 @@
+## 046 – [Standard Change] README refresh & technical doc relocation
+- **Type**: Standard Change
+- **Reason**: The README had become cluttered with extensive technical detail, making it difficult to quickly understand the platform while keeping documentation consistent.
+- **Change**: Streamlined the README with grouped core features, modernized onboarding guidance, and moved the deep technical description into `docs/technical-overview.md` so detailed guidance lives under the documentation directory.
+
 ## 045 – [Standard Change] Prisma Studio admin launch alignment
 - **Type**: Standard Change
 - **Reason**: Opening Prisma Studio from the admin sidebar on split-origin deployments redirected back to the frontend homepage, preventing administrators from reaching the proxied database tool.
