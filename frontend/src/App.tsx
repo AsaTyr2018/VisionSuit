@@ -83,6 +83,8 @@ const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
   gpu: 'GPU',
 };
 
+const DEFAULT_ASSET_PAGE_SIZE = 24;
+
 const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) => {
   const isAdmin = viewer?.role === 'ADMIN';
   const allowAdult = isAdmin ? true : viewer?.showAdultContent ?? false;
@@ -185,7 +187,13 @@ export const App = () => {
   const [activeView, setActiveView] = useState<ViewKey>('home');
   const [returnView, setReturnView] = useState<PrimaryViewKey>('home');
   const [assets, setAssets] = useState<ModelAsset[]>([]);
+  const [modelAssetsCursor, setModelAssetsCursor] = useState<string | null>(null);
+  const [modelAssetsHasMore, setModelAssetsHasMore] = useState(false);
+  const [isLoadingMoreModels, setIsLoadingMoreModels] = useState(false);
   const [images, setImages] = useState<ImageAsset[]>([]);
+  const [imageAssetsCursor, setImageAssetsCursor] = useState<string | null>(null);
+  const [imageAssetsHasMore, setImageAssetsHasMore] = useState(false);
+  const [isLoadingMoreImages, setIsLoadingMoreImages] = useState(false);
   const [galleries, setGalleries] = useState<Gallery[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [rankingSettings, setRankingSettings] = useState<RankingSettings | null>(null);
@@ -293,15 +301,24 @@ export const App = () => {
   const refreshData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const [fetchedAssets, fetchedGalleries, fetchedImages] = await Promise.all([
-        api.getModelAssets(token),
-        api.getGalleries(token),
-        api.getImageAssets(token),
+      setModelAssetsCursor(null);
+      setModelAssetsHasMore(false);
+      setImageAssetsCursor(null);
+      setImageAssetsHasMore(false);
+
+      const [modelResponse, fetchedGalleries, imageResponse] = await Promise.all([
+        api.getModelAssets({ token: token ?? undefined, take: DEFAULT_ASSET_PAGE_SIZE }),
+        api.getGalleries(token ?? undefined),
+        api.getImageAssets({ token: token ?? undefined, take: DEFAULT_ASSET_PAGE_SIZE }),
       ]);
 
-      setAssets(fetchedAssets);
+      setAssets(modelResponse.items);
+      setModelAssetsCursor(modelResponse.nextCursor);
+      setModelAssetsHasMore(modelResponse.hasMore);
       setGalleries(fetchedGalleries);
-      setImages(fetchedImages);
+      setImages(imageResponse.items);
+      setImageAssetsCursor(imageResponse.nextCursor);
+      setImageAssetsHasMore(imageResponse.hasMore);
       if (token && authUser?.role === 'ADMIN') {
         try {
           const { users: fetchedUsers } = await api.getUsers(token);
@@ -339,12 +356,90 @@ export const App = () => {
       console.error(error);
       setErrorMessage('Backend not reachable yet. Please check the server or try again later.');
       setUsers([]);
+      setModelAssetsCursor(null);
+      setModelAssetsHasMore(false);
+      setImageAssetsCursor(null);
+      setImageAssetsHasMore(false);
     } finally {
       setIsLoading(false);
     }
 
     fetchServiceStatus().catch((statusError) => console.error('Failed to refresh service status', statusError));
   }, [fetchServiceStatus, token, authUser?.role]);
+
+  const loadMoreModelAssets = useCallback(async () => {
+    if (isLoadingMoreModels || !modelAssetsHasMore) {
+      return;
+    }
+
+    setIsLoadingMoreModels(true);
+    try {
+      const response = await api.getModelAssets({
+        token: token ?? undefined,
+        cursor: modelAssetsCursor ?? undefined,
+        take: DEFAULT_ASSET_PAGE_SIZE,
+      });
+
+      setAssets((previous) => {
+        if (response.items.length === 0) {
+          return previous;
+        }
+
+        const seen = new Set(previous.map((asset) => asset.id));
+        const nextItems = response.items.filter((asset) => !seen.has(asset.id));
+        if (nextItems.length === 0) {
+          return previous;
+        }
+
+        return [...previous, ...nextItems];
+      });
+
+      setModelAssetsCursor(response.nextCursor);
+      setModelAssetsHasMore(response.hasMore);
+    } catch (error) {
+      console.error('Failed to load additional model assets', error);
+      setModelAssetsHasMore(false);
+    } finally {
+      setIsLoadingMoreModels(false);
+    }
+  }, [isLoadingMoreModels, modelAssetsHasMore, modelAssetsCursor, token]);
+
+  const loadMoreImageAssets = useCallback(async () => {
+    if (isLoadingMoreImages || !imageAssetsHasMore) {
+      return;
+    }
+
+    setIsLoadingMoreImages(true);
+    try {
+      const response = await api.getImageAssets({
+        token: token ?? undefined,
+        cursor: imageAssetsCursor ?? undefined,
+        take: DEFAULT_ASSET_PAGE_SIZE,
+      });
+
+      setImages((previous) => {
+        if (response.items.length === 0) {
+          return previous;
+        }
+
+        const seen = new Set(previous.map((image) => image.id));
+        const nextItems = response.items.filter((image) => !seen.has(image.id));
+        if (nextItems.length === 0) {
+          return previous;
+        }
+
+        return [...previous, ...nextItems];
+      });
+
+      setImageAssetsCursor(response.nextCursor);
+      setImageAssetsHasMore(response.hasMore);
+    } catch (error) {
+      console.error('Failed to load additional image assets', error);
+      setImageAssetsHasMore(false);
+    } finally {
+      setIsLoadingMoreImages(false);
+    }
+  }, [imageAssetsCursor, imageAssetsHasMore, isLoadingMoreImages, token]);
 
   useEffect(() => {
     let isActive = true;
@@ -1241,6 +1336,23 @@ export const App = () => {
           {!isLoading && imageTiles.length === 0 ? (
             <p className="empty-state">No images available yet.</p>
           ) : null}
+          {imageAssetsHasMore ? (
+            <div className="home-section__actions">
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  if (isLoadingMoreImages) {
+                    return;
+                  }
+                  void loadMoreImageAssets();
+                }}
+                disabled={isLoadingMoreImages}
+              >
+                {isLoadingMoreImages ? 'Loading more images…' : 'Load more images'}
+              </button>
+            </div>
+          ) : null}
         </section>
       </div>
     );
@@ -1289,6 +1401,9 @@ export const App = () => {
           currentUser={authUser}
           onOpenProfile={handleOpenUserProfile}
           onGalleryUpdated={handleGalleryUpdated}
+          hasMoreAssets={modelAssetsHasMore}
+          onLoadMoreAssets={loadMoreModelAssets}
+          isLoadingMoreAssets={isLoadingMoreModels}
         />
       );
     }

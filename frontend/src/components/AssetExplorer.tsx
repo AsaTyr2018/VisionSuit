@@ -28,6 +28,9 @@ interface AssetExplorerProps {
   currentUser?: User | null;
   onOpenProfile?: (userId: string) => void;
   onGalleryUpdated?: (gallery: Gallery) => void;
+  onLoadMoreAssets?: () => Promise<void> | void;
+  hasMoreAssets?: boolean;
+  isLoadingMoreAssets?: boolean;
 }
 
 type FileSizeFilter = 'all' | 'small' | 'medium' | 'large' | 'unknown';
@@ -41,7 +44,6 @@ type TypeOption = { id: string; label: string; count: number };
 type MetadataRow = { key: string; value: string };
 type TagFrequencyGroup = { scope: string; tags: { label: string; count: number }[] };
 
-const ASSET_BATCH_SIZE = 25;
 const TAG_FREQUENCY_KEYS = ['ss_tag_frequency', 'tag_frequency'] as const;
 
 const fileSizeLabels: Record<Exclude<FileSizeFilter, 'all'>, string> = {
@@ -500,6 +502,9 @@ export const AssetExplorer = ({
   currentUser,
   onOpenProfile,
   onGalleryUpdated,
+  onLoadMoreAssets,
+  hasMoreAssets = false,
+  isLoadingMoreAssets = false,
 }: AssetExplorerProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -507,7 +512,6 @@ export const AssetExplorer = ({
   const [selectedOwner, setSelectedOwner] = useState<string>('all');
   const [fileSizeFilter, setFileSizeFilter] = useState<FileSizeFilter>('all');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
-  const [visibleLimit, setVisibleLimit] = useState(ASSET_BATCH_SIZE);
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [isTagDialogOpen, setTagDialogOpen] = useState(false);
@@ -851,10 +855,6 @@ export const AssetExplorer = ({
   }, [assets, currentUser, normalizedQuery, selectedOwner, selectedType, fileSizeFilter, selectedTags, sortOption]);
 
   useEffect(() => {
-    setVisibleLimit(ASSET_BATCH_SIZE);
-  }, [normalizedQuery, selectedOwner, selectedType, fileSizeFilter, selectedTags, sortOption]);
-
-  useEffect(() => {
     if (initialAssetId) {
       setActiveAssetId(initialAssetId);
       const presetAsset = assets.find((asset) => asset.id === initialAssetId);
@@ -896,13 +896,11 @@ export const AssetExplorer = ({
     }
   }, [activeAssetId, assets, closeDetail, currentUser]);
 
-  const visibleAssets = useMemo(() => filteredAssets.slice(0, visibleLimit), [filteredAssets, visibleLimit]);
-
-  const canLoadMore = visibleAssets.length < filteredAssets.length;
+  const visibleAssets = filteredAssets;
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || !canLoadMore) {
+    if (!sentinel || !hasMoreAssets || !onLoadMoreAssets) {
       return undefined;
     }
 
@@ -910,12 +908,19 @@ export const AssetExplorer = ({
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && !isLoadingMore) {
+          if (entry.isIntersecting && !isLoadingMore && !isLoadingMoreAssets) {
             isLoadingMore = true;
-            setVisibleLimit((current) => Math.min(filteredAssets.length, current + ASSET_BATCH_SIZE));
-            window.setTimeout(() => {
-              isLoadingMore = false;
-            }, 150);
+            Promise.resolve(onLoadMoreAssets())
+              .catch((error) => {
+                if (import.meta.env.DEV) {
+                  console.error('Failed to load additional model assets', error);
+                }
+              })
+              .finally(() => {
+                window.setTimeout(() => {
+                  isLoadingMore = false;
+                }, 150);
+              });
           }
         });
       },
@@ -924,7 +929,7 @@ export const AssetExplorer = ({
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [canLoadMore, filteredAssets.length]);
+  }, [filteredAssets.length, hasMoreAssets, isLoadingMoreAssets, onLoadMoreAssets]);
 
 
   useEffect(() => {
@@ -1456,7 +1461,11 @@ export const AssetExplorer = ({
       </div>
 
       <div className="result-info" role="status">
-        {isLoading && assets.length === 0 ? 'Loading LoRA assets…' : `Showing ${visibleAssets.length} of ${filteredAssets.length} assets`}
+        {isLoading && assets.length === 0
+          ? 'Loading LoRA assets…'
+          : hasMoreAssets
+            ? `Loaded ${visibleAssets.length} assets (more available)`
+            : `Showing ${visibleAssets.length} assets`}
       </div>
 
       <div className="asset-explorer__grid" role="list" aria-label="LoRA assets">
@@ -2074,6 +2083,24 @@ export const AssetExplorer = ({
 
       {!isLoading && filteredAssets.length === 0 ? (
         <p className="panel__empty">No assets match the current filters.</p>
+      ) : null}
+
+      {hasMoreAssets && onLoadMoreAssets ? (
+        <div className="asset-explorer__load-more">
+          <button
+            type="button"
+            className="button"
+            onClick={() => {
+              if (isLoadingMoreAssets) {
+                return;
+              }
+              void onLoadMoreAssets();
+            }}
+            disabled={isLoadingMoreAssets}
+          >
+            {isLoadingMoreAssets ? 'Loading more models…' : 'Load more models'}
+          </button>
+        </div>
       ) : null}
 
       <div ref={sentinelRef} className="asset-explorer__sentinel" aria-hidden="true" />
