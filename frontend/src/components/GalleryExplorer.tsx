@@ -208,10 +208,12 @@ const buildSeededIndex = (seed: string, length: number) => {
   return Math.abs(hash) % length;
 };
 
+const isTagScanPending = (image?: ImageAsset | null) => image?.tagScan?.pending ?? false;
+
 const selectPreviewImage = (gallery: Gallery, viewer?: User | null) => {
   const imageEntries = getImageEntries(gallery).filter(
     (entry) =>
-      !entry.image.tagScan.pending &&
+      !isTagScanPending(entry.image) &&
       !isAuditHiddenFromViewer(entry.image.moderationStatus, entry.image.owner.id, viewer),
   );
   if (imageEntries.length === 0) {
@@ -383,7 +385,7 @@ export const GalleryExplorer = ({
     [activeImageIdValue],
   );
 
-  const activeImagePreviewUrl = activeImage && !activeImage.image.tagScan.pending
+  const activeImagePreviewUrl = activeImage && !isTagScanPending(activeImage.image)
     ?
         resolveCachedStorageUrl(
           activeImage.image.storagePath,
@@ -519,7 +521,7 @@ export const GalleryExplorer = ({
 
   const activeImageOverlayClasses = [
     'gallery-image-modal__media',
-    activeImage?.image.tagScan.pending ? 'gallery-image-modal__media--scan' : '',
+    isTagScanPending(activeImage?.image) ? 'gallery-image-modal__media--scan' : '',
     activeImage?.image.moderationStatus === 'FLAGGED' ? 'moderation-overlay' : '',
     activeImage?.image.moderationStatus === 'FLAGGED' && currentUser?.role !== 'ADMIN'
       ? 'moderation-overlay--blurred'
@@ -1257,7 +1259,7 @@ export const GalleryExplorer = ({
               <div className="gallery-detail__grid" role="list">
                 {activeGalleryImages.length > 0 ? (
                   activeGalleryImages.map((entry) => {
-                    if (entry.image.tagScan.pending) {
+                    if (isTagScanPending(entry.image)) {
                       return (
                         <div
                           key={entry.entryId}
@@ -1392,7 +1394,7 @@ export const GalleryExplorer = ({
                   disabled={
                     !canLikeImages ||
                     likeMutationId === activeImage.image.id ||
-                    activeImage.image.tagScan.pending
+                    isTagScanPending(activeImage.image)
                   }
                   aria-pressed={activeImage.image.viewerHasLiked}
                   aria-label={
@@ -1438,14 +1440,14 @@ export const GalleryExplorer = ({
                     </button>
                   </>
                 ) : null}
-                {authToken && activeImage.image.moderationStatus !== 'FLAGGED' && !activeImage.image.tagScan.pending ? (
+                {authToken && activeImage.image.moderationStatus !== 'FLAGGED' && !isTagScanPending(activeImage.image) ? (
                   <button
                     type="button"
                     className="gallery-image-modal__flag"
                     onClick={() => {
                       void handleFlagImage(activeImage.image);
                     }}
-                    disabled={isFlaggingImage || activeImage.image.tagScan.pending}
+                    disabled={isFlaggingImage || isTagScanPending(activeImage.image)}
                   >
                     {isFlaggingImage ? 'Sending…' : 'Flag image'}
                   </button>
@@ -1508,7 +1510,7 @@ export const GalleryExplorer = ({
                   }
                 } : undefined}
               >
-                {activeImage.image.tagScan.pending ? (
+                {isTagScanPending(activeImage.image) ? (
                   <div className="gallery-image-modal__scan-placeholder" role="status">
                     <span>Scan in progress</span>
                   </div>
@@ -1524,7 +1526,7 @@ export const GalleryExplorer = ({
                 <div className="gallery-image-modal__meta">
                   <div className="gallery-image-modal__meta-scroll">
                     {activeImage.note ? <p className="gallery-image-modal__note">Note: {activeImage.note}</p> : null}
-                    {activeImage.image.tagScan.pending ? (
+                    {isTagScanPending(activeImage.image) ? (
                       <p className="gallery-image-modal__scan-note" role="status">
                         Scan in progress. Tags will be available once the automated review completes.
                       </p>
