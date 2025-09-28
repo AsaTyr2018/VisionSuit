@@ -34,6 +34,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
    ```bash
    ./dev-start.sh
    ```
+   The backend will automatically download the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` messages so you can track progress in the console.
 3. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services.
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.

@@ -1,3 +1,8 @@
+## 047 – [Standard Change] Hugging Face auto-tagger download hardening
+- **Type**: Standard Change
+- **Reason**: Backend startup failed after Hugging Face redirects left no temp file to rename and operators could not confirm the download status from the console output.
+- **Change**: Taught the downloader to follow redirects without double-renaming, cleared stale temp artifacts, surfaced `[startup]` download logs, and refreshed the README so the first-boot Hugging Face fetch is clearly communicated.
+
 ## 046 – [Standard Change] README refresh & technical doc relocation
 - **Type**: Standard Change
 - **Reason**: The README had become cluttered with extensive technical detail, making it difficult to quickly understand the platform while keeping documentation consistent.

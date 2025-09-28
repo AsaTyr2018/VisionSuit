@@ -62,8 +62,9 @@ const downloadFile = async (url: string, targetPath: string): Promise<void> => {
   await fsPromises.mkdir(dirname(targetPath), { recursive: true });
 
   const tempPath = `${targetPath}.download`;
+  await fsPromises.rm(tempPath, { force: true });
 
-  await new Promise<void>((resolve, reject) => {
+  const result = await new Promise<'downloaded' | 'redirected'>((resolve, reject) => {
     const request = https.get(url, (response) => {
       if (!response.statusCode) {
         reject(new Error(`Failed to download ${url}: no status code`));
@@ -86,7 +87,9 @@ const downloadFile = async (url: string, targetPath: string): Promise<void> => {
           return;
         }
 
-        downloadFile(redirectedUrl, targetPath).then(resolve).catch(reject);
+        downloadFile(redirectedUrl, targetPath)
+          .then(() => resolve('redirected'))
+          .catch(reject);
         return;
       }
 
@@ -99,14 +102,16 @@ const downloadFile = async (url: string, targetPath: string): Promise<void> => {
       const writeStream = createWriteStream(tempPath);
       writeStream.on('error', reject);
       response.on('error', reject);
-      writeStream.on('finish', resolve);
+      writeStream.on('finish', () => resolve('downloaded'));
       response.pipe(writeStream);
     });
 
     request.on('error', reject);
   });
 
-  await fsPromises.rename(tempPath, targetPath);
+  if (result === 'downloaded') {
+    await fsPromises.rename(tempPath, targetPath);
+  }
 };
 
 const ensureModelAsset = async (filename: string) => {
@@ -117,7 +122,11 @@ const ensureModelAsset = async (filename: string) => {
   }
 
   const url = `https://huggingface.co/${MODEL_REPO}/resolve/main/${filename}`;
+  // eslint-disable-next-line no-console
+  console.info(`[startup] Downloading ${filename} from ${MODEL_REPO}...`);
   await downloadFile(url, targetPath);
+  // eslint-disable-next-line no-console
+  console.info(`[startup] Downloaded ${filename} to ${targetPath}`);
   return targetPath;
 };
 
