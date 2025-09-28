@@ -159,16 +159,7 @@ export interface ModelModerationDecision {
 export const evaluateModelModeration = (
   context: ModelModerationContext,
 ): ModelModerationDecision => {
-  if (isBypassEnabled()) {
-    return {
-      isAdult: false,
-      requiresModeration: false,
-      metadataScreening: null,
-      metadataAdult: false,
-      metadataMinor: false,
-      metadataBeast: false,
-    };
-  }
+  const bypass = isBypassEnabled();
 
   const screening = resolveMetadataScreening(context.metadata ?? null);
   const thresholds = metadataThresholds();
@@ -199,7 +190,8 @@ export const evaluateModelModeration = (
     additionalTexts,
   });
 
-  const analysisAdult = Boolean(context.analysis?.decisions?.isAdult);
+  const analysis = bypass ? null : context.analysis;
+  const analysisAdult = Boolean(analysis?.decisions?.isAdult);
 
   const isAdult = adultFromSignals || analysisAdult || metadataAdult || requiresModeration;
 
@@ -239,18 +231,13 @@ export interface ImageModerationDecision {
 export const evaluateImageModeration = (
   context: ImageModerationContext,
 ): ImageModerationDecision => {
-  if (isBypassEnabled()) {
-    return {
-      isAdult: false,
-      requiresModeration: false,
-      illegalMinor: false,
-      illegalBeast: false,
-    };
-  }
+  const bypass = isBypassEnabled();
 
   const metadataList = context.metadataList ?? [];
-  const analysisInput = context.analysis
-    ? { imageAnalysis: { decisions: context.analysis.decisions, scores: context.analysis.scores } }
+  const analysis = bypass ? null : context.analysis;
+  const moderation = bypass ? null : (context.moderation ?? null);
+  const analysisInput = analysis
+    ? { imageAnalysis: { decisions: analysis.decisions, scores: analysis.scores } }
     : {};
 
   const metadataStrings = [
@@ -273,10 +260,10 @@ export const evaluateImageModeration = (
     adultKeywords: context.adultKeywords,
     additionalTexts,
     ...analysisInput,
-    moderation: context.moderation ?? null,
+    moderation,
   });
 
-  const analysisAdult = Boolean(context.analysis?.decisions?.isAdult);
+  const analysisAdult = Boolean(analysis?.decisions?.isAdult);
 
   const thresholds = appConfig.nsfw.metadataFilters;
   const minorDetector = buildKeywordDetector(thresholds.minorTerms);
