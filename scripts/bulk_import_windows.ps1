@@ -245,6 +245,29 @@ function ConvertTo-AbsoluteUri {
   return $builder.Uri
 }
 
+function Build-ModelsPageUri {
+  param(
+    [Uri]$BaseUri,
+    [int]$PageSize,
+    [string]$Cursor
+  )
+
+  $builder = [System.UriBuilder]::new($BaseUri)
+  $queryParts = New-Object System.Collections.Generic.List[string]
+
+  if ($PageSize -gt 0) {
+    $queryParts.Add("pageSize=$PageSize")
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($Cursor)) {
+    $encodedCursor = [System.Uri]::EscapeDataString($Cursor)
+    $queryParts.Add("cursor=$encodedCursor")
+  }
+
+  $builder.Query = [string]::Join('&', $queryParts)
+  return $builder.Uri
+}
+
 function Read-MetadataFile {
   param([string]$Path)
   try {
@@ -293,89 +316,129 @@ function Get-ExistingModelIndex {
     [Uri]$BaseUri
   )
 
-  $modelsUri = ConvertTo-AbsoluteUri -BaseUri $BaseUri -RelativePath '/api/assets/models'
-  Write-Log "Fetching existing models from $($modelsUri.AbsoluteUri) to detect duplicates."
+  $modelsBaseUri = ConvertTo-AbsoluteUri -BaseUri $BaseUri -RelativePath '/api/assets/models'
+  Write-Log "Fetching existing models from $($modelsBaseUri.AbsoluteUri) to detect duplicates."
 
-  $response = $null
-  try {
-    $response = $Client.GetAsync($modelsUri).GetAwaiter().GetResult()
-    $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    if (-not $response.IsSuccessStatusCode) {
-      throw "Failed to query existing models (HTTP $($response.StatusCode)): $body"
-    }
+  $index = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
+  $pageSize = 100
+  $cursor = $null
+  $pageNumber = 0
 
-    $index = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([System.StringComparer]::OrdinalIgnoreCase)
-    if (-not $body) {
-      Write-Log 'No existing models returned by the API. Proceeding with an empty catalog.'
-      return $index
-    }
+  while ($true) {
+    $pageNumber++
+    $pageUri = Build-ModelsPageUri -BaseUri $modelsBaseUri -PageSize $pageSize -Cursor $cursor
 
+    $response = $null
     try {
-      $parsed = $body | ConvertFrom-Json -ErrorAction Stop
+      $response = $Client.GetAsync($pageUri).GetAwaiter().GetResult()
+      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      if (-not $response.IsSuccessStatusCode) {
+        throw "Failed to query existing models (HTTP $($response.StatusCode)): $body"
+      }
+
+      if (-not $body) {
+        if ($pageNumber -eq 1) {
+          Write-Log 'No existing models returned by the API. Proceeding with an empty catalog.'
+        }
+        break
+      }
+
+      try {
+        $parsed = $body | ConvertFrom-Json -ErrorAction Stop
+      }
+      catch {
+        throw "Existing models response was not valid JSON: $($_.Exception.Message)"
+      }
+
+      $collection = New-Object System.Collections.Generic.List[object]
+
+      $isDictionaryLike = (
+        $parsed -is [System.Collections.IDictionary] -or
+        $parsed -is [System.Management.Automation.PSCustomObject]
+      )
+
+      if ($isDictionaryLike) {
+        $candidates = @(
+          (Get-PropertyValue -Object $parsed -PropertyName 'items'),
+          (Get-PropertyValue -Object $parsed -PropertyName 'data'),
+          (Get-PropertyValue -Object $parsed -PropertyName 'results'),
+          (Get-PropertyValue -Object $parsed -PropertyName 'models')
+        ) | Where-Object { $null -ne $_ }
+
+        foreach ($candidate in $candidates) {
+          Add-CollectionItem -Target $collection -Value $candidate
+        }
+      }
+
+      if ($collection.Count -eq 0 -and $null -ne $parsed) {
+        Add-CollectionItem -Target $collection -Value $parsed
+      }
+
+      foreach ($model in $collection) {
+        if (-not $model) { continue }
+
+        $titleValue = Get-PropertyValue -Object $model -PropertyName 'title'
+        $slugValue = Get-PropertyValue -Object $model -PropertyName 'slug'
+
+        $entry = [pscustomobject]@{
+          Title = $titleValue
+          Slug = $slugValue
+          Source = 'remote'
+        }
+
+        $titleKey = $null
+        if ($titleValue) {
+          $titleKey = Build-ModelNameKey -Value $titleValue
+        }
+        if ($titleKey) {
+          $index[$titleKey] = $entry
+        }
+
+        $slugKey = $null
+        if ($slugValue) {
+          $slugKey = Build-ModelNameKey -Value $slugValue
+        }
+        if ($slugKey) {
+          $index[$slugKey] = $entry
+        }
+      }
+
+      $nextCursor = $null
+      $hasMore = $false
+
+      if ($isDictionaryLike) {
+        $nextCursorValue = Get-PropertyValue -Object $parsed -PropertyName 'nextCursor'
+        if ($nextCursorValue -is [string]) {
+          $trimmedCursor = $nextCursorValue.Trim()
+          if ($trimmedCursor.Length -gt 0) {
+            $nextCursor = $trimmedCursor
+          }
+        }
+
+        $hasMoreValue = Get-PropertyValue -Object $parsed -PropertyName 'hasMore'
+        if ($hasMoreValue -is [bool]) {
+          $hasMore = $hasMoreValue
+        }
+      }
+
+      if ($nextCursor) {
+        $cursor = $nextCursor
+        continue
+      }
+
+      if ($hasMore) {
+        Write-Log 'Existing model catalog indicated more results but no cursor was provided. Stopping pagination early.'
+      }
+
+      break
     }
-    catch {
-      throw "Existing models response was not valid JSON: $($_.Exception.Message)"
+    finally {
+      if ($response) { $response.Dispose() }
     }
-
-    $collection = New-Object System.Collections.Generic.List[object]
-
-    $isDictionaryLike = (
-      $parsed -is [System.Collections.IDictionary] -or
-      $parsed -is [System.Management.Automation.PSCustomObject]
-    )
-
-    if ($isDictionaryLike) {
-      $candidates = @(
-        (Get-PropertyValue -Object $parsed -PropertyName 'items'),
-        (Get-PropertyValue -Object $parsed -PropertyName 'data'),
-        (Get-PropertyValue -Object $parsed -PropertyName 'results'),
-        (Get-PropertyValue -Object $parsed -PropertyName 'models')
-      ) | Where-Object { $null -ne $_ }
-
-      foreach ($candidate in $candidates) {
-        Add-CollectionItem -Target $collection -Value $candidate
-      }
-    }
-
-    if ($collection.Count -eq 0 -and $null -ne $parsed) {
-      Add-CollectionItem -Target $collection -Value $parsed
-    }
-
-    foreach ($model in $collection) {
-      if (-not $model) { continue }
-
-      $titleValue = Get-PropertyValue -Object $model -PropertyName 'title'
-      $slugValue = Get-PropertyValue -Object $model -PropertyName 'slug'
-
-      $entry = [pscustomobject]@{
-        Title = $titleValue
-        Slug = $slugValue
-        Source = 'remote'
-      }
-
-      $titleKey = $null
-      if ($titleValue) {
-        $titleKey = Build-ModelNameKey -Value $titleValue
-      }
-      if ($titleKey) {
-        $index[$titleKey] = $entry
-      }
-
-      $slugKey = $null
-      if ($slugValue) {
-        $slugKey = Build-ModelNameKey -Value $slugValue
-      }
-      if ($slugKey) {
-        $index[$slugKey] = $entry
-      }
-    }
-
-    Write-Log "Loaded $($index.Count) unique model name(s) for duplicate detection."
-    return $index
   }
-  finally {
-    if ($response) { $response.Dispose() }
-  }
+
+  Write-Log "Loaded $($index.Count) unique model name(s) for duplicate detection."
+  return $index
 }
 
 function Normalize-Visibility {
