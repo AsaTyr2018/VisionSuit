@@ -1472,3 +1472,8 @@
 - **Type**: Normal Change
 - **Reason**: Administrators could not see why assets were auto-flagged, forcing guesswork before approving or removing items from the moderation queue.
 - **Changes**: Generated NSFW snapshots in the moderation queue API response with metadata and OpenCV summaries, exposed those details to the admin UI, and surfaced automatic flag explanations directly in the queue and detail panes.
+
+## 236 – [Update] Support footer anchored bar
+- **Type**: Normal Change
+- **Reason**: The floating VisionSuit Support bubble obscured content and felt disconnected from the layout, prompting a request for a persistent bar anchored to the viewport edge.
+- **Changes**: Reworked the footer into a full-width support bar with inline sections separated by spacers, refreshed styling for the support links and service badges, and updated the README to describe the anchored bar experience.
