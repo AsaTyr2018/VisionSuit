@@ -30,13 +30,20 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
    ```bash
    ./install.sh
    ```
-2. **Start the development stack**
+2. **Configure environment variables**
+   Copy the sample backend `.env` file and ensure Prisma has a SQLite connection string before running CLI commands:
+   ```bash
+   cp backend/.env.example backend/.env
+   export DATABASE_URL="file:./dev.db"
+   ```
+   The development helper scripts load `.env`, and exporting `DATABASE_URL` keeps standalone Prisma tasks such as `npx prisma migrate reset` from failing on a fresh installation.
+3. **Start the development stack**
    ```bash
    ./dev-start.sh
    ```
    The backend will automatically download the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` messages so you can track progress in the console.
    Ensure the host can load the native ONNX Runtime CPU backend. If startup reports the backend is missing, reinstall the dependency with `npm --prefix backend rebuild onnxruntime-node` or set `ORT_BACKEND_PATH` to the directory that contains the native bindings.
-3. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services.
+4. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services.
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 

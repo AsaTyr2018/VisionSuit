@@ -1367,3 +1367,8 @@
 - **Type**: Normal Change
 - **Reason**: Falling back to the WebAssembly runtime hid missing native dependencies and left the wd-swinv2 tagger without the expected CPU execution provider.
 - **Changes**: Locate the installed `onnxruntime-node` native backend automatically, fail fast when the CPU provider is still missing, remove the WebAssembly dependency, and refresh the README with instructions for reinstalling or pointing `ORT_BACKEND_PATH` at the native binaries.
+
+## 226 – [Fix] Prisma migration shadow database rebuild
+- **Type**: Normal Change
+- **Reason**: Fresh installations failed because the `add_moderation_summary` migration attempted to add existing columns to the SQLite shadow database, producing duplicate-column errors during `prisma migrate`.
+- **Changes**: Rebuilt the Prisma migration to recreate the `ModelAsset`, `ModelVersion`, and `ImageAsset` tables with moderation summary and tagging metadata columns so SQLite resets and deploys succeed without conflicts.
