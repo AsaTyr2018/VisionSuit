@@ -1,3 +1,8 @@
+## 057 – [Normal Change] Dedicated service health probes
+- **Type**: Normal Change
+- **Reason**: The service status dashboard incorrectly reported MinIO as offline whenever the backend API was unavailable because all probes flowed through the API, hiding the real storage state.
+- **Change**: Introduced dedicated backend endpoints for API, MinIO, and GPU health checks, updated the frontend to fall back to the individual probes so storage and GPU indicators move to an unknown state instead of offline when the API is unreachable, and refreshed the README to highlight the per-service monitoring.
+
 ## 056 – [Emergency Change] Maintenance lock hardening
 - **Type**: Emergency Change
 - **Reason**: The maintenance toggle still exposed dashboards to guests and members because the frontend never enforced the admin-only lockout, defeating the purpose of scheduled downtime windows.

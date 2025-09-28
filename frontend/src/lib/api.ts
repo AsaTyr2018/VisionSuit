@@ -20,6 +20,7 @@ import type {
   AdminSettings,
   AdminSettingsResponse,
   PlatformConfigResponse,
+  ServiceStatusProbeResponse,
   ServiceStatusResponse,
   UserProfile,
   UserProfileRank,
@@ -540,6 +541,9 @@ export const api = {
     return request<PaginatedResponse<ImageAsset>>(path, {}, token);
   },
   getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
+  getBackendServiceStatus: () => request<ServiceStatusProbeResponse>('/api/meta/status/backend'),
+  getMinioServiceStatus: () => request<ServiceStatusProbeResponse>('/api/meta/status/minio'),
+  getGpuServiceStatus: () => request<ServiceStatusProbeResponse>('/api/meta/status/gpu'),
   createUploadDraft: postUploadDraft,
   createModelVersion: postModelVersion,
   updateModelVersion: putModelVersion,

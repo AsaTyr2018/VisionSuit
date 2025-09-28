@@ -327,11 +327,20 @@ export const App = () => {
     setToast(payload);
   }, []);
 
+  const resolveFrontendIndicator = useCallback((): ServiceIndicator => {
+    const isBrowserOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    return {
+      label: 'Frontend',
+      status: isBrowserOnline ? 'online' : 'degraded',
+      message: isBrowserOnline ? 'UI active.' : 'Browser offline. Check your connection.',
+    };
+  }, []);
+
   const fetchServiceStatus = useCallback(async () => {
     try {
       const status = await api.getServiceStatus();
       setServiceStatus({
-        frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
+        frontend: resolveFrontendIndicator(),
         backend: {
           label: 'Backend',
           status: status.services.backend.status ?? 'online',
@@ -348,16 +357,98 @@ export const App = () => {
           message: status.services.gpu.message ?? 'GPU node status unknown.',
         },
       });
+      return;
     } catch (error) {
       console.error('Service status fetch failed', error);
-      setServiceStatus({
-        frontend: { label: 'Frontend', status: 'online', message: 'UI active.' },
-        backend: { label: 'Backend', status: 'offline', message: 'Backend unavailable.' },
-        minio: { label: 'MinIO', status: 'offline', message: 'Storage unavailable.' },
-        gpu: { label: 'GPU node', status: 'offline', message: 'GPU node unavailable.' },
+    }
+
+    try {
+      const [backendProbe, minioProbe, gpuProbe] = await Promise.allSettled([
+        api.getBackendServiceStatus(),
+        api.getMinioServiceStatus(),
+        api.getGpuServiceStatus(),
+      ]);
+
+      setServiceStatus((previous) => {
+        const previousStatus = previous ?? createInitialStatus();
+
+        const backendIndicator =
+          backendProbe.status === 'fulfilled'
+            ? {
+                label: 'Backend',
+                status: backendProbe.value.service.status ?? 'online',
+                message: backendProbe.value.service.message ?? 'API available.',
+              }
+            : {
+                label: 'Backend',
+                status: 'offline',
+                message: 'Backend unavailable.',
+              };
+
+        const backendOffline = backendIndicator.status === 'offline';
+
+        const minioIndicator =
+          minioProbe.status === 'fulfilled'
+            ? {
+                label: 'MinIO',
+                status: minioProbe.value.service.status ?? 'unknown',
+                message: minioProbe.value.service.message ?? 'Storage status available.',
+              }
+            : {
+                label: previousStatus.minio.label,
+                status: 'unknown',
+                message: backendOffline
+                  ? 'Storage status unavailable while the backend is offline.'
+                  : previousStatus.minio.message
+                  ? `Storage probe unreachable. Last known: ${previousStatus.minio.message}`
+                  : 'Storage status probe unreachable.',
+              };
+
+        const gpuIndicator =
+          gpuProbe.status === 'fulfilled'
+            ? {
+                label: 'GPU node',
+                status: gpuProbe.value.service.status ?? 'unknown',
+                message: gpuProbe.value.service.message ?? 'GPU node status available.',
+              }
+            : {
+                label: previousStatus.gpu.label,
+                status: 'unknown',
+                message: backendOffline
+                  ? 'GPU status unavailable while the backend is offline.'
+                  : previousStatus.gpu.message
+                  ? `GPU probe unreachable. Last known: ${previousStatus.gpu.message}`
+                  : 'GPU status probe unreachable.',
+              };
+
+        return {
+          frontend: resolveFrontendIndicator(),
+          backend: backendIndicator,
+          minio: minioIndicator,
+          gpu: gpuIndicator,
+        };
+      });
+    } catch (probeError) {
+      console.error('Service status fallback probes failed', probeError);
+      setServiceStatus((previous) => {
+        const previousStatus = previous ?? createInitialStatus();
+        return {
+          frontend: resolveFrontendIndicator(),
+          backend: { label: 'Backend', status: 'offline', message: 'Backend unavailable.' },
+          minio: {
+            label: previousStatus.minio.label,
+            status: 'unknown',
+            message: 'Storage status unavailable while the backend is offline.',
+          },
+          gpu: {
+            label: previousStatus.gpu.label,
+            status: 'unknown',
+            message: 'GPU status unavailable while the backend is offline.',
+          },
+        };
       });
     }
-  }, []);
+  }, [resolveFrontendIndicator]);
 
   const refreshData = useCallback(async () => {
     try {

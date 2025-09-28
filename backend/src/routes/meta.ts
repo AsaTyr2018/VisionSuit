@@ -57,6 +57,57 @@ const getGpuNodeStatus = async (): Promise<{ status: ServiceHealthStatus; messag
   }
 };
 
+const getBackendStatus = async (): Promise<{ status: ServiceHealthStatus; message: string }> => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return {
+      status: 'online',
+      message: 'API reachable and database responding.',
+    };
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.warn('Backend health probe failed:', error);
+    }
+
+    if (error instanceof Error) {
+      return {
+        status: 'degraded',
+        message: `Database connectivity issue: ${error.message}`,
+      };
+    }
+
+    return {
+      status: 'degraded',
+      message: 'Database connectivity issue detected during health probe.',
+    };
+  }
+};
+
+const getMinioStatus = async (): Promise<{ status: ServiceHealthStatus; message: string }> => {
+  const uniqueBuckets = Array.from(new Set(Object.values(storageBuckets)));
+
+  let minioStatus: ServiceHealthStatus = 'online';
+  let minioMessage = 'MinIO storage connected.';
+
+  for (const bucket of uniqueBuckets) {
+    try {
+      const exists = await storageClient.bucketExists(bucket);
+      if (!exists) {
+        minioStatus = 'degraded';
+        minioMessage = `Bucket "${bucket}" was not found.`;
+        break;
+      }
+    } catch (error) {
+      minioStatus = 'offline';
+      minioMessage = `Unable to connect to MinIO: ${(error as Error).message}`;
+      break;
+    }
+  }
+
+  return { status: minioStatus, message: minioMessage };
+};
+
 export const metaRouter = Router();
 
 metaRouter.get('/stats', async (_req, res, next) => {
@@ -81,41 +132,55 @@ metaRouter.get('/stats', async (_req, res, next) => {
 
 metaRouter.get('/status', async (_req, res, next) => {
   try {
-    const uniqueBuckets = Array.from(new Set(Object.values(storageBuckets)));
-
-    let minioStatus: 'online' | 'offline' | 'degraded' = 'online';
-    let minioMessage = 'MinIO storage connected.';
-
-    for (const bucket of uniqueBuckets) {
-      try {
-        const exists = await storageClient.bucketExists(bucket);
-        if (!exists) {
-          minioStatus = 'degraded';
-          minioMessage = `Bucket "${bucket}" was not found.`;
-          break;
-        }
-      } catch (error) {
-        minioStatus = 'offline';
-        minioMessage = `Unable to connect to MinIO: ${(error as Error).message}`;
-        break;
-      }
-    }
-
-    const gpuStatus = await getGpuNodeStatus();
+    const [backendStatus, minioStatus, gpuStatus] = await Promise.all([
+      getBackendStatus(),
+      getMinioStatus(),
+      getGpuNodeStatus(),
+    ]);
 
     res.json({
       timestamp: new Date().toISOString(),
       services: {
-        backend: {
-          status: 'online' as const,
-          message: 'API reachable.',
-        },
-        minio: {
-          status: minioStatus,
-          message: minioMessage,
-        },
+        backend: backendStatus,
+        minio: minioStatus,
         gpu: gpuStatus,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+metaRouter.get('/status/backend', async (_req, res, next) => {
+  try {
+    const service = await getBackendStatus();
+    res.json({
+      timestamp: new Date().toISOString(),
+      service,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+metaRouter.get('/status/minio', async (_req, res, next) => {
+  try {
+    const service = await getMinioStatus();
+    res.json({
+      timestamp: new Date().toISOString(),
+      service,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+metaRouter.get('/status/gpu', async (_req, res, next) => {
+  try {
+    const service = await getGpuNodeStatus();
+    res.json({
+      timestamp: new Date().toISOString(),
+      service,
     });
   } catch (error) {
     next(error);
