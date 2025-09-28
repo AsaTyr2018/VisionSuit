@@ -518,6 +518,51 @@ const linkModelToGallerySchema = z.object({
 
 const toS3Uri = (bucket: string, objectName: string) => `s3://${bucket}/${objectName}`;
 
+const DEFAULT_PAGE_SIZE = 24;
+const MAX_PAGE_SIZE = 100;
+
+type PaginationConfig = {
+  limit: number;
+  cursor: string | null;
+  skip?: number;
+};
+
+const coercePositiveInt = (value: unknown): number | null => {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+
+  return null;
+};
+
+const parsePagination = (query: Record<string, unknown>): PaginationConfig => {
+  const cursor = typeof query.cursor === 'string' && query.cursor.trim().length > 0 ? query.cursor.trim() : null;
+  const takeParam = coercePositiveInt(query.take);
+  const pageParam = coercePositiveInt(query.page);
+  const pageSizeParam = coercePositiveInt(query.pageSize);
+
+  const requestedSize = pageSizeParam ?? takeParam ?? DEFAULT_PAGE_SIZE;
+  const limit = Math.min(Math.max(requestedSize, 1), MAX_PAGE_SIZE);
+
+  if (cursor) {
+    return { limit, cursor };
+  }
+
+  if (pageParam && pageParam > 1) {
+    const skip = (pageParam - 1) * limit;
+    return { limit, cursor: null, skip };
+  }
+
+  return { limit, cursor: null };
+};
+
 export const assetsRouter = Router();
 
 assetsRouter.get('/models', async (req, res, next) => {
@@ -565,6 +610,9 @@ assetsRouter.get('/models', async (req, res, next) => {
       where = { AND: filters };
     }
 
+    const pagination = parsePagination(req.query as Record<string, unknown>);
+    const limitWithLookahead = pagination.limit + 1;
+
     const assets = await prisma.modelAsset.findMany({
       where,
       include: {
@@ -573,10 +621,33 @@ assetsRouter.get('/models', async (req, res, next) => {
         flaggedBy: { select: { id: true, displayName: true, email: true } },
         versions: { orderBy: { createdAt: 'desc' } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: limitWithLookahead,
+      ...(pagination.cursor
+        ? {
+            cursor: { id: pagination.cursor },
+            skip: 1,
+          }
+        : {}),
+      ...(pagination.skip
+        ? {
+            skip: pagination.skip,
+          }
+        : {}),
     });
 
-    res.json(assets.map(mapModelAsset));
+    const hasMore = assets.length > pagination.limit;
+    const trimmed = hasMore ? assets.slice(0, pagination.limit) : assets;
+    const nextCursor = hasMore ? trimmed[trimmed.length - 1]?.id ?? null : null;
+
+    res.json({
+      items: trimmed.map(mapModelAsset),
+      nextCursor,
+      hasMore,
+    });
   } catch (error) {
     next(error);
   }
@@ -627,13 +698,39 @@ assetsRouter.get('/images', async (req, res, next) => {
       where = { AND: filters };
     }
 
+    const pagination = parsePagination(req.query as Record<string, unknown>);
+    const limitWithLookahead = pagination.limit + 1;
+
     const images = await prisma.imageAsset.findMany({
       where,
       include: buildImageInclude(viewer?.id),
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: limitWithLookahead,
+      ...(pagination.cursor
+        ? {
+            cursor: { id: pagination.cursor },
+            skip: 1,
+          }
+        : {}),
+      ...(pagination.skip
+        ? {
+            skip: pagination.skip,
+          }
+        : {}),
     });
 
-    res.json(images.map((image) => mapImageAsset(image, { viewerId: viewer?.id ?? null })));
+    const hasMore = images.length > pagination.limit;
+    const trimmed = hasMore ? images.slice(0, pagination.limit) : images;
+    const nextCursor = hasMore ? trimmed[trimmed.length - 1]?.id ?? null : null;
+
+    res.json({
+      items: trimmed.map((image) => mapImageAsset(image, { viewerId: viewer?.id ?? null })),
+      nextCursor,
+      hasMore,
+    });
   } catch (error) {
     next(error);
   }

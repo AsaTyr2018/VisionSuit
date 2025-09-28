@@ -136,6 +136,41 @@ const request = async <T>(path: string, options: RequestInit = {}, token?: strin
   return (await response.json()) as T;
 };
 
+interface PaginatedResponse<T> {
+  items: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+type PaginationOptions = {
+  cursor?: string | null;
+  take?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+const buildPaginationQuery = (options: PaginationOptions) => {
+  const params = new URLSearchParams();
+
+  if (options.cursor) {
+    params.set('cursor', options.cursor);
+  }
+
+  if (options.take != null) {
+    params.set('take', String(options.take));
+  }
+
+  if (options.page != null) {
+    params.set('page', String(options.page));
+  }
+
+  if (options.pageSize != null) {
+    params.set('pageSize', String(options.pageSize));
+  }
+
+  return params;
+};
+
 const parseError = async (response: Response): Promise<never> => {
   const contentType = response.headers.get('content-type') ?? '';
 
@@ -477,9 +512,33 @@ const unlikeImageAsset = (token: string, imageId: string) =>
 export const api = {
   getPlatformConfig,
   getStats: () => request<MetaStats>('/api/meta/stats'),
-  getModelAssets: (token?: string) => request<ModelAsset[]>('/api/assets/models', {}, token),
+  getModelAssets: (
+    options: ({ token?: string } & PaginationOptions) | string | undefined,
+  ) => {
+    if (typeof options === 'string') {
+      return request<PaginatedResponse<ModelAsset>>('/api/assets/models', {}, options);
+    }
+
+    const { token, ...pagination } = options ?? {};
+    const params = buildPaginationQuery(pagination);
+    const query = params.toString();
+    const path = query.length > 0 ? `/api/assets/models?${query}` : '/api/assets/models';
+    return request<PaginatedResponse<ModelAsset>>(path, {}, token);
+  },
   getGalleries: (token?: string) => request<Gallery[]>('/api/galleries', {}, token),
-  getImageAssets: (token?: string) => request<ImageAsset[]>('/api/assets/images', {}, token),
+  getImageAssets: (
+    options: ({ token?: string } & PaginationOptions) | string | undefined,
+  ) => {
+    if (typeof options === 'string') {
+      return request<PaginatedResponse<ImageAsset>>('/api/assets/images', {}, options);
+    }
+
+    const { token, ...pagination } = options ?? {};
+    const params = buildPaginationQuery(pagination);
+    const query = params.toString();
+    const path = query.length > 0 ? `/api/assets/images?${query}` : '/api/assets/images';
+    return request<PaginatedResponse<ImageAsset>>(path, {}, token);
+  },
   getServiceStatus: () => request<ServiceStatusResponse>('/api/meta/status'),
   createUploadDraft: postUploadDraft,
   createModelVersion: postModelVersion,

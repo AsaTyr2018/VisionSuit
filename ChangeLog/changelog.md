@@ -1,3 +1,8 @@
+## 050 – [Standard Change] Paginated asset explorers
+- **Type**: Standard Change
+- **Reason**: Loading every model and image on initial dashboard visits slowed the UI and risked timeouts once the catalog grew.
+- **Change**: Added cursor-aware pagination and metadata to the asset APIs, taught the frontend to request incremental windows with load-more controls, refreshed the README to highlight the streaming behaviour, and covered moderation/adult filters with regression tests.
+
 ## 049 – [Standard Change] Windows bulk uploader stream guard
 - **Type**: Standard Change
 - **Reason**: The Windows bulk importer intermittently crashed with `Error while copying content to a stream`, leaving operators without insight into the failing file or HTTP transport issue.
