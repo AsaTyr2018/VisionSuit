@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 
 import { appConfig } from '../config';
-import { getAdultKeywordLabels } from '../lib/adult-keywords';
+import { getAdultKeywordLabels, getIllegalKeywordLabels } from '../lib/safety-keywords';
 import { extractImageMetadata } from '../lib/metadata';
 import {
   analyzeImageModeration,
@@ -2397,7 +2397,10 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
     const normalizedTitle = titleCandidate.length > 160 ? `${titleCandidate.slice(0, 159)}…` : titleCandidate;
     const finalTitle = normalizedTitle.length > 0 ? normalizedTitle : fallbackLabel;
 
-    const adultKeywords = await getAdultKeywordLabels();
+    const [adultKeywords, illegalKeywords] = await Promise.all([
+      getAdultKeywordLabels(),
+      getIllegalKeywordLabels(),
+    ]);
     const loraSelections = Array.isArray(requestRecord.loraSelections)
       ? (requestRecord.loraSelections as Array<{ id: string; title?: string | null }>)
       : [];
@@ -2413,6 +2416,7 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
       workflow = await runImageModerationWorkflow({
         buffer: objectBuffer,
         adultKeywords,
+        illegalKeywords,
         existingSummary: moderationSummary,
         context: {
           title: finalTitle,
@@ -2450,6 +2454,7 @@ generatorRouter.post('/requests/:id/artifacts/:artifactId/import', requireAuth, 
         metadataList,
         tags: [],
         adultKeywords,
+        illegalKeywords,
         analysis: workflow?.analysis ?? null,
         moderation,
         additionalTexts,

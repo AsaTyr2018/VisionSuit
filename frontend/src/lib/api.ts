@@ -25,7 +25,7 @@ import type {
   UserProfile,
   UserProfileRank,
   User,
-  AdultSafetyKeyword,
+  SafetyKeyword,
   MetadataThresholdPreview,
   NsfwRescanSummary,
 } from '../types/api';
@@ -746,17 +746,18 @@ export const api = {
       },
       token,
     ),
-  getAdultSafetyKeywords: (token: string) => request<{ keywords: AdultSafetyKeyword[] }>('/api/safety/keywords', {}, token),
-  createAdultSafetyKeyword: (token: string, label: string) =>
-    request<{ keyword: AdultSafetyKeyword }>(
+  getSafetyKeywords: (token: string, category: 'adult' | 'illegal') =>
+    request<{ keywords: SafetyKeyword[] }>(`/api/safety/keywords?category=${category}`, {}, token),
+  createSafetyKeyword: (token: string, category: 'adult' | 'illegal', label: string) =>
+    request<{ keyword: SafetyKeyword }>(
       '/api/safety/keywords',
       {
         method: 'POST',
-        body: JSON.stringify({ label }),
+        body: JSON.stringify({ label, category }),
       },
       token,
     ),
-  deleteAdultSafetyKeyword: (token: string, id: string) =>
+  deleteSafetyKeyword: (token: string, id: string) =>
     request<void>(
       `/api/safety/keywords/${id}`,
       {

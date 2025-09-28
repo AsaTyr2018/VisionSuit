@@ -4,8 +4,9 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
-import { getAdultKeywordLabels } from '../lib/adult-keywords';
+import { getAdultKeywordLabels, getIllegalKeywordLabels } from '../lib/safety-keywords';
 import { collectModerationSummaries, normalizeModerationSummary } from '../lib/nsfw-open-cv';
+import { collectStringsFromJson, detectKeywordMatch } from '../lib/nsfw/keywordMatcher';
 import type { Prisma } from '@prisma/client';
 
 export const tagsRouter = Router();
@@ -64,7 +65,10 @@ const recalculateAdultForTag = async (tagId: string) => {
   const models = rawModels as unknown as TaggedModelRecord[];
   const images = rawImages as unknown as TaggedImageRecord[];
 
-  const adultKeywords = await getAdultKeywordLabels();
+  const [adultKeywords, illegalKeywords] = await Promise.all([
+    getAdultKeywordLabels(),
+    getIllegalKeywordLabels(),
+  ]);
 
   await Promise.all(
     models.map(async (model) => {
@@ -76,7 +80,12 @@ const recalculateAdultForTag = async (tagId: string) => {
         model.metadata ?? null,
         ...versionMetadataList,
       ]);
-      const nextIsAdult = determineAdultForModel({
+      const metadataStrings = [
+        ...collectStringsFromJson(model.metadata ?? null),
+        ...versionMetadataList.flatMap((entry) => collectStringsFromJson(entry)),
+      ];
+
+      const keywordAdult = determineAdultForModel({
         title: model.title,
         description: model.description,
         trigger: model.trigger,
@@ -86,6 +95,19 @@ const recalculateAdultForTag = async (tagId: string) => {
         adultKeywords,
         moderationSummaries,
       });
+
+      const keywordIllegal = detectKeywordMatch(
+        illegalKeywords,
+        [
+          model.title ?? '',
+          model.description ?? '',
+          model.trigger ?? '',
+          ...metadataStrings,
+        ],
+        model.tags,
+      );
+
+      const nextIsAdult = keywordAdult || keywordIllegal;
 
       if (model.isAdult !== nextIsAdult) {
         await prisma.modelAsset.update({ where: { id: model.id }, data: { isAdult: nextIsAdult } });
@@ -108,18 +130,40 @@ const recalculateAdultForTag = async (tagId: string) => {
 
       const moderationSummary = normalizeModerationSummary(image.moderationSummary);
 
-      const nextIsAdult = determineAdultForImage({
+      const metadata = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
+      const metadataList = metadata ? [metadata] : [];
+
+      const keywordAdult = determineAdultForImage({
         title: image.title,
         description: image.description,
         prompt: image.prompt,
         negativePrompt: image.negativePrompt,
         model: image.model,
         sampler: image.sampler,
-        metadata: Object.keys(metadataPayload).length > 0 ? metadataPayload : null,
+        metadata,
+        metadataList,
         tags: image.tags,
         adultKeywords,
         moderation: moderationSummary,
       });
+
+      const metadataStrings = metadataList.flatMap((entry) => collectStringsFromJson(entry));
+
+      const keywordIllegal = detectKeywordMatch(
+        illegalKeywords,
+        [
+          image.title ?? '',
+          image.description ?? '',
+          image.prompt ?? '',
+          image.negativePrompt ?? '',
+          image.model ?? '',
+          image.sampler ?? '',
+          ...metadataStrings,
+        ],
+        image.tags,
+      );
+
+      const nextIsAdult = keywordAdult || keywordIllegal;
 
       if (image.isAdult !== nextIsAdult) {
         await prisma.imageAsset.update({ where: { id: image.id }, data: { isAdult: nextIsAdult } });

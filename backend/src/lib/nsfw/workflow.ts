@@ -25,6 +25,7 @@ export interface ImageModerationWorkflowContext {
 export interface ImageModerationWorkflowInput {
   buffer: Buffer;
   adultKeywords: string[];
+  illegalKeywords: string[];
   context: ImageModerationWorkflowContext;
   analysisOptions?: AnalyzerTaskOptions;
   existingSummary?: ImageModerationSummary | null;
@@ -40,7 +41,7 @@ export interface ImageModerationWorkflowResult {
 export const runImageModerationWorkflow = async (
   input: ImageModerationWorkflowInput,
 ): Promise<ImageModerationWorkflowResult> => {
-  const { buffer, adultKeywords, context, analysisOptions, existingSummary } = input;
+  const { buffer, adultKeywords, illegalKeywords, context, analysisOptions, existingSummary } = input;
 
   if (appConfig.nsfw.bypassFilter) {
     const metadataList = context.metadataList ?? [];
@@ -55,6 +56,7 @@ export const runImageModerationWorkflow = async (
       metadataList,
       tags: context.tags,
       adultKeywords,
+      illegalKeywords,
       analysis: null,
       additionalTexts: context.additionalTexts,
       moderation: null,
@@ -90,6 +92,7 @@ export const runImageModerationWorkflow = async (
     metadataList,
     tags: context.tags,
     adultKeywords,
+    illegalKeywords,
     analysis,
     additionalTexts: context.additionalTexts,
     moderation: summary,
