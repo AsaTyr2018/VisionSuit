@@ -47,6 +47,28 @@ export interface ModerationReport {
   };
 }
 
+export type NsfwReason = 'KEYWORD' | 'METADATA' | 'OPENCV';
+
+export interface NsfwSnapshotSignals {
+  moderationAdultScore: number | null;
+  moderationSuggestiveScore: number | null;
+}
+
+export interface NsfwSnapshotMetadata {
+  adultScore: number | null;
+  minorScore: number | null;
+  beastScore: number | null;
+}
+
+export interface NsfwSnapshot {
+  visibility: 'BLOCKED' | 'ADULT' | 'SUGGESTIVE';
+  pendingReview: boolean;
+  reasons: NsfwReason[];
+  reasonDetails: string[];
+  signals: NsfwSnapshotSignals;
+  metadata: NsfwSnapshotMetadata | null;
+}
+
 export interface AssetComment {
   id: string;
   content: string;
@@ -369,6 +391,7 @@ export interface ModelAsset {
   flaggedAt?: string | null;
   flaggedBy?: ModerationActorSummary | null;
   moderationReports?: ModerationReport[];
+  nsfw?: NsfwSnapshot | null;
 }
 
 export interface ImageAssetMetadata {
@@ -432,6 +455,7 @@ export interface ImageAsset {
   flaggedAt?: string | null;
   flaggedBy?: ModerationActorSummary | null;
   moderationReports?: ModerationReport[];
+  nsfw?: NsfwSnapshot | null;
 }
 
 export interface GalleryEntry {

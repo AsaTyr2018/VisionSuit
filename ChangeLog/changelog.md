@@ -1467,3 +1467,8 @@
 - **Type**: Normal Change
 - **Reason**: The Windows bulk uploader only checked the first page of existing models, so duplicate LoRA names beyond the initial batch were silently re-uploaded.
 - **Changes**: Added a paginated catalog fetcher that requests 100 models per page, walks the server-provided cursor until exhaustion, and reuses the normalized title and slug keys so duplicate detection now covers the entire remote library.
+
+## 235 – [Fix] Moderation queue automatic flag reasons
+- **Type**: Normal Change
+- **Reason**: Administrators could not see why assets were auto-flagged, forcing guesswork before approving or removing items from the moderation queue.
+- **Changes**: Generated NSFW snapshots in the moderation queue API response with metadata and OpenCV summaries, exposed those details to the admin UI, and surfaced automatic flag explanations directly in the queue and detail panes.

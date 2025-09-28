@@ -4147,6 +4147,7 @@ export const AdminPanel = ({
                           isModerationLoading;
                         const nsfw = entry.nsfw;
                         const reasonBadges = nsfw?.reasons ?? [];
+                        const primaryReasonDetail = nsfw?.reasonDetails?.[0] ?? null;
 
                         return (
                           <li key={`${entry.entity}-${asset.id}`} className="moderation-list__item">
@@ -4190,6 +4191,11 @@ export const AdminPanel = ({
                                   </span>
                                 ) : null}
                               </div>
+                              {primaryReasonDetail ? (
+                                <p className="moderation-list-item__reason" title={primaryReasonDetail}>
+                                  {primaryReasonDetail}
+                                </p>
+                              ) : null}
                               <div className="moderation-list-item__footer">
                                 <span>{summary.total} reports</span>
                                 <span aria-hidden="true">•</span>
@@ -4265,6 +4271,17 @@ export const AdminPanel = ({
                               <span className="moderation-reason moderation-reason--user">User flag</span>
                             ) : null}
                           </div>
+                          {selectedModerationAsset.nsfw?.reasonDetails &&
+                          selectedModerationAsset.nsfw.reasonDetails.length > 0 ? (
+                            <div className="moderation-detail__section moderation-detail__reason">
+                              <h4>Automatic flag reasons</h4>
+                              <ul className="moderation-detail__reason-list">
+                                {selectedModerationAsset.nsfw.reasonDetails.map((detail) => (
+                                  <li key={detail}>{detail}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
                           {selectedModerationAsset.nsfw ? (
                             <div className="moderation-detail__nsfw">
                               <h4>NSFW signals</h4>
