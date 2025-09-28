@@ -1251,107 +1251,132 @@ export const App = () => {
       totalPublished === 0
         ? '100%'
         : `${Math.max(0, Math.round(((totalPublished - pendingModeration) / totalPublished) * 100))}%`;
-    const services = Object.values(serviceStatus);
-    const onlineServices = services.filter((service) => service.status === 'online').length;
-
     const callToActions = [
       {
         id: 'upload-model',
-        title: isCurator ? 'Upload a new model' : 'Become a curator',
-        description: isCurator
-          ? 'Share your latest LoRA adapters with the catalog.'
-          : 'Sign in and request an upgrade to start publishing assets.',
+        title: isCurator ? 'Upload model' : 'Become curator',
         onClick: isCurator ? handleOpenAssetUpload : () => setIsLoginOpen(true),
         accent: 'violet' as const,
       },
       {
         id: 'draft-gallery',
-        title: isCurator ? 'Curate a gallery' : 'Discover curated galleries',
-        description: isCurator
-          ? 'Bundle renders into themed collections ready for spotlighting.'
-          : 'Browse curated collections to learn the house style.',
+        title: isCurator ? 'Curate gallery' : 'Browse galleries',
         onClick: isCurator ? handleOpenGalleryUpload : () => openPrimaryView('images'),
         accent: 'cyan' as const,
       },
       {
         id: 'queue-generator',
-        title: 'Queue a generator run',
-        description: canAccessGenerator
-          ? 'Blend prompts and LoRAs directly from the on-site generator.'
-          : 'Members can request access to queue renders without leaving the browser.',
+        title: 'Queue generator run',
         onClick: handleOpenGeneratorCta,
         accent: 'amber' as const,
       },
       authUser?.role === 'ADMIN'
         ? {
             id: 'review-moderation',
-            title: 'Review flagged assets',
-            description: 'Jump into the moderation workspace to clear pending reviews.',
+            title: 'Moderation queue',
             onClick: handleOpenModerationCta,
             accent: 'rose' as const,
           }
         : null,
+      {
+        id: 'check-status',
+        title: 'Service status',
+        onClick: () => openPrimaryView('status'),
+        accent: 'slate' as const,
+      },
     ].filter(Boolean) as Array<{
       id: string;
       title: string;
+      onClick: () => void;
+      accent: 'violet' | 'cyan' | 'amber' | 'rose' | 'slate';
+    }>;
+
+    const latestHighlights = [
+      visibleModelAssets[0]
+        ? {
+            id: `model-${visibleModelAssets[0].id}`,
+            label: 'Model release',
+            title: visibleModelAssets[0].name,
+            description: visibleModelAssets[0].summary ?? 'New LoRA adapter available to explore.',
+            onClick: () => openPrimaryView('models'),
+          }
+        : null,
+      visibleImageAssets[0]
+        ? {
+            id: `image-${visibleImageAssets[0].id}`,
+            label: 'Fresh render',
+            title: visibleImageAssets[0].title ?? 'New reference render',
+            description: visibleImageAssets[0].prompt ?? 'See the latest inspiration from the community.',
+            onClick: () => openPrimaryView('images'),
+          }
+        : null,
+    ].filter(Boolean) as Array<{
+      id: string;
+      label: string;
+      title: string;
       description: string;
       onClick: () => void;
-      accent: 'violet' | 'cyan' | 'amber' | 'rose';
     }>;
 
     return (
       <div className="home-grid">
+        <section className="home-section home-section--whats-new">
+          <header className="home-section__header">
+            <h2>What&apos;s new</h2>
+            <p>Latest highlights across the catalog so you can dive into fresh releases first.</p>
+          </header>
+          <div className="home-whats-new-grid">
+            {latestHighlights.length === 0 ? (
+              <p className="home-whats-new-empty">New models and renders will appear here once published.</p>
+            ) : (
+              latestHighlights.map((item) => (
+                <button key={item.id} type="button" className="home-whats-new-card" onClick={item.onClick}>
+                  <span className="home-whats-new-card__label">{item.label}</span>
+                  <span className="home-whats-new-card__title">{item.title}</span>
+                  <span className="home-whats-new-card__description">{item.description}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+
         <section className="home-section home-section--callouts">
           <header className="home-section__header">
             <h2>Take action</h2>
-            <p>Quick links for curators and administrators to keep the catalog moving.</p>
           </header>
-          <div className="home-cta-grid">
+          <ul className="home-cta-list">
             {callToActions.map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                className={`home-cta-card home-cta-card--${action.accent}`}
-                onClick={action.onClick}
-              >
-                <span className="home-cta-card__title">{action.title}</span>
-                <span className="home-cta-card__description">{action.description}</span>
-              </button>
+              <li key={action.id}>
+                <button
+                  type="button"
+                  className={`home-cta-pill home-cta-pill--${action.accent}`}
+                  onClick={action.onClick}
+                >
+                  <span className="home-cta-pill__title">{action.title}</span>
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
 
         <section className="home-section home-section--trust">
           <header className="home-section__header">
             <h2>Platform health</h2>
-            <p>Trust metrics covering catalog growth, moderation throughput, and live services.</p>
           </header>
-          <div className="home-trust-panel">
-            <dl className="home-trust-metrics">
-              <div className="home-trust-metric">
-                <dt>Curated models</dt>
-                <dd>{assets.length.toLocaleString()}</dd>
-                <p>Published LoRA adapters currently available in the explorer.</p>
-              </div>
-              <div className="home-trust-metric">
-                <dt>Active curators</dt>
-                <dd>{curatorCount.toLocaleString()}</dd>
-                <p>Curators and administrators maintaining the catalog.</p>
-              </div>
-              <div className="home-trust-metric">
-                <dt>Moderation coverage</dt>
-                <dd>{moderationCoverage}</dd>
-                <p>{pendingModeration} items waiting on review across models and renders.</p>
-              </div>
-            </dl>
-            <div className="home-trust-summary">
-              <h3>Live services</h3>
-              <p>
-                {onlineServices} of {services.length} services report healthy status. Dive into the dedicated service status
-                page for uptime notes and recovery guidance.
-              </p>
+          <dl className="home-trust-list">
+            <div className="home-trust-list__item">
+              <dt>Curated models</dt>
+              <dd>{assets.length.toLocaleString()}</dd>
             </div>
-          </div>
+            <div className="home-trust-list__item">
+              <dt>Active curators</dt>
+              <dd>{curatorCount.toLocaleString()}</dd>
+            </div>
+            <div className="home-trust-list__item">
+              <dt>Moderation coverage</dt>
+              <dd>{moderationCoverage}</dd>
+            </div>
+          </dl>
         </section>
 
         <section className="home-section">

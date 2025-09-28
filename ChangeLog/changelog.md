@@ -1,3 +1,8 @@
+## 054 – [Standard Change] Homepage focus realignment
+- **Type**: Standard Change
+- **Reason**: The landing page dedicated too much space to admin-oriented actions and dense trust summaries, leaving little room to spotlight fresh catalog activity.
+- **Change**: Introduced a "What's new" highlight rail, replaced the bulky action cards with compact next-step pills, condensed the platform health metrics, removed the redundant live services callout, and refreshed the README to describe the updated home experience.
+
 ## 053 – [Standard Change] Dedicated service status page rollout
 - **Type**: Standard Change
 - **Reason**: The dashboard and sidebar were crowded by the embedded service status widgets, making it harder to surface uptime details in a focused way.
@@ -1397,3 +1402,8 @@
 - **Type**: Normal Change
 - **Reason**: The support footer needed to stay accessible without occupying space while browsing, prompting a request for a scroll-aware menu bar with icon-based support links.
 - **Changes**: Converted the footer into a floating bar that hides on downward scroll and appears when scrolling up, swapped Discord and GitHub links for icon buttons, condensed the VisionSuit Support and credits text, and added a placeholder Service Status link within the new layout.
+
+## 228 – [Update] Homepage action & health compaction
+- **Type**: Normal Change
+- **Reason**: The refreshed homepage still left the Take action and Platform health areas feeling oversized and repetitive for operators reviewing the dashboard.
+- **Changes**: Condensed the Take action shortcuts into single-line pills with an inline affordance, trimmed Platform health metrics down to label-and-value pairs, tightened the surrounding spacing, and refreshed the styling tokens to reinforce the compact presentation.
