@@ -180,6 +180,12 @@ body {
     0 0 30px rgba(71, 85, 105, 0.45);
 }
 
+.status-led--deactivated {
+  background: #475569;
+  box-shadow: 0 0 0 2px rgba(71, 85, 105, 0.35), 0 0 16px rgba(30, 41, 59, 0.55),
+    0 0 30px rgba(15, 23, 42, 0.45);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -840,6 +846,60 @@ body {
   gap: 1rem;
 }
 
+.status-page__deactivated {
+  padding: 1.4rem 1.6rem;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: rgba(226, 232, 240, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.status-page__deactivated h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.status-page__deactivated ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.status-page__deactivated li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.status-page__deactivated li strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.status-page__deactivated li span {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.78);
+}
+
+.status-page__deactivated li p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(226, 232, 240, 0.75);
+}
+
 @media (min-width: 768px) {
   .status-page__list {
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -911,6 +971,11 @@ body {
 
 .status-card--unknown {
   border-color: rgba(148, 163, 184, 0.32);
+}
+
+.status-card--deactivated {
+  border-color: rgba(148, 163, 184, 0.22);
+  opacity: 0.8;
 }
 
 .status-page__help {
@@ -11401,6 +11466,70 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: rgba(148, 163, 184, 0.8);
+}
+
+.generator-settings__switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2rem;
+  padding: 1.1rem 1.3rem;
+  margin-bottom: 1.2rem;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  flex-wrap: wrap;
+}
+
+.generator-settings__switch-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: rgba(226, 232, 240, 0.88);
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.generator-settings__switch-copy h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.generator-settings__switch-copy p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.generator-settings__switch-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.6);
+  color: rgba(226, 232, 240, 0.9);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.generator-settings__switch-toggle input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #60a5fa;
+  cursor: pointer;
+}
+
+.generator-settings__switch-toggle--active {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(37, 99, 235, 0.18);
+  color: rgba(226, 232, 240, 0.95);
 }
 
 .generator-settings__option {

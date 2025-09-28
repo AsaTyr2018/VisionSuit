@@ -321,6 +321,7 @@ model GeneratorSettings {
   id         Int                 @id @default(autoincrement())
   accessMode GeneratorAccessMode @default(ADMIN_ONLY)
   baseModels Json                @default("[]")
+  isGpuEnabled Boolean           @default(true)
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
 }

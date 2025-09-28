@@ -804,6 +804,7 @@ const mapGeneratorRequest = (
 const settingsSchema = z.object({
   accessMode: z.nativeEnum(GeneratorAccessMode),
   baseModels: generatorBaseModelSettingsSchema,
+  isGpuEnabled: z.boolean(),
 });
 
 generatorRouter.get('/base-models/catalog', requireAuth, async (_req, res, next) => {
@@ -1321,6 +1322,7 @@ generatorRouter.get('/settings', async (_req, res, next) => {
         id: settings.id,
         accessMode: settings.accessMode,
         baseModels: parseGeneratorBaseModels(extractSettingsBaseModels(settings)),
+        isGpuEnabled: settings.isGpuEnabled,
         createdAt: settings.createdAt.toISOString(),
         updatedAt: settings.updatedAt.toISOString(),
       },
@@ -1347,6 +1349,7 @@ generatorRouter.put('/settings', requireAuth, requireAdmin, async (req, res, nex
       data: {
         accessMode: parsed.data.accessMode,
         baseModels: parsed.data.baseModels,
+        isGpuEnabled: parsed.data.isGpuEnabled,
       } as unknown as Prisma.GeneratorSettingsUpdateInput,
     });
 
@@ -1355,6 +1358,7 @@ generatorRouter.put('/settings', requireAuth, requireAdmin, async (req, res, nex
         id: updated.id,
         accessMode: updated.accessMode,
         baseModels: parseGeneratorBaseModels(extractSettingsBaseModels(updated)),
+        isGpuEnabled: updated.isGpuEnabled,
         createdAt: updated.createdAt.toISOString(),
         updatedAt: updated.updatedAt.toISOString(),
       },
