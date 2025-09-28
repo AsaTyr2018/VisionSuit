@@ -90,6 +90,39 @@ function ConvertTo-ObjectArray {
   return @($Value)
 }
 
+function Add-CollectionItem {
+  param(
+    [System.Collections.Generic.List[object]]$Target,
+    $Value
+  )
+
+  if ($null -eq $Target -or $null -eq $Value) {
+    return
+  }
+
+  if ($Value -is [System.Array]) {
+    foreach ($item in $Value) {
+      Add-CollectionItem -Target $Target -Value $item
+    }
+    return
+  }
+
+  $valueType = $Value.GetType()
+  if (
+    $Value -is [System.Collections.IEnumerable] -and
+    -not ($Value -is [string]) -and
+    -not ($Value -is [System.Collections.IDictionary]) -and
+    $valueType.FullName -ne 'System.Management.Automation.PSCustomObject'
+  ) {
+    foreach ($item in $Value) {
+      Add-CollectionItem -Target $Target -Value $item
+    }
+    return
+  }
+
+  $Target.Add($Value)
+}
+
 function Get-ObjectCount {
   param($Value)
 
@@ -284,12 +317,28 @@ function Get-ExistingModelIndex {
       throw "Existing models response was not valid JSON: $($_.Exception.Message)"
     }
 
-    $collection = @()
-    if ($parsed -is [System.Collections.IEnumerable]) {
-      $collection = @($parsed)
+    $collection = New-Object System.Collections.Generic.List[object]
+
+    $isDictionaryLike = (
+      $parsed -is [System.Collections.IDictionary] -or
+      $parsed -is [System.Management.Automation.PSCustomObject]
+    )
+
+    if ($isDictionaryLike) {
+      $candidates = @(
+        (Get-PropertyValue -Object $parsed -PropertyName 'items'),
+        (Get-PropertyValue -Object $parsed -PropertyName 'data'),
+        (Get-PropertyValue -Object $parsed -PropertyName 'results'),
+        (Get-PropertyValue -Object $parsed -PropertyName 'models')
+      ) | Where-Object { $null -ne $_ }
+
+      foreach ($candidate in $candidates) {
+        Add-CollectionItem -Target $collection -Value $candidate
+      }
     }
-    elseif ($null -ne $parsed) {
-      $collection = @($parsed)
+
+    if ($collection.Count -eq 0 -and $null -ne $parsed) {
+      Add-CollectionItem -Target $collection -Value $parsed
     }
 
     foreach ($model in $collection) {

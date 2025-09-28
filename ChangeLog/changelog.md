@@ -1,3 +1,8 @@
+## 060 – [Normal Change] Windows bulk uploader duplicate guard restoration
+- **Type**: Normal Change
+- **Reason**: The latest Windows bulk uploader revision re-uploaded models that were already live because the duplicate detector no longer understood the paginated `/api/assets/models` response wrapper.
+- **Change**: Normalised the remote catalog parser so it flattens `items`, `data`, `results`, or `models` collections before indexing names, restored the skip logic for matching safetensors, and refreshed the README to document the paginated response handling.
+
 ## 059 – [Normal Change] Windows bulk uploader catalog resilience
 - **Type**: Normal Change
 - **Reason**: Import runs against older VisionSuit builds crashed because the `/api/assets/models` response omitted `title`, causing the duplicate detection to dereference a missing property.
