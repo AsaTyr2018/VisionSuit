@@ -37,6 +37,8 @@ import {
   serializeModerationSummary,
   type ImageModerationSummary,
 } from '../lib/nsfw-open-cv';
+import { resolveMetadataScreening } from '../lib/nsfw/moderation';
+import type { MetadataEvaluationResult } from '../lib/nsfw/metadata';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
 
@@ -66,6 +68,276 @@ type HydratedImageComment = ImageComment & {
   author: CommentAuthor;
   _count: { likes: number };
   likes?: { userId: string }[];
+};
+
+type NsfwVisibility = 'BLOCKED' | 'ADULT' | 'SUGGESTIVE';
+type NsfwReason = 'KEYWORD' | 'METADATA' | 'OPENCV';
+
+type NsfwSnapshot = {
+  visibility: NsfwVisibility;
+  pendingReview: boolean;
+  reasons: NsfwReason[];
+  reasonDetails: string[];
+  signals: {
+    moderationAdultScore: number | null;
+    moderationSuggestiveScore: number | null;
+  };
+  metadata: {
+    adultScore: number | null;
+    minorScore: number | null;
+    beastScore: number | null;
+  } | null;
+};
+
+const NSFW_VISIBILITY_PRIORITY: Record<NsfwVisibility, number> = {
+  BLOCKED: 0,
+  ADULT: 1,
+  SUGGESTIVE: 2,
+};
+
+const METADATA_MATCH_EXAMPLE_LIMIT = 3;
+
+const sanitizeReasonDetails = (values: string[]): string[] => {
+  const seen = new Set<string>();
+  const sanitized: string[] = [];
+
+  for (const entry of values) {
+    const normalized = entry.trim();
+    if (normalized.length === 0 || seen.has(normalized)) {
+      continue;
+    }
+    sanitized.push(normalized);
+    seen.add(normalized);
+  }
+
+  return sanitized;
+};
+
+const formatMatchExamples = (entries: ReadonlyArray<{ tag: string; count: number }>) => {
+  const examples = entries
+    .map((entry) => ({
+      tag: typeof entry.tag === 'string' ? entry.tag.trim() : '',
+      count: Number.isFinite(entry.count) ? Number(entry.count) : Number.NaN,
+    }))
+    .filter((entry) => entry.tag.length > 0)
+    .slice(0, METADATA_MATCH_EXAMPLE_LIMIT)
+    .map((entry) =>
+      Number.isFinite(entry.count) && entry.count > 1
+        ? `${entry.tag} (${Math.round(entry.count)})`
+        : entry.tag,
+    )
+    .filter((entry) => entry.length > 0);
+
+  return examples.length > 0 ? examples.join(', ') : null;
+};
+
+const elevateVisibility = (current: NsfwVisibility, next: NsfwVisibility | null): NsfwVisibility => {
+  if (!next) {
+    return current;
+  }
+
+  return NSFW_VISIBILITY_PRIORITY[next] < NSFW_VISIBILITY_PRIORITY[current] ? next : current;
+};
+
+const appendMetadataReason = (
+  reasons: Set<NsfwReason>,
+  details: string[],
+  category: 'adult' | 'minor' | 'beast',
+  score: number,
+  threshold: number,
+  matches: MetadataEvaluationResult['matches'][keyof MetadataEvaluationResult['matches']],
+): NsfwVisibility | null => {
+  if (threshold <= 0 || score < threshold) {
+    return null;
+  }
+
+  reasons.add('METADATA');
+
+  const label =
+    category === 'adult'
+      ? 'Adult'
+      : category === 'minor'
+        ? 'Minor-coded'
+        : 'Bestiality';
+  const formattedScore = Number.isFinite(score) ? Math.round(score) : score;
+  const exampleText = formatMatchExamples(matches ?? []);
+  const messageParts = [
+    `${label} metadata score ${formattedScore} met the review threshold (${threshold}).`,
+  ];
+
+  if (exampleText) {
+    messageParts.push(`Examples: ${exampleText}.`);
+  }
+
+  details.push(messageParts.join(' '));
+
+  return category === 'adult' ? 'ADULT' : 'BLOCKED';
+};
+
+const selectLatestModerationSummary = (
+  summaries: ImageModerationSummary[],
+): ImageModerationSummary | null => {
+  let latest: ImageModerationSummary | null = null;
+  let latestTimestamp = Number.NEGATIVE_INFINITY;
+
+  for (const summary of summaries) {
+    const timestamp = Date.parse(summary.analyzedAt ?? '');
+    const normalized = Number.isFinite(timestamp) ? timestamp : 0;
+    if (!latest || normalized > latestTimestamp) {
+      latest = summary;
+      latestTimestamp = normalized;
+    }
+  }
+
+  return latest;
+};
+
+const buildModelModerationSnapshot = (asset: HydratedModelAsset): NsfwSnapshot | null => {
+  const moderationSummaries = collectModerationSummaries([
+    asset.moderationSummary ?? null,
+    asset.metadata ?? null,
+    ...asset.versions
+      .map((version) => version.metadata ?? null)
+      .filter((entry): entry is Prisma.JsonValue => entry != null),
+  ]);
+  const summary = selectLatestModerationSummary(moderationSummaries);
+  const metadataScreening = resolveMetadataScreening(asset.metadata ?? null);
+
+  const reasons = new Set<NsfwReason>();
+  const details: string[] = [];
+  let visibility: NsfwVisibility = 'SUGGESTIVE';
+  let pendingReview = false;
+
+  if (metadataScreening) {
+    const thresholds = appConfig.nsfw.metadataFilters.thresholds;
+
+    visibility = elevateVisibility(
+      visibility,
+      appendMetadataReason(
+        reasons,
+        details,
+        'minor',
+        metadataScreening.minorScore,
+        thresholds.minor,
+        metadataScreening.matches.minor,
+      ),
+    );
+    visibility = elevateVisibility(
+      visibility,
+      appendMetadataReason(
+        reasons,
+        details,
+        'beast',
+        metadataScreening.beastScore,
+        thresholds.beast,
+        metadataScreening.matches.beast,
+      ),
+    );
+    visibility = elevateVisibility(
+      visibility,
+      appendMetadataReason(
+        reasons,
+        details,
+        'adult',
+        metadataScreening.adultScore,
+        thresholds.adult,
+        metadataScreening.matches.adult,
+      ),
+    );
+  }
+
+  if (summary) {
+    reasons.add('OPENCV');
+    details.push(...summary.reasons);
+
+    if (summary.classification === 'NUDE') {
+      visibility = elevateVisibility(visibility, 'ADULT');
+    } else if (summary.classification === 'BORDERLINE') {
+      pendingReview = true;
+      visibility = elevateVisibility(visibility, 'SUGGESTIVE');
+    } else if (summary.classification === 'SWIMWEAR') {
+      visibility = elevateVisibility(visibility, 'SUGGESTIVE');
+    }
+  }
+
+  if (reasons.size === 0 && !asset.flaggedBy) {
+    reasons.add('KEYWORD');
+    details.push('Automatic metadata screening detected restricted language and queued this asset for review.');
+    visibility = elevateVisibility(visibility, 'BLOCKED');
+  }
+
+  const reasonDetails = sanitizeReasonDetails(details);
+
+  if (reasons.size === 0 && reasonDetails.length === 0 && !metadataScreening) {
+    return null;
+  }
+
+  return {
+    visibility,
+    pendingReview,
+    reasons: Array.from(reasons),
+    reasonDetails,
+    signals: {
+      moderationAdultScore: summary?.adultScore ?? null,
+      moderationSuggestiveScore: summary?.suggestiveScore ?? null,
+    },
+    metadata: metadataScreening
+      ? {
+          adultScore: metadataScreening.adultScore,
+          minorScore: metadataScreening.minorScore,
+          beastScore: metadataScreening.beastScore,
+        }
+      : null,
+  };
+};
+
+const buildImageModerationSnapshot = (asset: HydratedImageAsset): NsfwSnapshot | null => {
+  const summary = selectLatestModerationSummary(
+    collectModerationSummaries([asset.moderationSummary ?? null]),
+  );
+
+  const reasons = new Set<NsfwReason>();
+  const details: string[] = [];
+  let visibility: NsfwVisibility = 'SUGGESTIVE';
+  let pendingReview = false;
+
+  if (summary) {
+    reasons.add('OPENCV');
+    details.push(...summary.reasons);
+
+    if (summary.classification === 'NUDE') {
+      visibility = elevateVisibility(visibility, 'ADULT');
+    } else if (summary.classification === 'BORDERLINE') {
+      pendingReview = true;
+      visibility = elevateVisibility(visibility, 'SUGGESTIVE');
+    } else if (summary.classification === 'SWIMWEAR') {
+      visibility = elevateVisibility(visibility, 'SUGGESTIVE');
+    }
+  }
+
+  if (reasons.size === 0 && !asset.flaggedBy) {
+    reasons.add('KEYWORD');
+    details.push('Automatic keyword screening detected restricted terms and queued this asset for review.');
+    visibility = elevateVisibility(visibility, 'BLOCKED');
+  }
+
+  const reasonDetails = sanitizeReasonDetails(details);
+
+  if (reasons.size === 0 && reasonDetails.length === 0) {
+    return null;
+  }
+
+  return {
+    visibility,
+    pendingReview,
+    reasons: Array.from(reasons),
+    reasonDetails,
+    signals: {
+      moderationAdultScore: summary?.adultScore ?? null,
+      moderationSuggestiveScore: summary?.suggestiveScore ?? null,
+    },
+    metadata: null,
+  };
 };
 
 const buildImageInclude = (viewerId?: string | null) => ({
@@ -953,9 +1225,21 @@ assetsRouter.get('/moderation/queue', requireAuth, requireAdmin, async (req, res
       }),
     ]);
 
+    const mappedModels = models.map((model) => {
+      const snapshot = buildModelModerationSnapshot(model);
+      const mapped = mapModelAsset(model);
+      return snapshot ? { ...mapped, nsfw: snapshot } : mapped;
+    });
+
+    const mappedImages = images.map((image) => {
+      const snapshot = buildImageModerationSnapshot(image);
+      const mapped = mapImageAsset(image, { viewerId: req.user?.id ?? null });
+      return snapshot ? { ...mapped, nsfw: snapshot } : mapped;
+    });
+
     res.json({
-      models: models.map(mapModelAsset),
-      images: images.map((image) => mapImageAsset(image, { viewerId: req.user?.id ?? null })),
+      models: mappedModels,
+      images: mappedImages,
     });
   } catch (error) {
     next(error);
