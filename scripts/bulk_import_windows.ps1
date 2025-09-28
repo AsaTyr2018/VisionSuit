@@ -60,7 +60,7 @@ param(
   [string]$DefaultTrigger,
 
   [Parameter()]
-  [int]$ImageBatchSize = 12
+  [int]$ImageBatchSize = 100
 )
 
 Set-StrictMode -Version Latest

@@ -21,7 +21,7 @@ except ImportError as exc:  # pragma: no cover - dependency guard
     raise
 
 DEFAULT_TIMEOUT = 30
-MAX_PREVIEW_FILES = 11  # VisionSuit accepts at most 12 files per request (1 model + 11 previews).
+MAX_PREVIEW_FILES = 99  # VisionSuit accepts at most 100 files per request (1 model + 99 previews).
 
 
 class PreviewExtractor(HTMLParser):

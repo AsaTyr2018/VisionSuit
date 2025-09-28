@@ -18,7 +18,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 - Prompt governance with keyword enforcement, adult tagging, automated rescans, and SmilingWolf/wd-swinv2 auto-tagging for prompt-free uploads.
 
 ### Creation & Distribution
-- Guided three-step upload wizard for LoRA models and gallery renders with drag-and-drop validation and revisioned model cards.
+- Guided three-step upload wizard for LoRA models and gallery renders with drag-and-drop validation, revisioned model cards, and gallery batches up to 100 files (still capped at 2 GB per request).
 - On-site generator hub that dispatches SDXL workflows to GPU agents, supports multi-LoRA blends, and streams artifacts through authenticated proxies.
 - MinIO-backed storage pipeline with secure download proxying, size guardrails, and curated collection linking.
 

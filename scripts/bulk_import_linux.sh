@@ -565,7 +565,7 @@ PY
 
   total_images=${#other_images[@]}
   if [ "$total_images" -gt 0 ]; then
-    max_batch=12
+    max_batch=100
     uploaded_batches=0
     uploaded_images=0
     start_index=0
