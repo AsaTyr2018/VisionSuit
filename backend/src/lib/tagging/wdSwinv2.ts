@@ -11,12 +11,49 @@ const MODEL_FILENAME = 'model.onnx';
 const LABEL_FILENAME = 'selected_tags.csv';
 const GENERAL_THRESHOLD = 0.35;
 const CHARACTER_THRESHOLD = 0.85;
+const CPU_EXECUTION_PROVIDER = 'cpuExecutionProvider';
 
 const backendRoot = resolve(__dirname, '..', '..');
 const repoRoot = resolve(backendRoot, '..');
 const modelDirectory = resolve(repoRoot, 'cache', 'models', MODEL_REPO);
 const modelPath = resolve(modelDirectory, MODEL_FILENAME);
 const labelPath = resolve(modelDirectory, LABEL_FILENAME);
+const cpuBackendCandidates = [
+  resolve(backendRoot, 'node_modules', 'onnxruntime-node', 'bin', 'napi-v3'),
+  resolve(backendRoot, 'node_modules', 'onnxruntime-node', 'bin', 'napi-v2'),
+  resolve(backendRoot, 'node_modules', 'onnxruntime-node', 'build', 'Release'),
+];
+
+const isBackendUnavailableError = (error: unknown) =>
+  error instanceof Error && /backend not found/i.test(error.message);
+
+const ensureCpuBackendPath = async () => {
+  if (process.env.ORT_BACKEND_PATH && process.env.ORT_BACKEND_PATH.trim().length > 0) {
+    return;
+  }
+
+  for (const candidate of cpuBackendCandidates) {
+    try {
+      const stats = await fsPromises.stat(candidate);
+      if (stats.isDirectory()) {
+        process.env.ORT_BACKEND_PATH = candidate;
+        return;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error(
+    [
+      '[startup] The ONNX Runtime CPU backend could not be located.',
+      'Reinstall `onnxruntime-node` for your platform (e.g. `npm --prefix backend rebuild onnxruntime-node`)',
+      'or set the ORT_BACKEND_PATH environment variable to the directory that contains the native bindings.',
+    ].join(' '),
+  );
+};
 
 const KAOMOJIS = new Set([
   '0_0',
@@ -196,6 +233,40 @@ export class WdSwinv2Tagger {
 
   private initializationPromise: Promise<void> | null = null;
 
+  private ortRuntime: typeof ort = ort;
+
+  private async createSession() {
+    await ensureCpuBackendPath();
+
+    const availableProviders = this.ortRuntime.getAvailableExecutionProviders?.() ?? [];
+
+    if (Array.isArray(availableProviders) && !availableProviders.includes(CPU_EXECUTION_PROVIDER)) {
+      throw new Error(
+        [
+          '[startup] The ONNX Runtime CPU execution provider is unavailable even though the native backend was located.',
+          'Please reinstall `onnxruntime-node` for your operating system or ensure the Node.js version matches the package binary.',
+        ].join(' '),
+      );
+    }
+
+    try {
+      this.session = await this.ortRuntime.InferenceSession.create(modelPath, {
+        executionProviders: [CPU_EXECUTION_PROVIDER],
+      });
+    } catch (error) {
+      if (isBackendUnavailableError(error)) {
+        throw new Error(
+          [
+            '[startup] Failed to start the wd-swinv2 auto tagger because the ONNX Runtime CPU backend rejected the initialization.',
+            'Reinstall the backend dependencies (`npm --prefix backend rebuild onnxruntime-node`) or set ORT_BACKEND_PATH to the directory with the native binaries.',
+          ].join(' '),
+        );
+      }
+
+      throw error;
+    }
+  }
+
   public async initialize(): Promise<void> {
     if (this.initializationPromise) {
       return this.initializationPromise;
@@ -205,9 +276,7 @@ export class WdSwinv2Tagger {
       await Promise.all([ensureModelAsset(MODEL_FILENAME), ensureModelAsset(LABEL_FILENAME)]);
       this.tagDefinitions = await loadTagDefinitions();
 
-      this.session = await ort.InferenceSession.create(modelPath, {
-        executionProviders: ['cpuExecutionProvider'],
-      });
+      await this.createSession();
 
       const inputName = this.session.inputNames[0];
       const outputName = this.session.outputNames[0];
@@ -280,7 +349,7 @@ export class WdSwinv2Tagger {
       }
     }
 
-    return new ort.Tensor('float32', tensorData, this.inputShape);
+    return new this.ortRuntime.Tensor('float32', tensorData, this.inputShape);
   }
 
   private postprocess(rawScores: Float32Array): AutoTagSummary {

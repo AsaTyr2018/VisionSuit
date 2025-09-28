@@ -1,3 +1,8 @@
+## 048 – [Standard Change] ONNX runtime fallback for auto tagger
+- **Type**: Standard Change
+- **Reason**: Backend startup crashed on hosts without the native ONNX Runtime CPU provider, preventing the SmilingWolf auto tagger from loading.
+- **Change**: Detected unavailable native providers, fell back to the bundled WebAssembly runtime via `onnxruntime-web`, refreshed dependencies, and documented the runtime behaviour in the README.
+
 ## 047 – [Standard Change] Hugging Face auto-tagger download hardening
 - **Type**: Standard Change
 - **Reason**: Backend startup failed after Hugging Face redirects left no temp file to rename and operators could not confirm the download status from the console output.
@@ -1352,3 +1357,8 @@
 - **Type**: Emergency Change
 - **Reason**: The backend failed to start because Hugging Face returned relative redirect URLs for the auto tagger assets, causing the download helper to throw an invalid URL error and abort initialization.
 - **Changes**: Updated `backend/src/lib/tagging/wdSwinv2.ts` to resolve relative redirects against the original request URL before retrying the download and to report redirect resolution failures clearly.
+
+## 225 – [Fix] Auto tagger CPU backend enforcement
+- **Type**: Normal Change
+- **Reason**: Falling back to the WebAssembly runtime hid missing native dependencies and left the wd-swinv2 tagger without the expected CPU execution provider.
+- **Changes**: Locate the installed `onnxruntime-node` native backend automatically, fail fast when the CPU provider is still missing, remove the WebAssembly dependency, and refresh the README with instructions for reinstalling or pointing `ORT_BACKEND_PATH` at the native binaries.
