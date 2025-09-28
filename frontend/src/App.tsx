@@ -15,7 +15,7 @@ import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
 import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from './lib/moderation';
-import { defaultSiteTitle } from './config';
+import { buildApiUrl, defaultSiteTitle } from './config';
 import type {
   Gallery,
   GeneratorSettings,
@@ -742,7 +742,7 @@ export const App = () => {
       return;
     }
 
-    const studioUrl = `/db?accessToken=${encodeURIComponent(token)}`;
+    const studioUrl = buildApiUrl(`/db?accessToken=${encodeURIComponent(token)}`);
     const popup = window.open(studioUrl, '_blank', 'noopener');
     if (!popup) {
       setToast({

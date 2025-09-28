@@ -216,7 +216,7 @@ Default ports:
 
 > Tip: Always point `HOST` to a reachable address (e.g., `HOST=192.168.1.50 ./dev-start.sh`) when accessing services from other devices or containers.
 
-When the stack is running, administrators can open Prisma Studio directly from the sidebar button (or by visiting `/db` with an access token). The backend mints a short-lived HttpOnly cookie scoped to `/db` so subsequent asset requests load without leaking tokens in the URL, and signing out clears that cookie via `POST /db/logout`.
+When the stack is running, administrators can open Prisma Studio directly from the sidebar button (or by visiting `/db` with an access token). The backend mints a short-lived HttpOnly cookie scoped to `/db` so subsequent asset requests load without leaking tokens in the URL, signing out clears that cookie via `POST /db/logout`, and the frontend now respects `VITE_API_URL` when launching Studio so deployments with split origins still land on the proxied backend endpoint.
 
 ## Bulk Import Utilities
 
