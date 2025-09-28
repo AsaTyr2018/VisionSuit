@@ -1477,3 +1477,8 @@
 - **Type**: Normal Change
 - **Reason**: The floating VisionSuit Support bubble obscured content and felt disconnected from the layout, prompting a request for a persistent bar anchored to the viewport edge.
 - **Changes**: Reworked the footer into a full-width support bar with inline sections separated by spacers, refreshed styling for the support links and service badges, and updated the README to describe the anchored bar experience.
+
+## 237 – [Update] Moderation queue preview alignment
+- **Type**: Normal Change
+- **Reason**: Moderators had to scroll unpredictably because preview images expanded inconsistently and the approve/remove controls drifted vertically.
+- **Changes**: Locked moderation detail previews to a 256 px column with object-fit scaling, added a zoomable preview button that opens the existing admin media modal, anchored the action bar to the bottom of the detail panel, refreshed responsive styling, and documented the workflow in the README.

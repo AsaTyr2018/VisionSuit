@@ -679,6 +679,16 @@ export const AdminPanel = ({
           { updatedAt: selectedModerationAsset.asset.updatedAt, cacheKey: selectedModerationAsset.asset.id },
         ) ?? selectedModerationAsset.asset.storagePath
     : null;
+  const handleOpenModerationPreview = useCallback(() => {
+    if (!selectedModerationAsset || !moderationDialogPreviewUrl) {
+      return;
+    }
+
+    setPreviewAsset({
+      url: moderationDialogPreviewUrl,
+      title: selectedModerationAsset.asset.title,
+    });
+  }, [moderationDialogPreviewUrl, selectedModerationAsset]);
   const moderationActionMatches = useCallback(
     (entity: 'model' | 'image', action: 'approve' | 'remove', id: string) =>
       moderationAction?.entity === entity &&
@@ -4226,14 +4236,17 @@ export const AdminPanel = ({
                       </header>
                       <div className="moderation-detail__body">
                         <div className="moderation-detail__media">
-                          {selectedModerationAsset.entity === 'model' ? (
-                            moderationDialogPreviewUrl ? (
+                          {moderationDialogPreviewUrl ? (
+                            <button
+                              type="button"
+                              className="moderation-detail__media-button"
+                              onClick={handleOpenModerationPreview}
+                              aria-label={`Enlarge preview of ${selectedModerationAsset.asset.title}`}
+                              aria-haspopup="dialog"
+                              title="Click to enlarge preview"
+                            >
                               <img src={moderationDialogPreviewUrl} alt={selectedModerationAsset.asset.title} />
-                            ) : (
-                              <div className="moderation-detail__media-placeholder" aria-hidden="true" />
-                            )
-                          ) : moderationDialogPreviewUrl ? (
-                            <img src={moderationDialogPreviewUrl} alt={selectedModerationAsset.asset.title} />
+                            </button>
                           ) : (
                             <div className="moderation-detail__media-placeholder" aria-hidden="true" />
                           )}
