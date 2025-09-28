@@ -1,3 +1,8 @@
+## 051 – [Standard Change] ONNX CPU provider detection hardening
+- **Type**: Standard Change
+- **Reason**: Hosts with `onnxruntime-node` v1.23 reported the CPU execution provider as `CPUExecutionProvider`, causing startup to abort even though the native backend binaries were present.
+- **Change**: Normalised CPU execution provider detection to accept both casing variants before session creation, retained the legacy fallback for older builds, and refreshed the README troubleshooting note with the clarified behaviour.
+
 ## 050 – [Standard Change] Paginated asset explorers
 - **Type**: Standard Change
 - **Reason**: Loading every model and image on initial dashboard visits slowed the UI and risked timeouts once the catalog grew.
