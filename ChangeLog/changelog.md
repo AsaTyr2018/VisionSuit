@@ -1,3 +1,8 @@
+## 045 – [Standard Change] Prisma Studio admin launch alignment
+- **Type**: Standard Change
+- **Reason**: Opening Prisma Studio from the admin sidebar on split-origin deployments redirected back to the frontend homepage, preventing administrators from reaching the proxied database tool.
+- **Change**: Routed the Prisma Studio launcher through the configured API base URL and documented the behaviour so admins on separate frontend/backend hosts land on the `/db` proxy without manual URL tweaks.
+
 ## 044 – [Standard Change] Curator visibility moderation hardening
 - **Type**: Standard Change
 - **Reason**: Restore curator-facing visibility controls while ensuring flagged assets remain private until moderation approval.
