@@ -1,3 +1,8 @@
+## 044 – [Standard Change] Curator visibility moderation hardening
+- **Type**: Standard Change
+- **Reason**: Restore curator-facing visibility controls while ensuring flagged assets remain private until moderation approval.
+- **Change**: Added backend support for curator visibility toggles on models and images, blocked publishing flagged assets without an admin clearance, and refreshed the README to highlight the enforced moderation workflow.
+
 ## 043 – [Standard Change] GPU agent naming correction
 - **Type**: Standard Change
 - **Reason**: Align GPU agent documentation with the official VisionSuit brand spelling so operators can search for the correct service name across guides and scripts.

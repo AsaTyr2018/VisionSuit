@@ -401,6 +401,7 @@ const updateModelSchema = z.object({
   version: z.string().trim().max(80).optional(),
   tags: z.array(z.string()).optional(),
   ownerId: z.string().trim().min(1).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 const updateImageSchema = z.object({
@@ -456,6 +457,7 @@ const updateImageSchema = z.object({
     .optional(),
   tags: z.array(z.string()).optional(),
   ownerId: z.string().trim().min(1).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 const bulkDeleteSchema = z.object({
@@ -2343,13 +2345,27 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
       return;
     }
 
-    if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (asset.ownerId !== req.user.id && !isAdmin) {
       res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieses Modells.' });
       return;
     }
 
-    if (parsed.data.ownerId && parsed.data.ownerId !== asset.ownerId && req.user.role !== 'ADMIN') {
+    if (parsed.data.ownerId && parsed.data.ownerId !== asset.ownerId && !isAdmin) {
       res.status(403).json({ message: 'Nur Administrator:innen können den Besitz ändern.' });
+      return;
+    }
+
+    if (
+      parsed.data.isPublic !== undefined &&
+      parsed.data.isPublic &&
+      !isAdmin &&
+      (asset.moderationStatus === ModerationStatus.FLAGGED || asset.flaggedAt != null)
+    ) {
+      res.status(403).json({
+        message: 'Dieses Modell befindet sich in der Moderationsprüfung und kann erst nach Freigabe wieder veröffentlicht werden.',
+      });
       return;
     }
 
@@ -2377,6 +2393,10 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
 
       if (parsed.data.ownerId && parsed.data.ownerId !== asset.ownerId) {
         data.owner = { connect: { id: parsed.data.ownerId } };
+      }
+
+      if (parsed.data.isPublic !== undefined) {
+        data.isPublic = parsed.data.isPublic;
       }
 
       if (shouldUpdateTags) {
@@ -2621,13 +2641,27 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
       return;
     }
 
-    if (image.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
+    const isAdmin = req.user.role === 'ADMIN';
+
+    if (image.ownerId !== req.user.id && !isAdmin) {
       res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieses Bildes.' });
       return;
     }
 
-    if (parsed.data.ownerId && parsed.data.ownerId !== image.ownerId && req.user.role !== 'ADMIN') {
+    if (parsed.data.ownerId && parsed.data.ownerId !== image.ownerId && !isAdmin) {
       res.status(403).json({ message: 'Nur Administrator:innen können den Besitz ändern.' });
+      return;
+    }
+
+    if (
+      parsed.data.isPublic !== undefined &&
+      parsed.data.isPublic &&
+      !isAdmin &&
+      (image.moderationStatus === ModerationStatus.FLAGGED || image.flaggedAt != null)
+    ) {
+      res.status(403).json({
+        message: 'Dieses Bild befindet sich in der Moderationsprüfung und kann erst nach Freigabe wieder veröffentlicht werden.',
+      });
       return;
     }
 
@@ -2673,6 +2707,10 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
 
       if (parsed.data.ownerId && parsed.data.ownerId !== image.ownerId) {
         data.owner = { connect: { id: parsed.data.ownerId } };
+      }
+
+      if (parsed.data.isPublic !== undefined) {
+        data.isPublic = parsed.data.isPublic;
       }
 
       if (shouldUpdateTags) {
