@@ -1,416 +1,58 @@
 # VisionSuit
 
-VisionSuit is a self-hosted platform for curated AI image galleries and LoRA safetensor distribution. The project ships with a runnable Node.js API, a Prisma data model including seed data, and a React front end that demonstrates the intended upload and curation workflow.
+VisionSuit is a self-hosted platform for curating AI image galleries, distributing LoRA adapters, and managing an on-site GPU generation workflow. It ships with a full-stack experience that keeps moderation, governance, and community tooling under your control.
 
-## Core Highlights
+## Core Features
 
-- **Unified operations dashboard** – Persistent sidebar navigation with instant switching between Home, Models, and Images, plus glassy health cards with color-coded LED beacons for the front end, API, MinIO, and GPU worker services.
-- **Role-aware access control** – JWT-based authentication with session persistence, an admin workspace for user/model/gallery management, a dialog-driven onboarding wizard with role presets, protected upload flows, and private uploads that stay exclusive to their owner for curators while administrators always see the full inventory in their workspace (with optional audit mode on curator profiles for spot checks).
-- **Live environment controls** – Administration → Settings writes the site title, registration policy, maintenance mode, and service endpoints back to the backend and frontend `.env` files, surfacing restart guidance whenever connection details change so the stack stays aligned without shell access.
-- **Layered moderation workflow** – Members can flag problematic models or renders, flagged assets now disappear for the community (creators receive an “In Audit” placeholder with the asset name), and admins triage them from a split-pane moderation workspace with severity filters, NSFW signal readouts, reason badges, and enforced rejection notes. Linked collections are automatically hidden while a model is under review and are removed entirely when the model is revoked.
-- **Adult prompt governance** – Administration → Safety now manages configurable prompt keywords that automatically mark renders as adult when detected in prompts, LoRA metadata, or preview EXIF so NSFW assets stay hidden from guests and from members who browse with the safe-mode toggle disabled.
-- **NSFW metadata screening** – LoRA uploads now normalize safetensor frequency tables into a reusable payload, score adult/minor/bestiality tags against configurable thresholds, persist the results in metadata, automatically mark or queue models that cross review limits, and let administrators tune those thresholds directly from Administration → Safety with a live snapshot that surfaces how many stored LoRAs currently breach each limit.
-- **NSFW image heuristics** – A CPU-friendly OpenCV pipeline (shipped in the backend) now combines HSV/YCrCb skin masking with silhouette-based torso/hip inference, edge-density coverage scoring, and configurable thresholds stored in `config/nsfw-image-analysis.json`, surfacing reusable TypeScript helpers, automated regression tests, and auto-review flags when limb-dominant exposures appear.
-- **NSFW swimwear classifier** – The analyzer now feeds the dominant torso crop into a lightweight `nude_vs_swimwear.onnx` MobileNetV3 model so heuristic scoring blends with learned probabilities. Administrators can tune CNN thresholds, crop behavior, execution providers, and warm-up routines inside `config/nsfw-image-analysis.json`.
-- **NSFW runtime scheduler** – The analyzer now honors configurable worker pools, queue and retry policies, and a fast-mode fallback when pressure spikes. Administrators can tune `maxWorkers`, queue limits, and overload handling directly from Administration → Safety, while the scheduler exports metrics to inform operational dashboards.
-- **Centralized NSFW workflow** – Gallery uploads, generator imports, and background rescans now flow through a shared OpenCV moderation pipeline that caches skin-mask heuristics, reuses the scheduler-backed analyzer, persists JSON summaries, and automatically locks visibility or flags assets whenever minor/bestiality cues trip review thresholds.
-- **Live NSFW tagging** – Preview renders and gallery uploads now run through the OpenCV heuristics engine during ingestion, persist the resulting scores in asset metadata, mark LoRAs or images as adult, and automatically flag potential minor/bestiality signals for moderation before anything goes public.
-- **NSFW rescan automation** – Administration → Safety now includes a one-click NSFW rescan that replays metadata heuristics and the centralized OpenCV workflow across existing models and gallery images, refreshing adult tags, storing moderation summaries, and queueing potentially illegal content for review.
-- **Prompt-free auto tagging** – Gallery uploads without embedded prompts now queue through a CPU-friendly SmilingWolf/wd-swinv2 ONNX tagger, surface a "Scan in Progress" placeholder until tagging completes, and feed the generated vocabulary back into the NSFW workflow before the render is visible to the community.
-- **Self-hosted NSFW roadmap** – The [NSFW Moderation Deployment Plan](docs/nsfw-deployment-plan.md) outlines how metadata scoring, OpenCV analysis, and admin tuning controls combine into the next-generation moderation stack.
-- **Member registration & reactions** – Public self-service signup promotes visitors into the USER role, unlocks downloads, comments, and single-tap image likes, surfaces received-like totals across profiles, and keeps upload rights reserved for curators and admins.
-- **Self-service account management** – Sidebar account settings let curators update their display name, bio, and password, now proxy uploaded avatars (PNG/JPG/WebP ≤ 5 MB) through the API, and automatically reroute legacy MinIO avatar links so external domains never surface `127.0.0.1` references.
-- **Guided three-step upload wizard** – Collects metadata, files, and review feedback with validation, drag & drop, and live responses from the production-ready `POST /api/uploads` endpoint.
-- **Data-driven explorers** – Fast filters and full-text search across LoRA assets and galleries, now including training tag frequencies extracted from metadata, complete with tag badges, five-column tiles, and seamless infinite scrolling with active filter indicators.
-- **On-Site Generator hub** – Role-aware wizard that mirrors the admin-curated base-model labels from Administration → Generator, exposes them in a single-select roster so each request targets one checkpoint at a time, trusts configured base models even when no catalog asset exists (pulling the checkpoint straight from the GPU node store), lets curators compose prompts, mix LoRAs, tap trigger suggestions straight into the prompt box, pick dimensions, choose sampler/scheduler pairs that map directly to the GPU contract, and enqueue generation jobs while preserving per-user history and queue metrics. The LoRA gallery now surfaces up to twenty adapters at once while search still spans the full catalog. The backend now serializes dispatches so only one render executes at a time across the platform while live telemetry surfaces GPU activity, pause/resume state, and any admin-imposed generation blocks. Active, running, and queued jobs stay in a dedicated queue tab while completed or failed runs collapse into a trimmed archive that only keeps the latest ten entries so the live queue stays front and center. Generated artifacts stream through the backend proxy with automatic session-token passthrough so history thumbnails and downloads never leak private MinIO hostnames, and every thumbnail opens a dedicated artifact detail page with a full preview, download control, and a collection importer that can target existing sets or create a fresh gallery on the spot. Imports guard against oversized renders by only buffering metadata when files stay under a 32 MiB ceiling so gallery onboarding remains memory-light.
-- **Curator spotlight profiles** – Dedicated profile view with avatars, rank progression, bios, and live listings of every model and collection uploaded by the curator, reachable from any curator name across the interface.
-- **Versioned modelcards** – Dedicated model dialogs with inline descriptions, quick switches between safetensor versions, in-place editing for curators/admins, an integrated flow for uploading new revisions including preview handling, and admin tooling to promote or retire revisions.
-- **Governed storage pipeline** – Direct MinIO ingestion with automatic tagging, secure download proxying via the backend, audit trails, and guardrails for file size (≤ 2 GB) and batch limits (≤ 12 files).
+### Operations & Governance
+- Unified administrator workspace with service health, environment alignment, and `.env` synchronization for frontend and backend settings.
+- Role-aware access control backed by JWT authentication, admin onboarding flows, and guarded upload paths for curators.
+- Configurable registration policies, maintenance modes, and guided restart prompts for safe rollouts.
 
-## Good to Know
+### Moderation & Safety
+- Layered moderation queues with severity filters, audit trails, and rejection requirements for administrators.
+- Centralized NSFW pipeline that blends OpenCV heuristics, ONNX swimwear detection, and configurable scheduler pools stored in `config/nsfw-image-analysis.json`.
+- Prompt governance with keyword enforcement, adult tagging, automated rescans, and SmilingWolf/wd-swinv2 auto-tagging for prompt-free uploads.
 
-- Sticky shell layout with live service badges, a Platform health trust panel (curator counts, moderation coverage, service uptime), and role-aware call-to-action cards that route curators straight into uploads, gallery drafting, generator runs, or moderation with toast notifications along the way.
-- Embedded Prisma Studio lives behind the `/db` route—`./dev-start.sh` boots it on port 5555, the frontend proxies access through the sidebar button, and only authenticated administrators can open a session (backed by a short-lived HttpOnly cookie).
-- Ship the MobileNet-based `models/nude_vs_swimwear.onnx` (or update its path in `config/nsfw-image-analysis.json`) before running the NSFW analyzer; when the file is missing the backend logs a warning and falls back to heuristics only.
-- The backend caches the `SmilingWolf/wd-swinv2-tagger-v3` model under `cache/models` on startup and downloads it automatically when missing so prompt-free renders can be tagged without checking additional code into Git.
-- Guests can browse public assets, while downloads, comments, and reactions require a signed-in account (USER role or higher). Adult-tagged models and renders stay hidden from guests and from members who leave the NSFW toggle off (default) in their account settings.
-- Administrators can disable self-service signups at any time; the **Create account** control stays visible but disabled so visitors immediately understand that registrations are closed while credentialed users continue signing in.
-- Home spotlight tiles are fully interactive—click previews to jump straight into the model or gallery explorers, and tap tag chips to filter matching content instantly.
-- Gallery and model previews now ship with an intelligent two-minute cache token so browsers keep recent imagery warm while automatically reloading whenever the underlying asset changes.
-- Model detail views and the gallery lightbox now include full comment threads—model dialogs keep replies inline beneath the content, while the gallery modal tucks discussions into a collapsible side rail so the enlarged image always stays visible. Signed-in members can post feedback and react to individual responses in place.
-- Curators can edit and delete their own models, collections, and images directly from the explorers (each destructive action ships with a “Nicht umkehrbar ist wenn gelöscht wird. weg ist weg.” warning), while administrators continue to see controls for every entry.
-- Curators can flip visibility for their own models, images, and galleries directly from the admin workspace, and flagged assets stay private until an administrator clears them through the Moderation tab so review workflows remain authoritative.
-- Manual collection linking lets curators attach their own galleries to models from the detail view, while administrators can pair any collection when moderation requires intervention.
-- Administrators can toggle the On-Site Generator between an **Admin only** preview phase and a **Members & curators** rollout from the Administration → Generator tab, curate the exact database-backed base-model list consumed by the wizard without touching storage manifests, and monitor or cancel running jobs from the active queue when renders stall.
-- Private uploads remain hidden from other curators; the administration workspace now surfaces every model, gallery, and image for admins by default, and the token-aware storage proxy streams private previews directly in the browser for moderation. Creators always see their complete upload history regardless of moderation status, visibility, or safe-mode toggles so personal galleries never look incomplete. The **Audit** toggle on curator profiles remains available for targeted spot checks.
-- Signed-in users can open the **Account settings** dialog from the sidebar to adjust profile details or rotate their password in a single modal workflow.
-- Administration workspace now presents models and images in lightweight thumbnail grids with one-click detail pages, inline visibility toggles, ranking controls (weights, tiers, and user resets), persistent bulk tools tuned for six-figure libraries, multi-step onboarding with permission previews, dialog-driven actions to edit assets, upload or rename model versions, remove secondary revisions, **and a dedicated Moderation tab** that now uses a split-pane workspace with severity filters, NSFW reason badges, OpenCV score breakdowns, and streamlined approve/remove workflows. Model and image edit dialogs ship with tabbed flows (details, prompting, metadata, ownership) plus right-rail summaries for instant context, and ranking inputs immediately cache typed values so the tab stays responsive while backend refreshes complete. Image archive filters add a dedicated model picker with type-ahead suggestions sourced from stored metadata so curators can audit renders tied to specific checkpoints in seconds.
-- Flagged models and renders are hidden from members and curators; creators get a lightweight “In Audit” placeholder while administrators continue to see clear previews and can approve or remove them while leaving the required audit note that will power the upcoming notification center.
-- Gallery uploads support multi-select (up to 12 files/2 GB), role-aware gallery selection, and on-the-fly gallery creation.
-- Model uploads enforce exactly one safetensor/ZIP archive plus a cover image; additional renders can be attached afterwards from the gallery explorer.
-- Gallery explorer offers a five-column grid with random cover art, consistent tile sizing, and a detail dialog per collection with an EXIF lightbox for every image. Swipe, click, or use the arrow keys in the lightbox to move through the collection without closing the modal.
-- Interface remains resilient when the backend returns incomplete gallery payloads—missing owners, metadata, or even entry arrays—and the metadata card now stretches across the dialog for easier scanning.
-- Automatic extraction of EXIF, Stable Diffusion prompt data, and safetensor headers populates searchable base-model references and frequency tables for tags.
-- Modelcards include a dedicated Trigger/Activator field that is required during uploads or edits and ships with a click-to-copy shortcut for quick prompting.
-- Click any curator name—from home cards to explorer panels and admin lists—to jump straight into the curator’s profile with contribution stats and navigation back to their models or collections.
-- Administrators can fine-tune rank weights, curate new tiers, reset individual curator ladders, or temporarily block a curator from ranking directly inside the admin **Ranking** tab or via the dedicated `/api/rankings` controls.
+### Creation & Distribution
+- Guided three-step upload wizard for LoRA models and gallery renders with drag-and-drop validation and revisioned model cards.
+- On-site generator hub that dispatches SDXL workflows to GPU agents, supports multi-LoRA blends, and streams artifacts through authenticated proxies.
+- MinIO-backed storage pipeline with secure download proxying, size guardrails, and curated collection linking.
 
-## Community Roadmap
+### Community Experience
+- Persistent operations dashboard with curator spotlights, live queue status, and quick actions for uploads, moderation, and generator runs.
+- Member registration with reactions, comments, and private upload visibility for curators while administrators retain full inventory insight.
+- Spotlight profiles, gallery explorers with infinite scroll, intelligent caching, and account settings that keep avatars and bios in sync.
 
-VisionSuit is evolving toward a richer community layer featuring reactions, threaded discussions, collaborative collections, and creator recognition systems. The [Community Features Plan](docs/community-features-plan.md) outlines the phased rollout, technical architecture, and moderation safeguards that will guide this expansion while preserving the curated gallery experience. A complementary [feasibility analysis](docs/community-features-plan-analysis.md) captures the current engineering effort required for each capability. Severity-bucketed content programs are captured in the companion plans for [Project Silverleaf](docs/community-update-plans/project-silverleaf-low-severity.md), [Project Ironquill](docs/community-update-plans/project-ironquill-medium-severity.md), and [Project Novashield](docs/community-update-plans/project-novashield-high-severity.md).
+## Quick Start
 
-An [On-Site Image Generator Project Plan](docs/on-site-image-generator-plan.md) details how a headless ComfyUI service, MinIO-hosted models, and curated review tooling will deliver in-platform rendering with governed moderation and retention workflows.
-
-## Audits & Reports
-
-- [Project Audit — 2025-09-27](docs/project-audit-2025-09-27.md)
-- [Documentation vs Application Sanity Check — 2025-01-14](docs/sanity-check-report-2025-01-14.md)
-- [Documentation vs Application Sanity Check — 2025-01-07](docs/sanity-check-report-2025-01-07.md)
-
-## Support & Credits
-
-For real-time assistance, join the [VisionSuit Support Discord](https://discord.gg/UEb68YQwKR). VisionSuit is produced by [MythosMachina](https://github.com/MythosMachina) and developed by [AsaTyr](https://github.com/AsaTyr2018/).
-
-## Architecture Overview
-
-| Layer | Purpose & Key Technologies |
-| ----- | -------------------------- |
-| **Backend API** | Express 5 with TypeScript orchestrated by Prisma ORM. Exposes REST endpoints for authentication, uploads, asset management, and statistics. |
-| **Database** | SQLite during development, modelled via Prisma schemas for users, LoRA assets, galleries, tags, upload drafts, and storage objects with referential constraints. |
-| **Object Storage** | MinIO (S3 compatible) provides buckets for model and image artifacts. Buckets and credentials are provisioned automatically by the install script. |
-| **Front End** | Vite + React (TypeScript) delivers the management console, explorers, and upload wizard with real-time data fetching. |
-| **Tooling & Ops** | Shell scripts automate environment setup, dependency installation, Prisma migrations, seeding, and optional Portainer CE provisioning. |
-
-## Installation & Setup
-
-### Prerequisites
-
-Ensure the following tools are available on the target host:
-
-- Node.js 22 LTS (includes npm). The installer offers to provision Node.js 18 LTS automatically when it detects `apt-get` or Homebrew.
-- Python 3 (utility scripts used by the installer)
-- Docker Engine with a running daemon
-- Docker Compose plugin or the legacy `docker-compose` binary
-- Optional: Portainer CE (can be installed by the setup script)
-
-### Guided setup script
-
-Run the bundled installer to configure the entire stack:
-
-```bash
-./install.sh
-```
-
-The script detects the reachable server IP, replaces loopback references, and proposes sensible defaults (API `4000`, front end `5173`, MinIO `9000`). Accept the summary with `Y` or provide custom values interactively. Only the external API and front end ports are requested; all internal services use vetted defaults.
-
-During execution the installer:
-
-1. Verifies Docker, Docker Compose, and optionally installs Portainer CE when missing.
-2. Installs npm dependencies for `backend` and `frontend`.
-3. Generates missing `.env` files from templates, aligning `HOST`/`VITE_API_URL` with the detected server IP.
-4. Provisions MinIO credentials, configures buckets, and launches the `visionsuit-minio` container.
-5. Offers optional execution of `npm run prisma:migrate`, `npm run seed`, and `npm run create-admin` for initial data.
-
-At launch the installer now asks whether VisionSuit should stay in manual mode or be supervised by systemd. Picking the automatic path writes `/etc/systemd/system/visionsuit-dev.service`, wires in the detected host and port values, reloads systemd, and enables the unit immediately so the stack comes online in the background. Opting for manual control skips the unit creation and prints the exact `HOST=<ip> BACKEND_PORT=<port> FRONTEND_PORT=<port> ./dev-start.sh` command to run whenever you want to launch the stack.
-
-Base checkpoints for the On-Site Generator still live in the GPU worker bucket `comfyui-models`. When customizing bucket names, mirror the change inside `backend/.env` with `GENERATOR_BASE_MODEL_BUCKET` and inside `frontend/.env` via `VITE_GENERATOR_BASE_MODEL_BUCKET` so the GPU worker and download proxy continue to line up. After new checkpoints land in the bucket, open **Administration → Generator** and add an entry for each filename so the curated picker exposes only vetted models; the generator now hydrates that list from the corresponding database records automatically. For headless maintenance windows or CI pipelines the helper remains available to pre-seed the catalog explicitly:
-
-Inside the Generator administration view, the segmented **Queue & blocks**, **Failure log**, and **Access & presets** controls keep the maintenance tools organized so you can jump directly to live queue telemetry, error diagnostics, or visibility settings without scrolling.
-
-```bash
-cd backend
-npm run generator:sync-base-models
-```
-
-The helper script cross-references the configured bucket, creates public `checkpoint` model assets for any missing entries, and refreshes ownership/metadata for existing records—useful when preparing a dataset before users sign in or when scripting migrations.
-
-Installations where the MinIO or S3 credentials lack `ListObjects` can still power the base-model picker by exposing a manifest JSON inside the same bucket (default `minio-model-manifest.json`) that enumerates object keys. The backend reads this manifest before falling back to live bucket listing. Override the filename through `GENERATOR_BASE_MODEL_MANIFEST` whenever the manifest ships under a different key—`gpuworker/scripts/generate-model-manifest.sh` produces a compatible payload automatically.
-
-After completion the stack is ready for development or evaluation. Use `./dev-start.sh` for a combined watch mode when coding locally.
-
-### Serving VisionSuit through a single public domain
-
-Expose only the frontend to the internet when publishing VisionSuit under a public hostname (for example `https://example.com`). Set `VITE_API_URL=@origin` inside `frontend/.env` so the React app talks to the backend through the same origin, and let your reverse proxy forward `/api` requests to the private backend port while keeping MinIO reachable solely via the values defined in `backend/.env`. The Vite dev server automatically proxies these relative API calls to the address stored in `DEV_API_PROXY_TARGET` (defaults to `http://127.0.0.1:4000`), so internal service-to-service communication continues to rely on the previously configured `.env` endpoints even when external clients access the platform through the frontend.
-
-### Creating an initial admin account
-
-The administrative surfaces require a signed-in profile. Create one via SSH on the target machine:
-
-```bash
-cd backend
-npm run create-admin -- \
-  --email=admin@example.com \
-  --password="super-secure-password" \
-  --name="VisionSuit Admin" \
-  --bio="Optional profile text"
-```
-
-The script upserts an `ADMIN` role account, activates it, and stores the hashed password.
-
-### Dedicated GPU worker provisioning
-
-A remote ComfyUI render node can be prepared independently of the VisionSuit stack. Copy the [`gpuworker/`](gpuworker/README.md) directory to the GPU host, run `sudo ./gpuworker/install.sh`, and provide the MinIO endpoint URL when prompted so the worker targets the correct storage instance. The installer now autodetects NVIDIA and AMD GPUs, installs the matching driver stack (CUDA with the distribution-recommended NVIDIA package or ROCm + HIP for AMD), and falls back to CPU-only PyTorch wheels when no discrete GPU is found. After installation, populate `/etc/comfyui/minio.env` with MinIO credentials before enabling the `comfyui` systemd service. The helper toolkit (`generate-model-manifest`, `sync-checkpoints`, `sync-loras`, and `upload-outputs`) keeps base models, LoRAs, and rendered outputs synchronized with MinIO, landing them directly in ComfyUI’s native tree under `/opt/comfyui/models` and `/opt/comfyui/output` so no manual symlinks are required. The bundled workflow validator (`scripts/test-run-workflow.sh`) also tolerates non-JSON queue or history payloads so repeated polls never echo `jq` parse errors, and expects workflows exported via ComfyUI’s **Save (API Format)** action (the shipped `workflows/validation.json` already follows this layout). If the host repositories omit the legacy `awscli` package, the installer automatically downloads the official AWS CLI v2 bundle so the synchronization helpers remain available. When you need to return the worker to a pre-install baseline, `sudo ./gpuworker/rollback-comfy.sh` cleans up the ComfyUI checkout, MinIO environment file, helper binaries, and systemd unit while leaving the operating system packages intact.
-
-When the GPU host mounts model directories from filesystems that forbid symlinks (such as SMB/CIFS shares without UNIX extensions) the agent automatically copies cached checkpoints and LoRAs into the ComfyUI tree so freshly synchronized assets still appear in dropdowns.
-
-The GPU agent now restores the original LoRA adapter filenames (falling back to `LoraModel.safetensors` when metadata is missing) before handing them to ComfyUI, so `.safetensors` payloads stay discoverable even when MinIO keys are obfuscated.
-
-#### GPU agent service
-
-Alongside the ComfyUI runtime you can deploy the VisionSuit GPU agent to broker jobs from VisionSuit. The agent lives in [`gpuworker/agent`](gpuworker/agent/README.md) and installs via `sudo ./gpuworker/agent/installer/install.sh`, which copies the FastAPI service to `/opt/visionsuit-gpu-agent`, provisions a Python virtual environment, and enables the `visionsuit-gpu-agent` systemd unit. Configure `/etc/visionsuit-gpu-agent/config.yaml` with MinIO credentials, bucket names, workflow defaults, and the ComfyUI API URL. VisionSuit must supply the step count, CFG scale, and dimensions with every dispatch; the sampler and scheduler can either travel with each job or be sourced from `workflow_defaults` when global fallbacks make more sense for your environment. The ComfyUI block now accepts either a ready-to-use `api_url` or the same `scheme`/`host`/`port` tuple that `gpuworker/scripts/test-run-workflow.sh` understands so both the CLI validator and the agent target identical endpoints. VisionSuit submits dispatch envelopes to `POST /jobs`; the agent enforces single-job execution, hydrates workflows, syncs missing models from MinIO, validates that the resolved parameters land on the intended nodes, invokes ComfyUI, uploads outputs to the requested bucket, and notifies VisionSuit through the optional status/completion/failure callbacks. Set `callbacks.base_url` in the agent configuration whenever the backend publishes callbacks on a different host—VisionSuit now rewrites both relative paths and loopback-only absolute URLs against that base so responses always target a reachable endpoint instead of the default `http://127.0.0.1`.
-
-Each dispatch now leaves behind a structured audit trail under `<outputs>/logs/<jobId>/`. The agent rewrites the manifest with the sanitized job payload, resolved workflow parameters, and the final graph it submits to ComfyUI, appends newline-delimited status events, and emits an `applied-workflow.json` that mirrors the exact `/prompt` request body so operators can replay or troubleshoot runs without enabling verbose logs.
-
-Workflows dispatched to ComfyUI must be exported from the editor via **Save (API Format)**. The agent now validates incoming graphs and surfaces a descriptive error before submission if a payload still contains the legacy `nodes` list or misses the `class_type`/`inputs` fields ComfyUI expects. Should ComfyUI reject a prompt, the agent logs the HTTP 400 response body to help diagnose schema mismatches or missing node settings.
-
-Re-running the installer now stops and disables any existing `visionsuit-gpu-agent` service, removes the previous systemd unit, and recreates `/opt/visionsuit-gpu-agent` from scratch before staging the updated release so upgrades land on a clean slate.
-
-#### VisionSuit ↔ GPU agent handshake
-
-VisionSuit now speaks to the GPU agent instead of probing ComfyUI directly. Point `GENERATOR_NODE_URL` in `backend/.env` at the agent root (for example `http://gpu-node:8081`)—the service advertises `GET /` and `GET /healthz` so health checks stay green. Provide the workflow location and parameter bindings via:
-
-- `GENERATOR_WORKFLOW_ID`, `GENERATOR_WORKFLOW_BUCKET`, and `GENERATOR_WORKFLOW_MINIO_KEY` (or `GENERATOR_WORKFLOW_LOCAL_PATH` / `GENERATOR_WORKFLOW_INLINE`) to tell the agent which JSON graph to load.
-- A starter SDXL workflow ships at [`backend/generator-workflows/default.json`](backend/generator-workflows/default.json); when no custom `GENERATOR_WORKFLOW_LOCAL_PATH` is provided the backend uploads this template to MinIO automatically.
-- The bundled payload now mirrors the production SDXL + LoRA layout: `CheckpointLoaderSimple` consumes the selected checkpoint filename, `CLIPTextEncodeSDXL` nodes receive both prompt fields plus the requested dimensions, the latent stub stays in sync with the encoder resolution, and the terminal `SaveImage` node emits `SDXL_LoRA_API_<timestamp>` assets for predictable callback manifests.
-- `GENERATOR_WORKFLOW_EXPOSE_LOCAL_PATH` defaults to `false` so dispatch envelopes always reference the MinIO object; set it to `true` only when the GPU agent can read the same filesystem path (for example on a co-located host).
-- VisionSuit now auto-seeds the configured workflow into `GENERATOR_WORKFLOW_BUCKET` before every dispatch, so provide either a
-  local template path or inline JSON when rolling out a new graph to avoid 404s on the GPU node.
-- Prompt, sampler, and resolution bindings are pre-wired for the bundled workflow—only override `GENERATOR_WORKFLOW_PARAMETERS` when publishing a custom node layout.
-- The default graph injects a `LoraLoader` between the checkpoint and sampler; VisionSuit maps LoRA selections onto `primary_lora_name`, `primary_lora_strength_model`, and `primary_lora_strength_clip` so the loader node receives the chosen adapter and strength values automatically. The GPU agent now rewires the prompt payload before submission: it sanitizes the prompt/negative bindings, collapses the loader when no adapters are selected, chains additional loader nodes when multiple LoRAs are queued, and materializes every adapter under a job-scoped filename such as `MyLora__tester__3fa4c2.safetensors`. It waits for ComfyUI’s `/object_info` to surface the new names before validation, so `/prompt` submissions never fail because a freshly staged adapter is still being indexed.
-- Resolution overrides now update both SDXL `CLIPTextEncode` nodes and the latent image generator so ComfyUI receives API-format payloads with matching `width`, `height`, and target dimensions.
-- `GENERATOR_WORKFLOW_PARAMETERS` (JSON array) to map prompt/seed/CFG inputs onto workflow nodes and `GENERATOR_WORKFLOW_OVERRIDES` for fixed node tweaks.
-- `GENERATOR_OUTPUT_BUCKET` and `GENERATOR_OUTPUT_PREFIX` to control where the agent uploads rendered files (supports `{userId}` and `{jobId}` tokens).
-- `GENERATOR_CALLBACK_BASE_URL` so the backend can publish reachable callback URLs for status, completion, and failure updates (defaults to `http://127.0.0.1:4000` when unset).
-
-After the `.env` values are in place run the MinIO bootstrapper once to create the required buckets:
-
-```bash
-(cd backend && npx ts-node --transpile-only scripts/setupGeneratorBuckets.ts)
-```
-
-Once those values are set, every `POST /api/generator/requests` submission queues a dispatch envelope with the selected base models, LoRA adapters, and prompt metadata. The GPU agent receives the full base-model roster alongside the primary checkpoint so it can stage or audit every curated option up front. If the GPU agent reports a busy state VisionSuit marks the request as `pending`; accepted jobs flip to `queued` and surface in the history list immediately. When the agent executes the job it now posts back to `/api/generator/requests/:id/callbacks/status` as phases progress, `/completion` once artifacts land in MinIO, and `/failure` if the run aborts—each callback adheres to the generator control-plane schema (state machine values, monotonic heartbeat counters, timing metadata, and rich artifact manifests) so VisionSuit can record transitions, store returned object keys, and surface finished renders directly in the On-Site Generator history without additional translation glue.
-
-Generator artifacts resolve through `/api/generator/requests/:id/artifacts/:artifactId`, which streams the MinIO object through the same authenticated domain used by the frontend. This keeps GPU callbacks free to publish internal bucket/object pairs while browsers consume proxied URLs that respect the request owner and administrator permissions.
-
-The callback endpoints accept either the original VisionSuit payloads or the GPU agent's `job_id`/`state` schema, map all state machine updates onto VisionSuit's internal statuses (including cancellation), and persist the live ComfyUI activity snapshots the agent embeds in status and failure reports. Successful completions now ingest the agent's artifact manifests directly, so the stored object keys always match the uploaded files.
-
-GPU-side failures are now reported back to VisionSuit automatically. The agent emits an error status before the failure callback so jobs no longer remain stuck as `queued`, and administrators can review the full diagnostic trail inside the new **Administration → Generator → Generation failure log** panel. Members only see a generic failure notice in their history while sensitive stack traces stay scoped to the admin center.
-
-To support operational visibility the agent samples the ComfyUI `/queue` endpoint before each status callback and includes a live activity snapshot (pending/running counts plus the raw payload) so VisionSuit can mirror GPU utilization, pause state, and administrator-imposed blocks in both the generator wizard and the Administration → Generator tab. The `/` and `/healthz` probes expose the same telemetry so external monitors can verify the worker is healthy and idle before dispatching additional jobs.
-
-## Development Workflow
-
-### Unified dev starter
-
-`./dev-start.sh` launches both API and front end in watch mode, binding services to the IP supplied through the `HOST` environment variable. Pass your server IP explicitly when developing across networks to avoid `localhost` confusion:
-
-```bash
-(cd backend && npm install)
-(cd frontend && npm install)
-HOST=<your-server-ip> ./dev-start.sh
-```
-
-Default ports:
-
-- Backend: `4000` (override with `BACKEND_PORT`)
-- Front end: `5173` (override with `FRONTEND_PORT`)
-- Prisma Studio: `5555` (override with `PRISMA_STUDIO_PORT`; routed through `/db` for signed-in administrators)
-
-> Tip: Always point `HOST` to a reachable address (e.g., `HOST=192.168.1.50 ./dev-start.sh`) when accessing services from other devices or containers.
-
-When the stack is running, administrators can open Prisma Studio directly from the sidebar button (or by visiting `/db` with an access token). The backend mints a short-lived HttpOnly cookie scoped to `/db` so subsequent asset requests load without leaking tokens in the URL, signing out clears that cookie via `POST /db/logout`, and the frontend now respects `VITE_API_URL` when launching Studio so deployments with split origins still land on the proxied backend endpoint.
-
-## Bulk Import Utilities
-
-Client-side helpers streamline batched LoRA transfers when curating existing libraries offline. Both scripts expect two sibling directories on the client machine:
-
-- `loras/` – contains `.safetensors` weights.
-- `images/` – contains folders named after each safetensor (without the extension) populated with preview renders.
-
-Each importer refuses to upload a model unless a matching image folder exists. After authentication the helpers verify the signed-in account is an administrator, upload the LoRA with a randomly chosen preview image, and then cycle through the remaining renders in batches of up to twelve files so the entire gallery lands in VisionSuit without the usual per-request cap.
-
-### Linux and macOS
-
-1. Review and adjust `server_ip`, `server_username`, and `server_port` at the top of `scripts/bulk_import_linux.sh`.
-2. Ensure `curl` and `python3` are installed on the client.
-3. Provide the VisionSuit administrator password either via the `VISIONSUIT_PASSWORD` environment variable or interactively when prompted (bulk imports are restricted to admin accounts).
-4. Run the script from the root of your asset stash (or pass custom directories):
-
+1. **Install dependencies**
    ```bash
-   ./scripts/bulk_import_linux.sh ./loras ./images
+   ./install.sh
    ```
-
-The script authenticates with `POST /api/auth/login`, seeds the gallery by uploading the LoRA file together with a random preview, and then pushes every remaining render into the same collection across as many follow-up batches as necessary. Models without imagery are skipped automatically.
-
-### Windows (PowerShell)
-
-1. Edit `ServerBaseUrl` and `ServerUsername` at the top of `scripts/bulk_import_windows.ps1` (or pass overrides via parameters). The base URL must point directly at your VisionSuit deployment; the script never rewrites it to localhost, but it now normalizes duplicate `/api` segments so you can paste either the site root or the API endpoint without breaking health checks.
-2. Launch the script from PowerShell 7+ (`pwsh`) or Windows PowerShell 5.1. Enter the administrator password when prompted or expose it via `VISIONSUIT_PASSWORD`. On startup the helper calls `/api/meta/status` to verify that the public VisionSuit services, MinIO backend, and GPU agent are reachable before any files leave the machine.
-3. Run the importer with optional overrides for the source folders:
-
-   ```powershell
-   pwsh -File .\scripts\bulk_import_windows.ps1 -LorasDirectory .\loras -ImagesDirectory .\images
-   ```
-
-The PowerShell helper mirrors the Linux workflow: it authenticates, verifies admin privileges, stages the LoRA with a random preview, and then fans out the remaining renders in twelve-file batches until the entire collection has been imported. Health status and upload responses are validated on every step, so the run halts immediately if VisionSuit stops returning the expected asset and gallery identifiers.
-
-To protect against accidental duplicates the importer now pulls the existing model catalog before any uploads and skips a safetensor when its filename (without the extension) matches an existing model title in VisionSuit. Rename local files to match the live model name if you want the script to recognize already published assets.
-
-> **Tip:** Single-model libraries and one-image galleries are supported—the importer now treats lone safetensors and previews as proper collections so you can sanity-check uploads incrementally before scaling to larger batches.
-
-#### Metadata overrides and defaults
-
-The bulk helpers now mirror the fields exposed by the upload wizard: they populate model titles, descriptions, tags, gallery visibility, triggers, and collection targets before any files leave your machine. Each LoRA can ship its own overrides through a JSON descriptor placed either next to the `.safetensors` file (`./loras/model-name.json`) or inside the image directory (`./images/model-name/metadata.json`). Example:
-
-```json
-{
-  "title": "Firefly Mix",
-  "description": "2.5D anime lighting with warm tones.",
-  "visibility": "public",
-  "galleryMode": "existing",
-  "targetGallery": "curated-firefly",
-  "trigger": "firefly mix",
-  "category": "anime",
-  "tags": ["anime", "warm", "stylized"]
-}
-```
-
-Accepted keys align with the REST payload: `title`, `description`, `visibility` (`public` / `private`), `galleryMode` (`new` / `existing`), `targetGallery` (slug or title when reusing a collection), `trigger`, `category`, and `tags` (array or comma-separated string). When `galleryMode` resolves to `existing` the scripts require a valid `targetGallery`; new collections default to `<title> Collection` when no custom name is provided. The helpers deduplicate tags case-insensitively and respect `{title}` placeholders inside the default gallery target so global templates stay expressive.
-
-Global defaults can be set once and reused across every model:
-
-- **Linux/macOS** – export environment variables before running the script: `VISIONSUIT_VISIBILITY`, `VISIONSUIT_GALLERY_MODE`, `VISIONSUIT_TARGET_GALLERY`, `VISIONSUIT_DESCRIPTION`, `VISIONSUIT_CATEGORY`, `VISIONSUIT_TRIGGER`, and `VISIONSUIT_TAGS` (comma separated). Omit values to fall back to the script’s private/new defaults.
-- **Windows** – pass optional parameters such as `-DefaultVisibility public -DefaultGalleryMode existing -DefaultTargetGallery curated-anime -DefaultTags art,anime -DefaultDescription "Warm lighting" -DefaultCategory anime -DefaultTrigger firefly` or set the same `VISIONSUIT_*` environment variables for unattended runs.
-
-All metadata updates are echoed in the console so mismatches or fallback decisions are easy to audit before the files reach VisionSuit.
-
-### MyLora migration
-
-Use `scripts/migrate_mylora_to_visionsuit.py` to pull an existing MyLora library into VisionSuit without touching databases directly.
-
-- Install the lone dependency once on the machine running the migration helper:
-  ```bash
-  pip install requests
-  ```
-- Provide the base URLs and admin credentials for both platforms:
-  ```bash
-  python3 scripts/migrate_mylora_to_visionsuit.py \
-    --mylora-base-url http://127.0.0.1:5000 \
-    --mylora-username admin \
-    --mylora-password "mylora-secret" \
-    --visionsuit-base-url http://127.0.0.1:4000/api \
-    --visionsuit-email admin@example.com \
-    --visionsuit-password "visionsuit-secret"
-  ```
-- Optional `--visibility public` publishes the migrated models instantly; omit it to stage imports as private drafts.
-
-The script logs into MyLora, walks the grid API in batches, downloads each safetensor and its preview images, then creates matching VisionSuit model entries with categories and tags preserved as labels. Existing VisionSuit models are skipped automatically to avoid duplicates when a run is interrupted or repeated.
-
-### Storage reindexer
-
-Run the storage reindexer whenever MinIO and the database fall out of sync (for example after restoring buckets or importing files by hand):
-
-```bash
-cd backend
-npm run storage:reindex
-```
-
-The helper scans every model, model version, gallery cover, image, and curator avatar reference, verifies that the corresponding MinIO object exists, and creates or refreshes matching `StorageObject` entries with the latest size and content-type metadata. Missing objects are reported with the source reference so you can replace or relink files quickly.
-
-### Backend service
-
-1. `cd backend`
-2. Create `.env` from the template if it does not exist:
+2. **Start the development stack**
    ```bash
-   cp .env.example .env
+   ./dev-start.sh
    ```
-   The default sets `DATABASE_URL="file:./dev.db"` for both Prisma CLI and the dev server.
-3. Optionally apply migrations and seed demo data:
-   ```bash
-   npm run prisma:migrate
-   npm run seed
-   ```
-4. Start the development server (ideally with the server IP):
-   ```bash
-   HOST=<your-server-ip> PORT=4000 npm run dev
-   ```
+3. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services.
 
-### Front-end service
+For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 
-1. `cd frontend`
-2. Start Vite with explicit host binding:
-   ```bash
-   npm run dev -- --host <your-server-ip> --port 5173
-   ```
-3. Confirm your Node.js version:
-   ```bash
-   node -v
-   ```
-   Upgrade via `nvm` if the version is below 18.
-4. Open `http://<your-server-ip>:5173` to explore live filters for LoRA models and curated galleries.
+## Repository Layout
 
-### Allowing external domains in Vite
+- `backend/` – Node.js API, Prisma schema, moderation services, and generator dispatch logic.
+- `frontend/` – React application with role-aware navigation and dashboards.
+- `gpuworker/` – ComfyUI worker installer, VisionSuit GPU agent, and synchronization scripts.
+- `config/` – JSON configuration for NSFW analysis thresholds and scheduler options.
+- `docs/` – Technical documentation, deployment plans, audits, and workflow references.
 
-Vite blocks unknown hosts by default when the dev server is reachable from the internet. Use the helper to register additional
-domains:
+## Documentation
 
-```bash
-node scripts/add-allowed-host.mjs example.com
-```
+- [Technical Overview](docs/technical-overview.md)
+- [NSFW Moderation Deployment Plan](docs/nsfw-deployment-plan.md)
+- [Workflow Plan](docs/workflow-plan.md)
+- Additional planning notes and community updates live alongside these documents in the `docs/` directory.
 
-Replace `example.com` with the domain you need to allow. The script normalizes the domain, updates `frontend/allowed-hosts.json`, and keeps the list sorted. Restart the Vite dev server after adding a new host so the updated allow list takes effect.
+## Community & Support
 
-## Upload Pipeline
-
-1. **Authentication** – Every upload requires a valid JWT. Missing or expired tokens respond with `401/403` immediately.
-2. **Draft creation** – `POST /api/uploads` stores an `UploadDraft` with owner, visibility, tags, and expected files.
-3. **Direct storage ingest** – Files stream straight to MinIO (`s3://<bucket>/<uuid>`). The backend issues random object IDs, stores metadata (name, MIME type, size) in `StorageObject`, and returns anonymized identifiers.
-4. **Asset linking** – The backend creates `ModelAsset` or `ImageAsset` entries, attaches tags, provisions galleries when requested, and auto-assigns covers.
-5. **Explorer refresh & auditing** – Drafts transition to `processed`, new tiles appear instantly, and storage metadata (bucket, object key, public URL) is included in the response.
-
-Batch uploads validate up to 12 files per request and enforce the 2 GB size ceiling with descriptive error messages.
-
-## API Snapshot
-
-- `GET /health` – Service health probe.
-- `POST /api/auth/login` – Email/password authentication returning JWT and profile data.
-- `GET /api/auth/me` – Validates a JWT and returns the current account.
-- `GET /api/meta/stats` – Aggregated counters for assets, galleries, and tags.
-- `GET /api/assets/models` – LoRA assets including owners, tags, and metadata.
-- `GET /api/assets/images` – Image assets with prompts, model info, and tags.
-- `GET /api/galleries` – Curated gallery collections and associated assets.
-- `POST /api/uploads` – Initiates the upload pipeline for models or galleries (JWT required).
-- `GET /api/storage/:bucket/:objectId` – Secure file proxy resolving anonymized IDs to originals with role-aware gating (public assets stream for guests; private ones require owner/admin access).
-- `GET|HEAD /api/generator/requests/:id/artifacts/:artifactId` – Authenticated proxy that serves generator outputs through VisionSuit instead of exposing direct MinIO endpoints.
-- `GET /api/users/:id/avatar` – Streams curator avatars through the API without exposing MinIO endpoints.
-- `GET /api/users` – Admin-only listing of accounts.
-- `POST /api/users` – Admin-only account provisioning.
-- `GET /api/rankings/settings` – Admin-only view of the current score weights with fallback defaults.
-- `PUT /api/rankings/settings` – Admin-only update to model/gallery/image weightings.
-- `GET /api/rankings/tiers` – List rank tiers (including inactive ones when present).
-- `POST /api/rankings/tiers` – Add a new rank tier with label, description, and minimum score.
-- `PUT /api/rankings/tiers/:id` – Adjust the label, thresholds, or ordering of an existing tier.
-- `DELETE /api/rankings/tiers/:id` – Remove a tier from the ladder.
-- `POST /api/rankings/users/:id/reset` – Reset a curator’s effective score back to zero without deleting uploads.
-- `POST /api/rankings/users/:id/block` – Exclude a curator from ranking without altering contributions.
-- `POST /api/rankings/users/:id/unblock` – Restore a curator to the public ranking ladder.
-- `PUT /api/users/:id` – Admin-only account maintenance, deactivation, and role changes.
-- `POST /api/users/:id/avatar` – Uploads a curator avatar (PNG/JPG/WebP up to 5 MB, GIFs rejected) and returns the refreshed profile payload.
-- `PUT /api/users/:id/profile` – Update a curator’s display name or bio (self-service or admin override).
-- `PUT /api/users/:id/password` – Change a password after verifying the current credential (self-service or admin override).
-- `DELETE /api/users/:id` – Admin-only user removal (no self-delete).
-- `POST /api/users/bulk-delete` – Bulk account deletion (admin only).
-- `POST /api/assets/models/bulk-delete` – Bulk removal of models including storage cleanup.
-- `POST /api/assets/models/:id/versions` – Adds safetensor revisions with previews to an existing modelcard.
-- `PUT /api/assets/models/:modelId/versions/:versionId` – Renames an existing model revision.
-- `POST /api/assets/models/:modelId/versions/:versionId/promote` – Promotes a revision to become the primary profile.
-- `DELETE /api/assets/models/:modelId/versions/:versionId` – Removes a secondary revision and associated storage objects.
-- `POST /api/assets/images/bulk-delete` – Bulk removal of gallery images and cover cleanup.
-- `PUT /api/galleries/:id` – Edit gallery metadata, visibility, and ordering.
-- `DELETE /api/galleries/:id` – Delete a gallery (admin or owner permissions).
-
-## Troubleshooting
-
-- **`Cannot find module './types/express'` when starting the backend** – Legacy builds expected Express type definitions as `.d.ts` files. Ensure you are on the latest code, then reinstall dependencies and rebuild: `git pull`, `cd backend`, `npm install`, `npm run build` (or `npm run dev`).
-- **Node 18 warnings from Vite** – A crypto polyfill is bundled for Node.js 18.19.x, but upgrading to Node.js 22 LTS removes the warning and future-proofs the toolchain (`nvm install 22 && nvm use 22`).
-
+VisionSuit is actively evolving. Contributions, issues, and deployment learnings are welcome—open a discussion or pull request to share feedback and improvements.
