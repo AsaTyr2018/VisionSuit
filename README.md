@@ -22,7 +22,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 ### Community Experience
 - Home view centered on a "What's new" highlight rail with compact next-step shortcuts so curators and members can jump directly into fresh releases.
 - Member registration with reactions, comments, and private upload visibility for curators while administrators retain full inventory insight.
-- Spotlight profiles, gallery explorers with infinite scroll, intelligent caching, and account settings that keep avatars and bios in sync.
+- Spotlight profiles, gallery explorers with infinite scroll, intelligent caching, resilient legacy-image handling when auto-tag metadata is missing, and account settings that keep avatars and bios in sync.
 - Model and image explorers fetch paginated windows with seamless “load more” controls so initial visits stay lightweight while deeper dives remain responsive.
 
 ## Quick Start

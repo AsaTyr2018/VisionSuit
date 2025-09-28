@@ -1412,3 +1412,8 @@
 - **Type**: Emergency Change
 - **Reason**: Gallery uploads failed once the NSFW analysis queue was unavailable, crashing with a `runNsfwImageAnalysis is not defined` error and blocking operators from publishing content.
 - **Changes**: Ensured the upload pipeline imports the NSFW analyzer correctly, added defensive bypass handling throughout the moderation workflow to short-circuit analysis when disabled, and exposed a temporary admin setting so operators can keep uploads flowing while the queue is offline.
+
+## 230 – [Fix] Gallery tag scan fallback guard
+- **Type**: Normal Change
+- **Reason**: The gallery explorer crashed when legacy images without tag-scan metadata were selected because the UI unconditionally accessed the pending flag.
+- **Changes**: Introduced a shared `isTagScanPending` helper that safely handles missing metadata, updated every gallery explorer branch to rely on the guard, and refreshed the README to note the resilient legacy-image handling.
