@@ -11,7 +11,11 @@ const MODEL_FILENAME = 'model.onnx';
 const LABEL_FILENAME = 'selected_tags.csv';
 const GENERAL_THRESHOLD = 0.35;
 const CHARACTER_THRESHOLD = 0.85;
-const CPU_EXECUTION_PROVIDER = 'cpuExecutionProvider';
+const CPU_EXECUTION_PROVIDER_ALIASES = new Set([
+  'cpuExecutionProvider',
+  'CPUExecutionProvider',
+]);
+const DEFAULT_CPU_EXECUTION_PROVIDER = 'cpuExecutionProvider';
 
 const backendRoot = resolve(__dirname, '..', '..');
 const repoRoot = resolve(backendRoot, '..');
@@ -240,18 +244,42 @@ export class WdSwinv2Tagger {
 
     const availableProviders = this.ortRuntime.getAvailableExecutionProviders?.() ?? [];
 
-    if (Array.isArray(availableProviders) && !availableProviders.includes(CPU_EXECUTION_PROVIDER)) {
-      throw new Error(
-        [
-          '[startup] The ONNX Runtime CPU execution provider is unavailable even though the native backend was located.',
-          'Please reinstall `onnxruntime-node` for your operating system or ensure the Node.js version matches the package binary.',
-        ].join(' '),
+    if (Array.isArray(availableProviders)) {
+      const matchedProvider = availableProviders.find((provider) =>
+        CPU_EXECUTION_PROVIDER_ALIASES.has(provider),
       );
+
+      if (!matchedProvider) {
+        throw new Error(
+          [
+            '[startup] The ONNX Runtime CPU execution provider is unavailable even though the native backend was located.',
+            'Please reinstall `onnxruntime-node` for your operating system or ensure the Node.js version matches the package binary.',
+          ].join(' '),
+        );
+      }
+
+      try {
+        this.session = await this.ortRuntime.InferenceSession.create(modelPath, {
+          executionProviders: [matchedProvider],
+        });
+        return;
+      } catch (error) {
+        if (isBackendUnavailableError(error)) {
+          throw new Error(
+            [
+              '[startup] Failed to start the wd-swinv2 auto tagger because the ONNX Runtime CPU backend rejected the initialization.',
+              'Reinstall the backend dependencies (`npm --prefix backend rebuild onnxruntime-node`) or set ORT_BACKEND_PATH to the directory with the native binaries.',
+            ].join(' '),
+          );
+        }
+
+        throw error;
+      }
     }
 
     try {
       this.session = await this.ortRuntime.InferenceSession.create(modelPath, {
-        executionProviders: [CPU_EXECUTION_PROVIDER],
+        executionProviders: [DEFAULT_CPU_EXECUTION_PROVIDER],
       });
     } catch (error) {
       if (isBackendUnavailableError(error)) {
