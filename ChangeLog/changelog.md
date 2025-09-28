@@ -1,3 +1,8 @@
+## 052 – [Normal Change] Auto tagger graceful degradation
+- **Type**: Normal Change
+- **Reason**: Hosts running Node.js versions without matching `onnxruntime-node` binaries caused the CPU execution provider check to fail, blocking the entire backend from starting.
+- **Change**: Allowed startup to continue when the ONNX backend is unavailable, record failed auto-tagging jobs with clear `tagScanError` messages, surfaced console warnings for skipped queues, and refreshed the README with recovery guidance.
+
 ## 051 – [Standard Change] ONNX CPU provider detection hardening
 - **Type**: Standard Change
 - **Reason**: Hosts with `onnxruntime-node` v1.23 reported the CPU execution provider as `CPUExecutionProvider`, causing startup to abort even though the native backend binaries were present.

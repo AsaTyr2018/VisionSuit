@@ -7,12 +7,10 @@ import { initializeAutoTagger } from './lib/tagging/service';
 import './types/express';
 
 const start = async () => {
-  try {
-    await initializeAutoTagger();
-  } catch (error) {
+  const autoTaggerInitialized = await initializeAutoTagger();
+  if (!autoTaggerInitialized) {
     // eslint-disable-next-line no-console
-    console.error('[startup] Failed to initialize auto tagger:', error);
-    process.exit(1);
+    console.warn('[startup] Continuing without automatic tagging support.');
   }
 
   try {
