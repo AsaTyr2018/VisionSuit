@@ -57,6 +57,13 @@ body {
   min-height: 100vh;
 }
 
+.app--maintenance {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
 .app__wrapper {
   width: min(1080px, 100% - 3rem);
   margin: 0 auto;
@@ -1438,6 +1445,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.modal__notice {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.75);
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.modal__notice--warning {
+  border-color: rgba(250, 204, 21, 0.45);
+  background: rgba(55, 48, 163, 0.35);
+  color: rgba(250, 204, 21, 0.92);
 }
 
 .account-settings {

@@ -7,9 +7,19 @@ interface LoginDialogProps {
   onSubmit: (email: string, password: string) => Promise<void>;
   isSubmitting?: boolean;
   errorMessage?: string | null;
+  noticeMessage?: string | null;
+  isDismissible?: boolean;
 }
 
-export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, errorMessage }: LoginDialogProps) => {
+export const LoginDialog = ({
+  isOpen,
+  onClose,
+  onSubmit,
+  isSubmitting = false,
+  errorMessage,
+  noticeMessage = null,
+  isDismissible = true,
+}: LoginDialogProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -44,17 +54,27 @@ export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, e
 
   const displayError = localError ?? errorMessage;
 
+  const handleRequestClose = () => {
+    if (!isDismissible) {
+      return;
+    }
+    onClose();
+  };
+
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-labelledby="login-dialog-title">
-      <div className="modal__backdrop" onClick={onClose} aria-hidden="true" />
+      <div className="modal__backdrop" onClick={isDismissible ? onClose : undefined} aria-hidden="true" />
       <div className="modal__content modal__content--compact">
         <header className="modal__header">
           <h2 id="login-dialog-title">Sign in</h2>
-          <button type="button" className="modal__close" onClick={onClose} aria-label="Close dialog">
-            ×
-          </button>
+          {isDismissible ? (
+            <button type="button" className="modal__close" onClick={handleRequestClose} aria-label="Close dialog">
+              ×
+            </button>
+          ) : null}
         </header>
         <form className="modal__body" onSubmit={handleSubmit}>
+          {noticeMessage ? <p className="modal__notice modal__notice--warning">{noticeMessage}</p> : null}
           <label className="form-field">
             <span>Email</span>
             <input
@@ -77,9 +97,11 @@ export const LoginDialog = ({ isOpen, onClose, onSubmit, isSubmitting = false, e
           </label>
           {displayError ? <p className="form-error">{displayError}</p> : null}
           <div className="modal__actions">
-            <button type="button" className="button" onClick={onClose} disabled={isSubmitting}>
-              Cancel
-            </button>
+            {isDismissible ? (
+              <button type="button" className="button" onClick={handleRequestClose} disabled={isSubmitting}>
+                Cancel
+              </button>
+            ) : null}
             <button type="submit" className="button button--primary" disabled={isSubmitting}>
               {isSubmitting ? 'Signing in…' : 'Sign in'}
             </button>
