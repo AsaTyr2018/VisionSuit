@@ -1482,3 +1482,8 @@
 - **Type**: Normal Change
 - **Reason**: Moderators had to scroll unpredictably because preview images expanded inconsistently and the approve/remove controls drifted vertically.
 - **Changes**: Locked moderation detail previews to a 256 px column with object-fit scaling, added a zoomable preview button that opens the existing admin media modal, anchored the action bar to the bottom of the detail panel, refreshed responsive styling, and documented the workflow in the README.
+
+## 238 – [Update] Expanded gallery upload batch limit
+- **Type**: Normal Change
+- **Reason**: Curators needed to upload more than 12 gallery images at a time, making the previous limit too restrictive for larger releases.
+- **Changes**: Raised the shared upload cap to 100 files while preserving the 2 GB ceiling, refreshed the upload wizard to surface the new capacity, aligned the backend and bulk importer scripts with the higher limit, and updated the README to highlight the expanded batch support.
