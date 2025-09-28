@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react';
 
 import { AssetExplorer } from './components/AssetExplorer';
 import { GalleryExplorer } from './components/GalleryExplorer';
@@ -229,6 +229,8 @@ export const App = () => {
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
   const [generatorSettings, setGeneratorSettings] = useState<GeneratorSettings | null>(null);
   const [isUpdatingAdultPreference, setIsUpdatingAdultPreference] = useState(false);
+  const lastScrollY = useRef(0);
+  const [isFooterVisible, setIsFooterVisible] = useState(true);
   const generatorAccessMode = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
 
   const canAccessGenerator = useMemo(() => {
@@ -254,12 +256,58 @@ export const App = () => {
     return views;
   }, [authUser?.role, canAccessGenerator]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    lastScrollY.current = window.scrollY;
+
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      const delta = currentY - lastScrollY.current;
+
+      if (Math.abs(delta) < 6) {
+        lastScrollY.current = currentY;
+        return;
+      }
+
+      if (delta > 0 && currentY > 80) {
+        setIsFooterVisible((visible) => {
+          if (!visible) {
+            return visible;
+          }
+          return false;
+        });
+      } else {
+        setIsFooterVisible((visible) => {
+          if (visible) {
+            return visible;
+          }
+          return true;
+        });
+      }
+
+      lastScrollY.current = currentY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   const openPrimaryView = useCallback((view: PrimaryViewKey) => {
     setReturnView(view);
     setActiveProfileId(null);
     setActiveProfile(null);
     setProfileError(null);
     setActiveView(view);
+  }, []);
+
+  const handleServiceStatusClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
   }, []);
 
   const handleGeneratorNotify = useCallback((payload: { type: 'success' | 'error'; message: string }) => {
@@ -1633,24 +1681,52 @@ export const App = () => {
 
             {renderContent()}
 
-            <footer className="footer" aria-label="Support and credits">
-              <div>
-                <p className="footer__title">VisionSuit Support</p>
-                <div className="footer__links">
-                  <a href="https://discord.gg/UEb68YQwKR" target="_blank" rel="noreferrer noopener">
-                    Join the Discord Support Hub
-                  </a>
-                  <a href="https://github.com/MythosMachina" target="_blank" rel="noreferrer noopener">
-                    MythosMachina Studio
-                  </a>
+            <footer
+              className={`footer${isFooterVisible ? ' footer--visible' : ' footer--hidden'}`}
+              aria-label="Support and credits"
+            >
+              <span className="footer__label">VisionSuit Support</span>
+              <nav className="footer__icons" aria-label="Support channels">
+                <a
+                  href="https://discord.gg/UEb68YQwKR"
+                  className="footer__icon-link"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  <span className="sr-only">Join the Discord Support Hub</span>
+                  <svg className="footer__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M20.317 4.369a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.078.037c-.211.375-.444.864-.608 1.249-1.844-.276-3.68-.276-5.486 0-.164-.398-.41-.874-.622-1.249a.077.077 0 0 0-.078-.037 19.736 19.736 0 0 0-4.885 1.515.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.061a.082.082 0 0 0 .031.056c2.052 1.5 4.041 2.416 5.993 3.029a.078.078 0 0 0 .084-.027c.461-.63.873-1.295 1.226-1.996a.076.076 0 0 0-.041-.105c-.652-.247-1.27-.545-1.872-.892a.077.077 0 0 1-.007-.129c.125-.094.25-.192.37-.291a.074.074 0 0 1 .077-.01c3.927 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.244.198.37.292a.077.077 0 0 1-.006.128 12.298 12.298 0 0 1-1.873.892.076.076 0 0 0-.04.106c.36.7.772 1.366 1.225 1.996a.076.076 0 0 0 .084.028c1.961-.613 3.95-1.53 6.002-3.03a.077.077 0 0 0 .031-.055c.5-5.177-.838-9.673-3.548-13.665a.061.061 0 0 0-.031-.028ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.955 2.419-2.157 2.419Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.419 0 1.334-.947 2.419-2.157 2.419Z" />
+                  </svg>
+                </a>
+                <a
+                  href="https://github.com/MythosMachina"
+                  className="footer__icon-link"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  <span className="sr-only">Visit MythosMachina Studio on GitHub</span>
+                  <svg className="footer__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M12 .5c-6.63 0-12 5.37-12 12 0 5.3 3.438 9.747 8.205 11.325.6.111.82-.261.82-.58 0-.286-.011-1.04-.017-2.04-3.338.726-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.73.083-.73 1.205.084 1.84 1.236 1.84 1.236 1.07 1.834 2.809 1.304 3.495.997.108-.775.418-1.305.762-1.605-2.665-.303-5.466-1.332-5.466-5.931 0-1.31.469-2.381 1.236-3.221-.124-.303-.536-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.52 11.52 0 0 1 3.003-.404c1.02.005 2.047.138 3.003.404 2.291-1.552 3.297-1.23 3.297-1.23.655 1.653.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.61-2.807 5.625-5.48 5.921.43.372.823 1.103.823 2.222 0 1.604-.015 2.896-.015 3.289 0 .321.216.697.825.579C20.565 22.243 24 17.78 24 12.5 24 5.87 18.627.5 12 .5Z" />
+                  </svg>
+                </a>
+              </nav>
+              <div className="footer__meta-group">
+                <span>
+                  © {currentYear} MythosMachina · All rights reserved · Developed by{' '}
                   <a href="https://github.com/AsaTyr2018/" target="_blank" rel="noreferrer noopener">
-                    AsaTyr on GitHub
+                    AsaTyr
                   </a>
-                </div>
-              </div>
-              <div className="footer__status">
-                <span>© {currentYear} MythosMachina. All rights reserved.</span>
-                <span>Developed by AsaTyr.</span>
+                  .
+                </span>
+                <a
+                  href="#service-status"
+                  className="footer__status-link"
+                  onClick={handleServiceStatusClick}
+                  aria-disabled="true"
+                  title="Status page coming soon"
+                >
+                  Service Status
+                </a>
               </div>
             </footer>
           </div>

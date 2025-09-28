@@ -1387,3 +1387,8 @@
 - **Type**: Normal Change
 - **Reason**: Fresh installations failed because the `add_moderation_summary` migration attempted to add existing columns to the SQLite shadow database, producing duplicate-column errors during `prisma migrate`.
 - **Changes**: Rebuilt the Prisma migration to recreate the `ModelAsset`, `ModelVersion`, and `ImageAsset` tables with moderation summary and tagging metadata columns so SQLite resets and deploys succeed without conflicts.
+
+## 227 – [Update] Floating support footer menu
+- **Type**: Normal Change
+- **Reason**: The support footer needed to stay accessible without occupying space while browsing, prompting a request for a scroll-aware menu bar with icon-based support links.
+- **Changes**: Converted the footer into a floating bar that hides on downward scroll and appears when scrolling up, swapped Discord and GitHub links for icon buttons, condensed the VisionSuit Support and credits text, and added a placeholder Service Status link within the new layout.
