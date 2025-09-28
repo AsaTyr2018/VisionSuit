@@ -539,6 +539,11 @@ export interface ServiceStatusResponse {
   };
 }
 
+export interface ServiceStatusProbeResponse {
+  timestamp: string;
+  service: ServiceStatusDetails;
+}
+
 export interface PlatformConfig {
   siteTitle: string;
   allowRegistration: boolean;
