@@ -129,6 +129,24 @@ function Resolve-ExistingDirectory {
   return $resolved.ProviderPath
 }
 
+function Get-PropertyValue {
+  param(
+    $Object,
+    [string]$PropertyName
+  )
+
+  if ($null -eq $Object -or [string]::IsNullOrWhiteSpace($PropertyName)) {
+    return $null
+  }
+
+  $property = $Object.PSObject.Properties[$PropertyName]
+  if ($property) {
+    return $property.Value
+  }
+
+  return $null
+}
+
 function Get-MimeType {
   param([string]$Path)
   switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
@@ -277,23 +295,26 @@ function Get-ExistingModelIndex {
     foreach ($model in $collection) {
       if (-not $model) { continue }
 
+      $titleValue = Get-PropertyValue -Object $model -PropertyName 'title'
+      $slugValue = Get-PropertyValue -Object $model -PropertyName 'slug'
+
       $entry = [pscustomobject]@{
-        Title = $model.title
-        Slug = $model.slug
+        Title = $titleValue
+        Slug = $slugValue
         Source = 'remote'
       }
 
       $titleKey = $null
-      if ($model.PSObject.Properties.Match('title')) {
-        $titleKey = Build-ModelNameKey -Value $model.title
+      if ($titleValue) {
+        $titleKey = Build-ModelNameKey -Value $titleValue
       }
       if ($titleKey) {
         $index[$titleKey] = $entry
       }
 
       $slugKey = $null
-      if ($model.PSObject.Properties.Match('slug')) {
-        $slugKey = Build-ModelNameKey -Value $model.slug
+      if ($slugValue) {
+        $slugKey = Build-ModelNameKey -Value $slugValue
       }
       if ($slugKey) {
         $index[$slugKey] = $entry
