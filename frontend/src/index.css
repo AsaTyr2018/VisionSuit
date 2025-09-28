@@ -1835,6 +1835,27 @@ body {
   flex-wrap: wrap;
 }
 
+.admin__keyword-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.75rem;
+  align-items: flex-start;
+}
+
+.admin__keyword-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.admin__keyword-column .adult-keyword-form {
+  margin-top: 0;
+}
+
+.admin__keyword-column .adult-keyword-table {
+  margin-top: 1rem;
+}
+
 .adult-keyword-form__field {
   display: flex;
   flex-direction: column;

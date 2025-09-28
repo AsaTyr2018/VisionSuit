@@ -3201,149 +3201,154 @@ export const AdminPanel = ({
             )}
           </section>
           <section className="admin__section">
-            <div className="admin__section-intro">
-              <h3>Adult prompt keywords</h3>
-              <p>Configure prompt keywords that automatically mark uploads as adult-only when detected in prompts or metadata.</p>
+            <div className="admin__keyword-columns">
+              <article className="admin__keyword-column">
+                <div className="admin__section-intro">
+                  <h3>Adult prompt keywords</h3>
+                  <p>
+                    Configure prompt keywords that automatically mark uploads as adult-only when detected in prompts or metadata.
+                  </p>
+                </div>
+                {adultKeywordError ? (
+                  <p className="admin__status admin__status--error" role="alert">{adultKeywordError}</p>
+                ) : null}
+                <form
+                  className="adult-keyword-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleAddAdultKeyword();
+                  }}
+                >
+                  <label className="adult-keyword-form__field">
+                    <span>New keyword</span>
+                    <input
+                      type="text"
+                      value={newAdultKeyword}
+                      onChange={(event) => setNewAdultKeyword(event.currentTarget.value)}
+                      placeholder="e.g. explicit content phrase"
+                      disabled={isCreatingAdultKeyword || isAdultKeywordsLoading}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="button button--primary"
+                    disabled={isCreatingAdultKeyword || newAdultKeyword.trim().length === 0}
+                  >
+                    {isCreatingAdultKeyword ? 'Adding…' : 'Add keyword'}
+                  </button>
+                </form>
+                {isAdultKeywordsLoading ? (
+                  <p className="admin__loading" role="status">Loading keyword configuration…</p>
+                ) : adultKeywords.length === 0 ? (
+                  <p className="admin__empty">No adult keywords configured yet. Add one to start scanning prompts.</p>
+                ) : (
+                  <table className="adult-keyword-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Keyword</th>
+                        <th scope="col">Created</th>
+                        <th scope="col">Updated</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adultKeywords.map((keyword) => (
+                        <tr key={keyword.id}>
+                          <th scope="row">{keyword.label}</th>
+                          <td>{new Date(keyword.createdAt).toLocaleDateString('en-US')}</td>
+                          <td>{new Date(keyword.updatedAt).toLocaleDateString('en-US')}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="button button--ghost"
+                              onClick={() => handleDeleteAdultKeyword(keyword)}
+                              disabled={activeAdultKeywordRemoval === keyword.id}
+                            >
+                              {activeAdultKeywordRemoval === keyword.id ? 'Removing…' : 'Remove'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <p className="admin__footnote">
+                  Matches hide the asset from guests and users with the NSFW filter enabled without blocking the upload.
+                </p>
+              </article>
+              <article className="admin__keyword-column">
+                <div className="admin__section-intro">
+                  <h3>Illegal prompt keywords</h3>
+                  <p>Keywords in this list immediately block uploads and queue them for moderator review when detected.</p>
+                </div>
+                {illegalKeywordError ? (
+                  <p className="admin__status admin__status--error" role="alert">{illegalKeywordError}</p>
+                ) : null}
+                <form
+                  className="adult-keyword-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleAddIllegalKeyword();
+                  }}
+                >
+                  <label className="adult-keyword-form__field">
+                    <span>New keyword</span>
+                    <input
+                      type="text"
+                      value={newIllegalKeyword}
+                      onChange={(event) => setNewIllegalKeyword(event.currentTarget.value)}
+                      placeholder="e.g. disallowed content phrase"
+                      disabled={isCreatingIllegalKeyword || isIllegalKeywordsLoading}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="button button--primary"
+                    disabled={isCreatingIllegalKeyword || newIllegalKeyword.trim().length === 0}
+                  >
+                    {isCreatingIllegalKeyword ? 'Adding…' : 'Add keyword'}
+                  </button>
+                </form>
+                {isIllegalKeywordsLoading ? (
+                  <p className="admin__loading" role="status">Loading keyword configuration…</p>
+                ) : illegalKeywords.length === 0 ? (
+                  <p className="admin__empty">No illegal keywords configured yet. Add one to block problematic prompts.</p>
+                ) : (
+                  <table className="adult-keyword-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Keyword</th>
+                        <th scope="col">Created</th>
+                        <th scope="col">Updated</th>
+                        <th scope="col">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {illegalKeywords.map((keyword) => (
+                        <tr key={keyword.id}>
+                          <th scope="row">{keyword.label}</th>
+                          <td>{new Date(keyword.createdAt).toLocaleDateString('en-US')}</td>
+                          <td>{new Date(keyword.updatedAt).toLocaleDateString('en-US')}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="button button--ghost"
+                              onClick={() => handleDeleteIllegalKeyword(keyword)}
+                              disabled={activeIllegalKeywordRemoval === keyword.id}
+                            >
+                              {activeIllegalKeywordRemoval === keyword.id ? 'Removing…' : 'Remove'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                <p className="admin__footnote">
+                  Assets matched by these keywords are hidden from all users until a moderator reviews and approves them.
+                </p>
+              </article>
             </div>
-            {adultKeywordError ? (
-              <p className="admin__status admin__status--error" role="alert">{adultKeywordError}</p>
-            ) : null}
-            <form
-              className="adult-keyword-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleAddAdultKeyword();
-              }}
-            >
-              <label className="adult-keyword-form__field">
-                <span>New keyword</span>
-                <input
-                  type="text"
-                  value={newAdultKeyword}
-                  onChange={(event) => setNewAdultKeyword(event.currentTarget.value)}
-                  placeholder="e.g. explicit content phrase"
-                  disabled={isCreatingAdultKeyword || isAdultKeywordsLoading}
-                />
-              </label>
-              <button
-                type="submit"
-                className="button button--primary"
-                disabled={isCreatingAdultKeyword || newAdultKeyword.trim().length === 0}
-              >
-                {isCreatingAdultKeyword ? 'Adding…' : 'Add keyword'}
-              </button>
-            </form>
-            {isAdultKeywordsLoading ? (
-              <p className="admin__loading" role="status">Loading keyword configuration…</p>
-            ) : adultKeywords.length === 0 ? (
-              <p className="admin__empty">No adult keywords configured yet. Add one to start scanning prompts.</p>
-            ) : (
-              <table className="adult-keyword-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Keyword</th>
-                    <th scope="col">Created</th>
-                    <th scope="col">Updated</th>
-                    <th scope="col">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adultKeywords.map((keyword) => (
-                    <tr key={keyword.id}>
-                      <th scope="row">{keyword.label}</th>
-                      <td>{new Date(keyword.createdAt).toLocaleDateString('en-US')}</td>
-                      <td>{new Date(keyword.updatedAt).toLocaleDateString('en-US')}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button button--ghost"
-                          onClick={() => handleDeleteAdultKeyword(keyword)}
-                          disabled={activeAdultKeywordRemoval === keyword.id}
-                        >
-                          {activeAdultKeywordRemoval === keyword.id ? 'Removing…' : 'Remove'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <p className="admin__footnote">
-              Matches hide the asset from guests and users with the NSFW filter enabled without blocking the upload.
-            </p>
-          </section>
-
-          <section className="admin__section">
-            <div className="admin__section-intro">
-              <h3>Illegal prompt keywords</h3>
-              <p>Keywords in this list immediately block uploads and queue them for moderator review when detected.</p>
-            </div>
-            {illegalKeywordError ? (
-              <p className="admin__status admin__status--error" role="alert">{illegalKeywordError}</p>
-            ) : null}
-            <form
-              className="adult-keyword-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleAddIllegalKeyword();
-              }}
-            >
-              <label className="adult-keyword-form__field">
-                <span>New keyword</span>
-                <input
-                  type="text"
-                  value={newIllegalKeyword}
-                  onChange={(event) => setNewIllegalKeyword(event.currentTarget.value)}
-                  placeholder="e.g. disallowed content phrase"
-                  disabled={isCreatingIllegalKeyword || isIllegalKeywordsLoading}
-                />
-              </label>
-              <button
-                type="submit"
-                className="button button--primary"
-                disabled={isCreatingIllegalKeyword || newIllegalKeyword.trim().length === 0}
-              >
-                {isCreatingIllegalKeyword ? 'Adding…' : 'Add keyword'}
-              </button>
-            </form>
-            {isIllegalKeywordsLoading ? (
-              <p className="admin__loading" role="status">Loading keyword configuration…</p>
-            ) : illegalKeywords.length === 0 ? (
-              <p className="admin__empty">No illegal keywords configured yet. Add one to block problematic prompts.</p>
-            ) : (
-              <table className="adult-keyword-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Keyword</th>
-                    <th scope="col">Created</th>
-                    <th scope="col">Updated</th>
-                    <th scope="col">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {illegalKeywords.map((keyword) => (
-                    <tr key={keyword.id}>
-                      <th scope="row">{keyword.label}</th>
-                      <td>{new Date(keyword.createdAt).toLocaleDateString('en-US')}</td>
-                      <td>{new Date(keyword.updatedAt).toLocaleDateString('en-US')}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button button--ghost"
-                          onClick={() => handleDeleteIllegalKeyword(keyword)}
-                          disabled={activeIllegalKeywordRemoval === keyword.id}
-                        >
-                          {activeIllegalKeywordRemoval === keyword.id ? 'Removing…' : 'Remove'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <p className="admin__footnote">
-              Assets matched by these keywords are hidden from all users until a moderator reviews and approves them.
-            </p>
           </section>
         </div>
       ) : null}
