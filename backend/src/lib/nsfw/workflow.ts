@@ -40,21 +40,33 @@ export interface ImageModerationWorkflowResult {
 export const runImageModerationWorkflow = async (
   input: ImageModerationWorkflowInput,
 ): Promise<ImageModerationWorkflowResult> => {
+  const { buffer, adultKeywords, context, analysisOptions, existingSummary } = input;
+
   if (appConfig.nsfw.bypassFilter) {
+    const metadataList = context.metadataList ?? [];
+    const decision = evaluateImageModeration({
+      title: context.title,
+      description: context.description,
+      prompt: context.prompt,
+      negativePrompt: context.negativePrompt,
+      model: context.model,
+      sampler: context.sampler,
+      metadata: context.metadata ?? null,
+      metadataList,
+      tags: context.tags,
+      adultKeywords,
+      analysis: null,
+      additionalTexts: context.additionalTexts,
+      moderation: null,
+    });
+
     return {
       analysis: null,
       summary: null,
       serializedSummary: null,
-      decision: {
-        isAdult: false,
-        requiresModeration: false,
-        illegalMinor: false,
-        illegalBeast: false,
-      },
+      decision,
     };
   }
-
-  const { buffer, adultKeywords, context, analysisOptions, existingSummary } = input;
 
   const [analysis, summary] = await Promise.all([
     runNsfwImageAnalysis(buffer, analysisOptions),

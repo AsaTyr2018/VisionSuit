@@ -127,6 +127,73 @@ test('evaluateImageModeration surfaces bestiality markers across tags and nested
   assert.equal(decision.isAdult, true);
 });
 
+test('evaluateModelModeration still screens metadata when bypass is active', () => {
+  const originalBypass = appConfig.nsfw.bypassFilter;
+  const originalThresholds = { ...appConfig.nsfw.metadataFilters.thresholds };
+
+  appConfig.nsfw.bypassFilter = true;
+  appConfig.nsfw.metadataFilters.thresholds = {
+    adult: 10,
+    minor: 2,
+    beast: originalThresholds.beast,
+  };
+
+  try {
+    const decision = evaluateModelModeration({
+      title: 'Private pack',
+      description: 'contains disallowed material',
+      trigger: null,
+      metadata: {
+        nsfwMetadata: {
+          adultScore: 12,
+          minorScore: 3,
+          beastScore: 0,
+          matches: { adult: [], minor: [{ tag: 'schoolgirl', count: 3 }], beast: [] },
+          normalized: [],
+        },
+      },
+      metadataList: [],
+      tags: [],
+      adultKeywords: [],
+    });
+
+    assert.equal(decision.metadataAdult, true, 'Adult scores must still be honored');
+    assert.equal(decision.metadataMinor, true, 'Minor scores must still trigger moderation');
+    assert.equal(decision.requiresModeration, true, 'Bypass should not suppress moderation');
+    assert.equal(decision.isAdult, true, 'Assets stay adult while bypass is active');
+  } finally {
+    appConfig.nsfw.bypassFilter = originalBypass;
+    appConfig.nsfw.metadataFilters.thresholds = originalThresholds;
+  }
+});
+
+test('evaluateImageModeration flags minor prompts for guests when bypass is active', () => {
+  const originalBypass = appConfig.nsfw.bypassFilter;
+
+  appConfig.nsfw.bypassFilter = true;
+
+  try {
+    const decision = evaluateImageModeration({
+      title: 'Sketch',
+      description: null,
+      prompt: 'portrait of a schoolgirl in uniform',
+      negativePrompt: null,
+      model: null,
+      sampler: null,
+      metadata: null,
+      metadataList: [],
+      tags: [],
+      adultKeywords: [],
+    });
+
+    assert.equal(decision.illegalMinor, true, 'Minor prompts must be blocked');
+    assert.equal(decision.requiresModeration, true, 'Bypass must not hide moderation requirements');
+    assert.equal(decision.isAdult, true, 'Image is treated as adult content');
+  } finally {
+    appConfig.nsfw.bypassFilter = originalBypass;
+  }
+});
+
 test('resolveMetadataScreening returns parsed evaluation from metadata payloads', () => {
   const screening = resolveMetadataScreening({
     extracted: {

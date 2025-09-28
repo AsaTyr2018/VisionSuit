@@ -1422,3 +1422,8 @@
 - **Type**: Normal Change
 - **Reason**: The gallery explorer crashed when legacy images without tag-scan metadata were selected because the UI unconditionally accessed the pending flag.
 - **Changes**: Introduced a shared `isTagScanPending` helper that safely handles missing metadata, updated every gallery explorer branch to rely on the guard, and refreshed the README to note the resilient legacy-image handling.
+
+## 231 – [Fix] Reinstate NSFW metadata fallback enforcement
+- **Type**: Emergency Change
+- **Reason**: The temporary NSFW bypass disabled prompt and metadata screening, exposing guests to adult-tagged assets while the ONNX analyzer was offline.
+- **Changes**: Kept the bypass scoped to ONNX image analysis so textual filters always run, prevented moderation summaries from contributing when bypassed, reworked the image moderation workflow to reuse the fallback logic, expanded tests to cover bypass scenarios, and updated the README to highlight the always-on guest protection.
