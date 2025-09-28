@@ -13,6 +13,7 @@ export interface AutoTaggingJobInput {
   finalDescription: string | null;
   visibility: 'public' | 'private';
   adultKeywords: string[];
+  illegalKeywords: string[];
   assignedTags: { label: string; isAdult: boolean }[];
   metadata?: ImageMetadataResult | null;
   metadataPayload?: Prisma.JsonObject | null;
@@ -128,6 +129,7 @@ class AutoTaggingQueue {
       const workflow = await runImageModerationWorkflow({
         buffer: job.buffer,
         adultKeywords: job.adultKeywords,
+        illegalKeywords: job.illegalKeywords,
         context: {
           title: job.finalTitle,
           description: job.finalDescription,

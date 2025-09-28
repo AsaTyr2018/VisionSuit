@@ -15,7 +15,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 - Moderation workspace previews stay at a consistent 256 px width with one-click zooming so approve/remove actions remain aligned.
 - Centralized NSFW pipeline that blends OpenCV heuristics, ONNX swimwear detection, and configurable scheduler pools stored in `config/nsfw-image-analysis.json`.
 - Textual safety screening that never bypasses metadata or prompt keywords, so guests stay shielded from NSFW-tagged models and covers even when the ONNX analyzer is offline.
-- Prompt governance with keyword enforcement, adult tagging, automated rescans, and SmilingWolf/wd-swinv2 auto-tagging for prompt-free uploads.
+- Prompt governance with separate adult and illegal keyword queues—adult terms feed NSFW filters while illegal terms block uploads until review—paired with automated rescans and SmilingWolf/wd-swinv2 auto-tagging for prompt-free uploads.
 
 ### Creation & Distribution
 - Guided three-step upload wizard for LoRA models and gallery renders with drag-and-drop validation, revisioned model cards, and gallery batches up to 100 files (still capped at 2 GB per request).

@@ -7,7 +7,7 @@ import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../lib/prisma';
-import { getAdultKeywordLabels } from '../lib/adult-keywords';
+import { getAdultKeywordLabels, getIllegalKeywordLabels } from '../lib/safety-keywords';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from '../lib/uploadLimits';
 import { storageBuckets, storageClient, getObjectUrl } from '../lib/storage';
 import { buildUniqueSlug, slugify } from '../lib/slug';
@@ -402,7 +402,10 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       const tagRecords = await ensureTags(tx, normalizedTags, payload.category);
       const tagIds = tagRecords.map((tag) => tag.id);
       const assignedTags = [...tagRecords];
-      const adultKeywords = await getAdultKeywordLabels(tx);
+      const [adultKeywords, illegalKeywords] = await Promise.all([
+        getAdultKeywordLabels(tx),
+        getIllegalKeywordLabels(tx),
+      ]);
 
       const jobsToQueue: AutoTaggingJobInput[] = [];
 
@@ -571,6 +574,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           metadataList,
           tags: assignedTags.map((tag) => ({ tag })),
           adultKeywords,
+          illegalKeywords,
           analysis: previewAnalysis ? { decisions: previewAnalysis.decisions, scores: previewAnalysis.scores } : null,
         });
 
@@ -725,6 +729,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
             finalDescription: payload.description ?? null,
             visibility: payload.visibility,
             adultKeywords,
+            illegalKeywords,
             assignedTags: assignedTags.map((tag) => ({ label: tag.label, isAdult: tag.isAdult })),
             metadata: metadata ?? null,
             metadataPayload: resolvedMetadata,
@@ -737,6 +742,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         const workflow = await runImageModerationWorkflow({
           buffer: source.buffer,
           adultKeywords,
+          illegalKeywords,
           existingSummary: entry.moderationSummary ?? null,
           context: {
             title,

@@ -35,6 +35,11 @@ enum ModerationActionType {
   REMOVED
 }
 
+enum SafetyKeywordCategory {
+  ADULT
+  ILLEGAL
+}
+
 model User {
   id                     String                  @id @default(cuid())
   email                  String                  @unique
@@ -453,9 +458,12 @@ model UserRankingState {
   user        User      @relation(fields: [userId], references: [id])
 }
 
-model AdultSafetyKeyword {
-  id        String   @id @default(cuid())
-  label     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model SafetyKeyword {
+  id        String               @id @default(cuid())
+  label     String
+  category  SafetyKeywordCategory
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@unique([category, label])
 }

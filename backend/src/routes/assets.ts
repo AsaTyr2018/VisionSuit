@@ -20,7 +20,7 @@ import { z } from 'zod';
 import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
-import { getAdultKeywordLabels } from '../lib/adult-keywords';
+import { getAdultKeywordLabels, getIllegalKeywordLabels } from '../lib/safety-keywords';
 import { requireAdmin, requireAuth, requireCurator } from '../lib/middleware/auth';
 import { extractImageMetadata, extractModelMetadataFromFile, toJsonImageMetadata } from '../lib/metadata';
 import { buildGalleryInclude, mapGallery } from '../lib/mappers/gallery';
@@ -38,6 +38,7 @@ import {
   type ImageModerationSummary,
 } from '../lib/nsfw-open-cv';
 import { resolveMetadataScreening } from '../lib/nsfw/moderation';
+import { collectStringsFromJson, detectKeywordMatch } from '../lib/nsfw/keywordMatcher';
 import type { MetadataEvaluationResult } from '../lib/nsfw/metadata';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
@@ -2240,7 +2241,10 @@ assetsRouter.post(
         throw error;
       }
 
-      const adultKeywords = await getAdultKeywordLabels();
+      const [adultKeywords, illegalKeywords] = await Promise.all([
+        getAdultKeywordLabels(),
+        getIllegalKeywordLabels(),
+      ]);
       const versionMetadataList = updatedAsset.versions
         .map((entry) => entry.metadata ?? null)
         .filter((entry): entry is Prisma.JsonValue => entry != null);
@@ -2249,6 +2253,11 @@ assetsRouter.post(
         updatedAsset.metadata ?? null,
         ...versionMetadataList,
       ]);
+
+      const metadataStrings = [
+        ...collectStringsFromJson(updatedAsset.metadata ?? null),
+        ...versionMetadataList.flatMap((entry) => collectStringsFromJson(entry)),
+      ];
 
       const keywordAdult = determineAdultForModel({
         title: updatedAsset.title,
@@ -2260,6 +2269,17 @@ assetsRouter.post(
         adultKeywords,
         moderationSummaries,
       });
+
+      const keywordIllegal = detectKeywordMatch(
+        illegalKeywords,
+        [
+          updatedAsset.title ?? '',
+          updatedAsset.description ?? '',
+          updatedAsset.trigger ?? '',
+          ...metadataStrings,
+        ],
+        updatedAsset.tags,
+      );
 
       const metadataThresholds = appConfig.nsfw.metadataFilters.thresholds;
       const metadataAdult = Boolean(
@@ -2280,7 +2300,7 @@ assetsRouter.post(
 
       const analysisAdult = Boolean(previewImageAnalysis?.decisions.isAdult);
 
-      const requiresModeration = metadataMinor || metadataBeast;
+      const requiresModeration = metadataMinor || metadataBeast || keywordIllegal;
       const desiredIsAdult = keywordAdult || metadataAdult || requiresModeration || analysisAdult;
 
       const updatePayload: Prisma.ModelAssetUpdateInput = {};
@@ -2600,7 +2620,10 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
       removeStorageObject(versionPreview.bucket, versionPreview.objectName),
     ]);
 
-    const adultKeywords = await getAdultKeywordLabels();
+    const [adultKeywords, illegalKeywords] = await Promise.all([
+      getAdultKeywordLabels(),
+      getIllegalKeywordLabels(),
+    ]);
     const versionMetadataList = updatedAsset.versions
       .map((entry) => entry.metadata ?? null)
       .filter((entry): entry is Prisma.JsonValue => entry != null);
@@ -2610,7 +2633,12 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
       ...versionMetadataList,
     ]);
 
-    const nextIsAdult = determineAdultForModel({
+    const metadataStrings = [
+      ...collectStringsFromJson(updatedAsset.metadata ?? null),
+      ...versionMetadataList.flatMap((entry) => collectStringsFromJson(entry)),
+    ];
+
+    const keywordAdult = determineAdultForModel({
       title: updatedAsset.title,
       description: updatedAsset.description,
       trigger: updatedAsset.trigger,
@@ -2621,11 +2649,44 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
       moderationSummaries,
     });
 
+    const keywordIllegal = detectKeywordMatch(
+      illegalKeywords,
+      [
+        updatedAsset.title ?? '',
+        updatedAsset.description ?? '',
+        updatedAsset.trigger ?? '',
+        ...metadataStrings,
+      ],
+      updatedAsset.tags,
+    );
+
+    const metadataScreening = resolveMetadataScreening(updatedAsset.metadata ?? null);
+    const metadataThresholds = appConfig.nsfw.metadataFilters.thresholds;
+    const metadataAdult = Boolean(
+      metadataScreening &&
+        metadataThresholds.adult > 0 &&
+        metadataScreening.adultScore >= metadataThresholds.adult,
+    );
+
+    const metadataMinor = Boolean(
+      metadataScreening &&
+        metadataThresholds.minor > 0 &&
+        metadataScreening.minorScore >= metadataThresholds.minor,
+    );
+    const metadataBeast = Boolean(
+      metadataScreening &&
+        metadataThresholds.beast > 0 &&
+        metadataScreening.beastScore >= metadataThresholds.beast,
+    );
+
+    const requiresModeration = metadataMinor || metadataBeast || keywordIllegal;
+    const desiredIsAdult = keywordAdult || metadataAdult || requiresModeration;
+
     let finalAsset = updatedAsset;
-    if (updatedAsset.isAdult !== nextIsAdult) {
+    if (updatedAsset.isAdult !== desiredIsAdult) {
       finalAsset = await prisma.modelAsset.update({
         where: { id: updatedAsset.id },
-        data: { isAdult: nextIsAdult },
+        data: { isAdult: desiredIsAdult },
         include: {
           owner: { select: { id: true, displayName: true, email: true } },
           tags: { include: { tag: true } },
@@ -2808,7 +2869,10 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         },
       })) as HydratedModelAsset;
 
-      const adultKeywords = await getAdultKeywordLabels(tx);
+      const [adultKeywords, illegalKeywords] = await Promise.all([
+        getAdultKeywordLabels(tx),
+        getIllegalKeywordLabels(tx),
+      ]);
       const versionMetadataList = updatedAsset.versions
         .map((entry) => entry.metadata ?? null)
         .filter((entry): entry is Prisma.JsonValue => entry != null);
@@ -2818,7 +2882,12 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         ...versionMetadataList,
       ]);
 
-      const nextIsAdult = determineAdultForModel({
+      const metadataStrings = [
+        ...collectStringsFromJson(updatedAsset.metadata ?? null),
+        ...versionMetadataList.flatMap((entry) => collectStringsFromJson(entry)),
+      ];
+
+      const keywordAdult = determineAdultForModel({
         title: updatedAsset.title,
         description: updatedAsset.description,
         trigger: updatedAsset.trigger,
@@ -2829,10 +2898,43 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
         moderationSummaries,
       });
 
-      if (updatedAsset.isAdult !== nextIsAdult) {
+      const keywordIllegal = detectKeywordMatch(
+        illegalKeywords,
+        [
+          updatedAsset.title ?? '',
+          updatedAsset.description ?? '',
+          updatedAsset.trigger ?? '',
+          ...metadataStrings,
+        ],
+        updatedAsset.tags,
+      );
+
+      const metadataScreening = resolveMetadataScreening(updatedAsset.metadata ?? null);
+      const metadataThresholds = appConfig.nsfw.metadataFilters.thresholds;
+      const metadataAdult = Boolean(
+        metadataScreening &&
+          metadataThresholds.adult > 0 &&
+          metadataScreening.adultScore >= metadataThresholds.adult,
+      );
+
+      const metadataMinor = Boolean(
+        metadataScreening &&
+          metadataThresholds.minor > 0 &&
+          metadataScreening.minorScore >= metadataThresholds.minor,
+      );
+      const metadataBeast = Boolean(
+        metadataScreening &&
+          metadataThresholds.beast > 0 &&
+          metadataScreening.beastScore >= metadataThresholds.beast,
+      );
+
+      const requiresModeration = metadataMinor || metadataBeast || keywordIllegal;
+      const desiredIsAdult = keywordAdult || metadataAdult || requiresModeration;
+
+      if (updatedAsset.isAdult !== desiredIsAdult) {
         return (await tx.modelAsset.update({
           where: { id: updatedAsset.id },
-          data: { isAdult: nextIsAdult },
+          data: { isAdult: desiredIsAdult },
           include: {
             tags: { include: { tag: true } },
             owner: { select: { id: true, displayName: true, email: true } },
@@ -3132,9 +3234,14 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
       const metadataInput = Object.keys(metadataPayload).length > 0 ? metadataPayload : null;
       const moderationSummary = normalizeModerationSummary(updatedImage.moderationSummary);
 
-      const adultKeywords = await getAdultKeywordLabels(tx);
+      const [adultKeywords, illegalKeywords] = await Promise.all([
+        getAdultKeywordLabels(tx),
+        getIllegalKeywordLabels(tx),
+      ]);
 
-      const nextIsAdult = determineAdultForImage({
+      const metadataList: Prisma.JsonValue[] = metadataInput ? [metadataInput] : [];
+
+      const keywordAdult = determineAdultForImage({
         title: updatedImage.title,
         description: updatedImage.description,
         prompt: updatedImage.prompt,
@@ -3142,15 +3249,35 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
         model: updatedImage.model,
         sampler: updatedImage.sampler,
         metadata: metadataInput,
+        metadataList,
         tags: updatedImage.tags,
         adultKeywords,
         moderation: moderationSummary,
       });
 
-      if (updatedImage.isAdult !== nextIsAdult) {
+      const metadataStrings = metadataList.flatMap((entry) => collectStringsFromJson(entry));
+
+      const keywordIllegal = detectKeywordMatch(
+        illegalKeywords,
+        [
+          updatedImage.title ?? '',
+          updatedImage.description ?? '',
+          updatedImage.prompt ?? '',
+          updatedImage.negativePrompt ?? '',
+          updatedImage.model ?? '',
+          updatedImage.sampler ?? '',
+          ...metadataStrings,
+        ],
+        updatedImage.tags,
+      );
+
+      const requiresModeration = keywordIllegal;
+      const desiredIsAdult = keywordAdult || requiresModeration;
+
+      if (updatedImage.isAdult !== desiredIsAdult) {
         return tx.imageAsset.update({
           where: { id: updatedImage.id },
-          data: { isAdult: nextIsAdult },
+          data: { isAdult: desiredIsAdult },
           include: buildImageInclude(req.user?.id),
         });
       }

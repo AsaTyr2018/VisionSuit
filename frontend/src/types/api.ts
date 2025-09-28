@@ -486,9 +486,10 @@ export interface Gallery {
   entries: GalleryEntry[];
 }
 
-export interface AdultSafetyKeyword {
+export interface SafetyKeyword {
   id: string;
   label: string;
+  category: 'adult' | 'illegal';
   createdAt: string;
   updatedAt: string;
 }

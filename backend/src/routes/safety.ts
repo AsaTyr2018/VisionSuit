@@ -5,7 +5,13 @@ import { z } from 'zod';
 import { determineAdultForImage, determineAdultForModel } from '../lib/adult-content';
 import { requireAdmin, requireAuth } from '../lib/middleware/auth';
 import { prisma } from '../lib/prisma';
-import { getAdultKeywordLabels, listAdultSafetyKeywords } from '../lib/adult-keywords';
+import {
+  getAdultKeywordLabels,
+  getIllegalKeywordLabels,
+  listAdultSafetyKeywords,
+  listIllegalSafetyKeywords,
+  type SafetyKeywordCategory,
+} from '../lib/safety-keywords';
 import { appConfig } from '../config';
 import { evaluateModelModeration } from '../lib/nsfw/moderation';
 import { runImageModerationWorkflow } from '../lib/nsfw/workflow';
@@ -15,15 +21,36 @@ export const safetyRouter = Router();
 
 safetyRouter.use(requireAuth, requireAdmin);
 
+const keywordCategorySchema = z.enum(['adult', 'illegal']);
+
 const createKeywordSchema = z.object({
   label: z
     .string()
     .trim()
     .min(1, 'Keyword label cannot be empty.')
     .max(120, 'Keyword label must be 120 characters or fewer.'),
+  category: keywordCategorySchema,
 });
 
+const keywordQuerySchema = z
+  .object({ category: keywordCategorySchema.default('adult') })
+  .default({ category: 'adult' });
+
 const ADULT_RECALC_BATCH_SIZE = 100;
+
+const mapSafetyKeywordRecord = (record: {
+  id: string;
+  label: string;
+  category: Prisma.SafetyKeywordCategory;
+  createdAt: Date;
+  updatedAt: Date;
+}) => ({
+  id: record.id,
+  label: record.label,
+  category: record.category === 'ILLEGAL' ? 'illegal' : 'adult',
+  createdAt: record.createdAt,
+  updatedAt: record.updatedAt,
+});
 
 type MetadataScoreSummary = {
   adult: number;
@@ -292,7 +319,7 @@ type ImageRescanRecord = {
   tags: Array<{ tag: { label: string; isAdult: boolean } }>;
 };
 
-const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
+const recalculateAdultFlagsForModels = async (adultKeywords: string[], illegalKeywords: string[]) => {
   let cursorId: string | null = null;
 
   while (true) {
@@ -328,7 +355,12 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
           ...versionMetadataList,
         ]);
 
-        const nextIsAdult = determineAdultForModel({
+        const metadataStrings = [
+          ...collectStringsFromJson(model.metadata ?? null),
+          ...versionMetadataList.flatMap((entry) => collectStringsFromJson(entry)),
+        ];
+
+        const keywordAdult = determineAdultForModel({
           title: model.title,
           description: model.description,
           trigger: model.trigger,
@@ -338,6 +370,19 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
           adultKeywords,
           moderationSummaries,
         });
+
+        const keywordIllegal = detectKeywordMatch(
+          illegalKeywords,
+          [
+            model.title ?? '',
+            model.description ?? '',
+            model.trigger ?? '',
+            ...metadataStrings,
+          ],
+          model.tags,
+        );
+
+        const nextIsAdult = keywordAdult || keywordIllegal;
 
         if (model.isAdult === nextIsAdult) {
           return null;
@@ -367,7 +412,7 @@ const recalculateAdultFlagsForModels = async (adultKeywords: string[]) => {
   }
 };
 
-const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
+const recalculateAdultFlagsForImages = async (adultKeywords: string[], illegalKeywords: string[]) => {
   let cursorId: string | null = null;
 
   while (true) {
@@ -408,7 +453,9 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
 
         const moderationSummary = normalizeModerationSummary(image.moderationSummary);
 
-        const nextIsAdult = determineAdultForImage({
+        const metadataList = metadata ? [metadata] : [];
+
+        const keywordAdult = determineAdultForImage({
           title: image.title,
           description: image.description,
           prompt: image.prompt,
@@ -416,10 +463,28 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
           model: image.model,
           sampler: image.sampler,
           metadata,
+          metadataList,
           tags: image.tags,
           adultKeywords,
           moderation: moderationSummary,
         });
+
+        const metadataStrings = metadataList.flatMap((entry) => collectStringsFromJson(entry));
+        const keywordIllegal = detectKeywordMatch(
+          illegalKeywords,
+          [
+            image.title ?? '',
+            image.description ?? '',
+            image.prompt ?? '',
+            image.negativePrompt ?? '',
+            image.model ?? '',
+            image.sampler ?? '',
+            ...metadataStrings,
+          ],
+          image.tags,
+        );
+
+        const nextIsAdult = keywordAdult || keywordIllegal;
 
         if (image.isAdult === nextIsAdult) {
           return null;
@@ -450,13 +515,20 @@ const recalculateAdultFlagsForImages = async (adultKeywords: string[]) => {
 };
 
 const recalculateAdultFlagsForAllAssets = async () => {
-  const adultKeywords = await getAdultKeywordLabels();
+  const [adultKeywords, illegalKeywords] = await Promise.all([
+    getAdultKeywordLabels(),
+    getIllegalKeywordLabels(),
+  ]);
 
-  await recalculateAdultFlagsForModels(adultKeywords);
-  await recalculateAdultFlagsForImages(adultKeywords);
+  await recalculateAdultFlagsForModels(adultKeywords, illegalKeywords);
+  await recalculateAdultFlagsForImages(adultKeywords, illegalKeywords);
 };
 
-const rescanModelsForNsfw = async (adultKeywords: string[], limit?: number) => {
+const rescanModelsForNsfw = async (
+  adultKeywords: string[],
+  illegalKeywords: string[],
+  limit?: number,
+) => {
   const stats = createRescanStats();
   let cursorId: string | null = null;
 
@@ -521,6 +593,7 @@ const rescanModelsForNsfw = async (adultKeywords: string[], limit?: number) => {
           metadataList,
           tags: model.tags,
           adultKeywords,
+          illegalKeywords,
         });
 
         const updatePayload: Prisma.ModelAssetUpdateInput = {};
@@ -584,7 +657,11 @@ const rescanModelsForNsfw = async (adultKeywords: string[], limit?: number) => {
   return stats;
 };
 
-const rescanImagesForNsfw = async (adultKeywords: string[], limit?: number) => {
+const rescanImagesForNsfw = async (
+  adultKeywords: string[],
+  illegalKeywords: string[],
+  limit?: number,
+) => {
   const stats = createImageRescanStats();
   let cursorId: string | null = null;
 
@@ -670,6 +747,7 @@ const rescanImagesForNsfw = async (adultKeywords: string[], limit?: number) => {
         const workflow = await runImageModerationWorkflow({
           buffer: objectBuffer,
           adultKeywords,
+          illegalKeywords,
           analysisOptions: { mode: 'fast' },
           context: {
             title: image.title,
@@ -787,7 +865,10 @@ const nsfwRescanSchema = z
 safetyRouter.post('/nsfw/rescan', async (req, res, next) => {
   try {
     const parsed = nsfwRescanSchema.parse((req.body ?? {}) as Record<string, unknown>);
-    const adultKeywords = await getAdultKeywordLabels();
+    const [adultKeywords, illegalKeywords] = await Promise.all([
+      getAdultKeywordLabels(),
+      getIllegalKeywordLabels(),
+    ]);
 
     const summary: {
       target: 'all' | 'models' | 'images';
@@ -798,11 +879,11 @@ safetyRouter.post('/nsfw/rescan', async (req, res, next) => {
     };
 
     if (parsed.target === 'all' || parsed.target === 'models') {
-      summary.models = await rescanModelsForNsfw(adultKeywords, parsed.limit);
+      summary.models = await rescanModelsForNsfw(adultKeywords, illegalKeywords, parsed.limit);
     }
 
     if (parsed.target === 'all' || parsed.target === 'images') {
-      summary.images = await rescanImagesForNsfw(adultKeywords, parsed.limit);
+      summary.images = await rescanImagesForNsfw(adultKeywords, illegalKeywords, parsed.limit);
     }
 
     res.json({ rescan: summary });
@@ -811,9 +892,14 @@ safetyRouter.post('/nsfw/rescan', async (req, res, next) => {
   }
 });
 
-safetyRouter.get('/keywords', async (_req, res, next) => {
+safetyRouter.get('/keywords', async (req, res, next) => {
   try {
-    const keywords = await listAdultSafetyKeywords();
+    const parsed = keywordQuerySchema.parse(req.query as Record<string, unknown>);
+    const category = parsed.category as SafetyKeywordCategory;
+    const keywords =
+      category === 'illegal'
+        ? await listIllegalSafetyKeywords()
+        : await listAdultSafetyKeywords();
     res.json({ keywords });
   } catch (error) {
     next(error);
@@ -828,13 +914,16 @@ safetyRouter.post('/keywords', async (req, res, next) => {
       return;
     }
 
-    const keyword = await prisma.adultSafetyKeyword.create({
-      data: { label: parsed.data.label },
+    const keyword = await prisma.safetyKeyword.create({
+      data: {
+        label: parsed.data.label,
+        category: parsed.data.category === 'illegal' ? 'ILLEGAL' : 'ADULT',
+      },
     });
 
     void scheduleAdultKeywordRecalculation();
 
-    res.status(201).json({ keyword });
+    res.status(201).json({ keyword: mapSafetyKeywordRecord(keyword) });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       res.status(409).json({ message: 'A keyword with this label already exists.' });
@@ -853,7 +942,7 @@ safetyRouter.delete('/keywords/:id', async (req, res, next) => {
       return;
     }
 
-    await prisma.adultSafetyKeyword.delete({ where: { id } });
+    await prisma.safetyKeyword.delete({ where: { id } });
 
     void scheduleAdultKeywordRecalculation();
 

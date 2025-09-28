@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { appConfig } from '../../config';
 import { determineAdultForImage, determineAdultForModel } from '../adult-content';
 import type { ImageModerationSummary } from '../nsfw-open-cv';
+import { buildKeywordDetector, collectStringsFromJson, detectKeywordMatch } from './keywordMatcher';
 import type { MetadataEvaluationResult } from './metadata';
 import { evaluateLoRaMetadata } from './metadata';
 import type { ImageAnalysisResult } from './imageAnalysis';
@@ -10,100 +11,6 @@ import type { ImageAnalysisResult } from './imageAnalysis';
 type TagReference = Array<{ tag: { label: string; isAdult: boolean } }>;
 
 const isBypassEnabled = () => appConfig.nsfw.bypassFilter;
-
-const normalizeString = (value: string | null | undefined) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : '';
-
-const normalizeForMatch = (value: string | null | undefined) =>
-  normalizeString(value)
-    .replace(/[\s_-]+/g, ' ')
-    .replace(/\s+/g, ' ');
-
-const collectStringsFromJson = (value: Prisma.JsonValue | null | undefined, limit = 50): string[] => {
-  if (value == null) {
-    return [];
-  }
-
-  const queue: Array<{ entry: Prisma.JsonValue; depth: number }> = [{ entry: value, depth: 0 }];
-  const results: string[] = [];
-
-  while (queue.length > 0 && results.length < limit) {
-    const current = queue.shift();
-    if (!current) {
-      break;
-    }
-
-    const { entry, depth } = current;
-
-    if (typeof entry === 'string') {
-      results.push(entry);
-      continue;
-    }
-
-    if (Array.isArray(entry) && depth < 4) {
-      for (const child of entry) {
-        queue.push({ entry: child as Prisma.JsonValue, depth: depth + 1 });
-      }
-      continue;
-    }
-
-    if (entry && typeof entry === 'object' && depth < 4) {
-      for (const child of Object.values(entry as Record<string, Prisma.JsonValue>)) {
-        queue.push({ entry: child, depth: depth + 1 });
-      }
-    }
-  }
-
-  return results;
-};
-
-const hasKeywordMatch = (source: string, keyword: string) => {
-  const normalizedSource = normalizeForMatch(source);
-  if (!normalizedSource) {
-    return false;
-  }
-
-  const normalizedKeyword = normalizeForMatch(keyword);
-  if (!normalizedKeyword) {
-    return false;
-  }
-
-  const paddedSource = ` ${normalizedSource} `;
-  const paddedKeyword = ` ${normalizedKeyword} `;
-
-  return paddedSource.includes(paddedKeyword) || normalizedSource.includes(normalizedKeyword);
-};
-
-const buildKeywordDetector = (keywords: string[]) => {
-  const normalizedKeywords = keywords
-    .map((keyword) => normalizeString(keyword))
-    .filter((keyword) => keyword.length > 0);
-
-  return (texts: string[], tags: TagReference) => {
-    if (normalizedKeywords.length === 0) {
-      return false;
-    }
-
-    for (const text of texts) {
-      for (const keyword of normalizedKeywords) {
-        if (hasKeywordMatch(text, keyword)) {
-          return true;
-        }
-      }
-    }
-
-    for (const entry of tags) {
-      const label = entry.tag.label;
-      for (const keyword of normalizedKeywords) {
-        if (hasKeywordMatch(label, keyword)) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  };
-};
 
 export const resolveMetadataScreening = (
   metadata: Prisma.JsonValue | null | undefined,
@@ -143,6 +50,7 @@ export interface ModelModerationContext {
   metadataList?: Prisma.JsonValue[];
   tags: TagReference;
   adultKeywords: string[];
+  illegalKeywords: string[];
   analysis?: Pick<ImageAnalysisResult, 'decisions' | 'scores'> | null;
   additionalTexts?: string[];
 }
@@ -154,6 +62,8 @@ export interface ModelModerationDecision {
   metadataAdult: boolean;
   metadataMinor: boolean;
   metadataBeast: boolean;
+  keywordAdult: boolean;
+  keywordIllegal: boolean;
 }
 
 export const evaluateModelModeration = (
@@ -174,10 +84,24 @@ export const evaluateModelModeration = (
     screening && thresholds.beast > 0 && screening.beastScore >= thresholds.beast,
   );
 
-  const requiresModeration = metadataMinor || metadataBeast;
-
   const metadataList = context.metadataList ?? [];
   const additionalTexts = context.additionalTexts ?? [];
+  const metadataStrings = [
+    ...collectStringsFromJson(context.metadata ?? null),
+    ...metadataList.flatMap((entry) => collectStringsFromJson(entry)),
+  ];
+
+  const keywordIllegal = detectKeywordMatch(
+    context.illegalKeywords,
+    [
+      context.title ?? '',
+      context.description ?? '',
+      context.trigger ?? '',
+      ...metadataStrings,
+      ...additionalTexts,
+    ],
+    context.tags,
+  );
 
   const adultFromSignals = determineAdultForModel({
     title: context.title ?? null,
@@ -193,6 +117,7 @@ export const evaluateModelModeration = (
   const analysis = bypass ? null : context.analysis;
   const analysisAdult = Boolean(analysis?.decisions?.isAdult);
 
+  const requiresModeration = metadataMinor || metadataBeast || keywordIllegal;
   const isAdult = adultFromSignals || analysisAdult || metadataAdult || requiresModeration;
 
   return {
@@ -202,6 +127,8 @@ export const evaluateModelModeration = (
     metadataAdult,
     metadataMinor,
     metadataBeast,
+    keywordAdult: adultFromSignals,
+    keywordIllegal,
   };
 };
 
@@ -216,6 +143,7 @@ export interface ImageModerationContext {
   metadataList?: Prisma.JsonValue[];
   tags: TagReference;
   adultKeywords: string[];
+  illegalKeywords: string[];
   analysis?: ImageAnalysisResult | null;
   additionalTexts?: string[];
   moderation?: ImageModerationSummary | null;
@@ -226,6 +154,8 @@ export interface ImageModerationDecision {
   requiresModeration: boolean;
   illegalMinor: boolean;
   illegalBeast: boolean;
+  keywordAdult: boolean;
+  keywordIllegal: boolean;
 }
 
 export const evaluateImageModeration = (
@@ -247,7 +177,7 @@ export const evaluateImageModeration = (
 
   const additionalTexts = context.additionalTexts ?? [];
 
-  const imageAdult = determineAdultForImage({
+  const keywordAdult = determineAdultForImage({
     title: context.title ?? null,
     description: context.description ?? null,
     prompt: context.prompt ?? null,
@@ -282,15 +212,18 @@ export const evaluateImageModeration = (
 
   const illegalMinor = minorDetector(textPool, context.tags);
   const illegalBeast = beastDetector(textPool, context.tags);
-  const requiresModeration = illegalMinor || illegalBeast;
+  const keywordIllegal = detectKeywordMatch(context.illegalKeywords, textPool, context.tags);
+  const requiresModeration = illegalMinor || illegalBeast || keywordIllegal;
 
-  const isAdult = imageAdult || analysisAdult || requiresModeration;
+  const isAdult = keywordAdult || analysisAdult || requiresModeration;
 
   return {
     isAdult,
     requiresModeration,
     illegalMinor,
     illegalBeast,
+    keywordAdult,
+    keywordIllegal,
   };
 };
 

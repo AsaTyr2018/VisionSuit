@@ -18,7 +18,7 @@ import type {
   ModelAsset,
   RankTier,
   RankingSettings,
-  AdultSafetyKeyword,
+  SafetyKeyword,
   User,
   AdminSettings,
   PlatformConfig,
@@ -443,12 +443,18 @@ export const AdminPanel = ({
   const [metadataPreviewError, setMetadataPreviewError] = useState<string | null>(null);
   const [isRescanningNsfw, setIsRescanningNsfw] = useState(false);
   const [nsfwRescanSummary, setNsfwRescanSummary] = useState<NsfwRescanSummary | null>(null);
-  const [adultKeywords, setAdultKeywords] = useState<AdultSafetyKeyword[]>([]);
+  const [adultKeywords, setAdultKeywords] = useState<SafetyKeyword[]>([]);
+  const [illegalKeywords, setIllegalKeywords] = useState<SafetyKeyword[]>([]);
   const [isAdultKeywordsLoading, setIsAdultKeywordsLoading] = useState(false);
+  const [isIllegalKeywordsLoading, setIsIllegalKeywordsLoading] = useState(false);
   const [adultKeywordError, setAdultKeywordError] = useState<string | null>(null);
+  const [illegalKeywordError, setIllegalKeywordError] = useState<string | null>(null);
   const [newAdultKeyword, setNewAdultKeyword] = useState('');
+  const [newIllegalKeyword, setNewIllegalKeyword] = useState('');
   const [isCreatingAdultKeyword, setIsCreatingAdultKeyword] = useState(false);
+  const [isCreatingIllegalKeyword, setIsCreatingIllegalKeyword] = useState(false);
   const [activeAdultKeywordRemoval, setActiveAdultKeywordRemoval] = useState<string | null>(null);
+  const [activeIllegalKeywordRemoval, setActiveIllegalKeywordRemoval] = useState<string | null>(null);
   const [activeGeneratorSection, setActiveGeneratorSection] = useState<GeneratorSectionTab>('queue');
 
   const [userFilter, setUserFilter] = useState<{ query: string; role: FilterValue<User['role']>; status: FilterValue<UserStatusFilter> }>(
@@ -827,6 +833,29 @@ export const AdminPanel = ({
     return () => {
       isMounted = false;
     };
+  }, [token]);
+
+  const loadIllegalKeywords = useCallback(async () => {
+    if (!token) {
+      setIllegalKeywords([]);
+      return;
+    }
+
+    setIsIllegalKeywordsLoading(true);
+    setIllegalKeywordError(null);
+    try {
+      const response = await api.getSafetyKeywords(token, 'illegal');
+      setIllegalKeywords(response.keywords);
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to load illegal keyword configuration. Please try again.';
+      setIllegalKeywordError(message);
+      setIllegalKeywords([]);
+    } finally {
+      setIsIllegalKeywordsLoading(false);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -1275,7 +1304,7 @@ export const AdminPanel = ({
     setIsAdultKeywordsLoading(true);
     setAdultKeywordError(null);
     try {
-      const response = await api.getAdultSafetyKeywords(token);
+      const response = await api.getSafetyKeywords(token, 'adult');
       setAdultKeywords(response.keywords);
     } catch (error) {
       const message =
@@ -1304,8 +1333,8 @@ export const AdminPanel = ({
     setIsCreatingAdultKeyword(true);
     setAdultKeywordError(null);
     try {
-      await api.createAdultSafetyKeyword(token, value);
-      setStatus({ type: 'success', message: `Added prompt keyword "${value}".` });
+      await api.createSafetyKeyword(token, 'adult', value);
+      setStatus({ type: 'success', message: `Added adult prompt keyword "${value}".` });
       setNewAdultKeyword('');
       await loadAdultKeywords();
     } catch (error) {
@@ -1319,7 +1348,7 @@ export const AdminPanel = ({
   }, [token, newAdultKeyword, loadAdultKeywords]);
 
   const handleDeleteAdultKeyword = useCallback(
-    async (keyword: AdultSafetyKeyword) => {
+    async (keyword: SafetyKeyword) => {
       if (!token) {
         setAdultKeywordError('Authentication required to remove safety keywords.');
         return;
@@ -1328,8 +1357,8 @@ export const AdminPanel = ({
       setActiveAdultKeywordRemoval(keyword.id);
       setAdultKeywordError(null);
       try {
-        await api.deleteAdultSafetyKeyword(token, keyword.id);
-        setStatus({ type: 'success', message: `Removed prompt keyword "${keyword.label}".` });
+        await api.deleteSafetyKeyword(token, keyword.id);
+        setStatus({ type: 'success', message: `Removed adult prompt keyword "${keyword.label}".` });
         await loadAdultKeywords();
       } catch (error) {
         const message =
@@ -1343,17 +1372,81 @@ export const AdminPanel = ({
     [token, loadAdultKeywords],
   );
 
-  useEffect(() => {
-    if (activeTab === 'safety') {
-      loadAdultKeywords().catch((error) => console.error('Failed to load adult keyword configuration', error));
+  const handleAddIllegalKeyword = useCallback(async () => {
+    if (!token) {
+      setIllegalKeywordError('Authentication required to add safety keywords.');
+      return;
     }
-  }, [activeTab, loadAdultKeywords]);
+
+    const value = newIllegalKeyword.trim();
+    if (value.length === 0) {
+      setIllegalKeywordError('Enter a keyword before adding it.');
+      return;
+    }
+
+    setIsCreatingIllegalKeyword(true);
+    setIllegalKeywordError(null);
+    try {
+      await api.createSafetyKeyword(token, 'illegal', value);
+      setStatus({ type: 'success', message: `Added illegal keyword "${value}".` });
+      setNewIllegalKeyword('');
+      await loadIllegalKeywords();
+    } catch (error) {
+      const message =
+        error instanceof ApiError ? error.message : 'Failed to add the illegal safety keyword. Please try again.';
+      setIllegalKeywordError(message);
+      setStatus({ type: 'error', message });
+    } finally {
+      setIsCreatingIllegalKeyword(false);
+    }
+  }, [token, newIllegalKeyword, loadIllegalKeywords]);
+
+  const handleDeleteIllegalKeyword = useCallback(
+    async (keyword: SafetyKeyword) => {
+      if (!token) {
+        setIllegalKeywordError('Authentication required to remove safety keywords.');
+        return;
+      }
+
+      setActiveIllegalKeywordRemoval(keyword.id);
+      setIllegalKeywordError(null);
+      try {
+        await api.deleteSafetyKeyword(token, keyword.id);
+        setStatus({ type: 'success', message: `Removed illegal keyword "${keyword.label}".` });
+        await loadIllegalKeywords();
+      } catch (error) {
+        const message =
+          error instanceof ApiError ? error.message : 'Failed to remove the illegal safety keyword. Please try again.';
+        setIllegalKeywordError(message);
+        setStatus({ type: 'error', message });
+      } finally {
+        setActiveIllegalKeywordRemoval(null);
+      }
+    },
+    [token, loadIllegalKeywords],
+  );
 
   useEffect(() => {
-    if (activeTab !== 'safety' && adultKeywordError) {
-      setAdultKeywordError(null);
+    if (activeTab === 'safety') {
+      loadAdultKeywords().catch((error) =>
+        console.error('Failed to load adult keyword configuration', error),
+      );
+      loadIllegalKeywords().catch((error) =>
+        console.error('Failed to load illegal keyword configuration', error),
+      );
     }
-  }, [activeTab, adultKeywordError]);
+  }, [activeTab, loadAdultKeywords, loadIllegalKeywords]);
+
+  useEffect(() => {
+    if (activeTab !== 'safety') {
+      if (adultKeywordError) {
+        setAdultKeywordError(null);
+      }
+      if (illegalKeywordError) {
+        setIllegalKeywordError(null);
+      }
+    }
+  }, [activeTab, adultKeywordError, illegalKeywordError]);
 
   const handleApproveModel = async (model: ModelAsset) => {
     resetStatus();
@@ -3110,7 +3203,7 @@ export const AdminPanel = ({
           <section className="admin__section">
             <div className="admin__section-intro">
               <h3>Adult prompt keywords</h3>
-              <p>Configure prompt keywords that automatically flag images as adult when detected in metadata.</p>
+              <p>Configure prompt keywords that automatically mark uploads as adult-only when detected in prompts or metadata.</p>
             </div>
             {adultKeywordError ? (
               <p className="admin__status admin__status--error" role="alert">{adultKeywordError}</p>
@@ -3141,9 +3234,7 @@ export const AdminPanel = ({
               </button>
             </form>
             {isAdultKeywordsLoading ? (
-              <p className="admin__loading" role="status">
-                Loading keyword configuration…
-              </p>
+              <p className="admin__loading" role="status">Loading keyword configuration…</p>
             ) : adultKeywords.length === 0 ? (
               <p className="admin__empty">No adult keywords configured yet. Add one to start scanning prompts.</p>
             ) : (
@@ -3178,8 +3269,80 @@ export const AdminPanel = ({
               </table>
             )}
             <p className="admin__footnote">
-              Keywords are matched against prompt metadata for every upload. Any match marks the asset as adult-only for safe
-              browsing controls.
+              Matches hide the asset from guests and users with the NSFW filter enabled without blocking the upload.
+            </p>
+          </section>
+
+          <section className="admin__section">
+            <div className="admin__section-intro">
+              <h3>Illegal prompt keywords</h3>
+              <p>Keywords in this list immediately block uploads and queue them for moderator review when detected.</p>
+            </div>
+            {illegalKeywordError ? (
+              <p className="admin__status admin__status--error" role="alert">{illegalKeywordError}</p>
+            ) : null}
+            <form
+              className="adult-keyword-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleAddIllegalKeyword();
+              }}
+            >
+              <label className="adult-keyword-form__field">
+                <span>New keyword</span>
+                <input
+                  type="text"
+                  value={newIllegalKeyword}
+                  onChange={(event) => setNewIllegalKeyword(event.currentTarget.value)}
+                  placeholder="e.g. disallowed content phrase"
+                  disabled={isCreatingIllegalKeyword || isIllegalKeywordsLoading}
+                />
+              </label>
+              <button
+                type="submit"
+                className="button button--primary"
+                disabled={isCreatingIllegalKeyword || newIllegalKeyword.trim().length === 0}
+              >
+                {isCreatingIllegalKeyword ? 'Adding…' : 'Add keyword'}
+              </button>
+            </form>
+            {isIllegalKeywordsLoading ? (
+              <p className="admin__loading" role="status">Loading keyword configuration…</p>
+            ) : illegalKeywords.length === 0 ? (
+              <p className="admin__empty">No illegal keywords configured yet. Add one to block problematic prompts.</p>
+            ) : (
+              <table className="adult-keyword-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Keyword</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Updated</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {illegalKeywords.map((keyword) => (
+                    <tr key={keyword.id}>
+                      <th scope="row">{keyword.label}</th>
+                      <td>{new Date(keyword.createdAt).toLocaleDateString('en-US')}</td>
+                      <td>{new Date(keyword.updatedAt).toLocaleDateString('en-US')}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button button--ghost"
+                          onClick={() => handleDeleteIllegalKeyword(keyword)}
+                          disabled={activeIllegalKeywordRemoval === keyword.id}
+                        >
+                          {activeIllegalKeywordRemoval === keyword.id ? 'Removing…' : 'Remove'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="admin__footnote">
+              Assets matched by these keywords are hidden from all users until a moderator reviews and approves them.
             </p>
           </section>
         </div>

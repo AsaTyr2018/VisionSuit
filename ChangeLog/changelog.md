@@ -1487,3 +1487,8 @@
 - **Type**: Normal Change
 - **Reason**: Curators needed to upload more than 12 gallery images at a time, making the previous limit too restrictive for larger releases.
 - **Changes**: Raised the shared upload cap to 100 files while preserving the 2 GB ceiling, refreshed the upload wizard to surface the new capacity, aligned the backend and bulk importer scripts with the higher limit, and updated the README to highlight the expanded batch support.
+
+## 239 – [Update] Dual safety keyword queues for adult and illegal content
+- **Type**: Normal Change
+- **Reason**: Adult prompt filters needed to stay view-only while illegal keywords must block uploads pending moderation, requiring separate management and review flows.
+- **Changes**: Replaced the single adult keyword table with a categorized safety keyword schema and migration, refreshed backend moderation pipelines to use both adult and illegal keyword sets across uploads, rescans, and generator workflows, expanded the admin safety panel with dedicated management for both queues, and updated documentation to describe the split keyword enforcement.
