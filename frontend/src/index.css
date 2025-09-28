@@ -7748,13 +7748,18 @@ button {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
-.gallery-detail__thumb {
+.gallery-detail__thumb { 
   position: relative;
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(59, 130, 246, 0.35);
   background: rgba(15, 23, 42, 0.7);
   aspect-ratio: 1 / 1;
+}
+
+.gallery-detail__thumb--scan {
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  background: rgba(30, 41, 59, 0.82);
 }
 
 .gallery-detail__thumb-trigger {
@@ -7766,6 +7771,16 @@ button {
   background: transparent;
   padding: 0;
   cursor: pointer;
+}
+
+.gallery-detail__thumb-trigger--scan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(226, 232, 240, 0.85);
+  cursor: default;
 }
 
 .gallery-detail__thumb-trigger:hover {
@@ -7802,6 +7817,10 @@ button {
 
 .gallery-detail__thumb-footer .gallery-like-button {
   pointer-events: auto;
+}
+
+.gallery-detail__thumb--scan .gallery-detail__thumb-footer {
+  justify-content: center;
 }
 
 .gallery-detail__thumb-footer .gallery-detail__note {
@@ -8351,9 +8370,18 @@ button {
   min-height: 0;
 }
 
+.gallery-image-modal__media--scan {
+  border-style: dashed;
+  background: rgba(30, 41, 59, 0.85);
+}
+
 .gallery-image-modal__media[role='button'] {
   cursor: pointer;
   touch-action: pan-y;
+}
+
+.gallery-image-modal__media--scan[role='button'] {
+  cursor: default;
 }
 
 .gallery-image-modal__media[role='button']:focus-visible {
@@ -8375,6 +8403,29 @@ button {
   min-height: 0;
   font-size: 0.85rem;
   color: rgba(226, 232, 240, 0.9);
+}
+
+.gallery-image-modal__scan-placeholder {
+  width: 100%;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(226, 232, 240, 0.85);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gallery-image-modal__scan-note {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.45);
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 .gallery-image-modal__meta-scroll {

@@ -378,6 +378,29 @@ export interface ImageAssetMetadata {
   steps?: number | null;
 }
 
+export interface ImageTagScanState {
+  pending: boolean;
+  status: 'idle' | 'queued' | 'processing' | 'completed' | 'failed';
+  queuedAt?: string | null;
+  completedAt?: string | null;
+  error?: string | null;
+}
+
+export interface AutoTagScore {
+  label: string;
+  score: number;
+}
+
+export interface AutoTagSummary {
+  general: AutoTagScore[];
+  characters: AutoTagScore[];
+  ratings: Record<string, number>;
+  thresholds: {
+    general: number;
+    character: number;
+  };
+}
+
 export interface ImageAsset {
   id: string;
   title: string;
@@ -392,6 +415,8 @@ export interface ImageAsset {
   prompt?: string | null;
   negativePrompt?: string | null;
   metadata?: ImageAssetMetadata | null;
+  tagScan: ImageTagScanState;
+  autoTags?: AutoTagSummary | null;
   owner: {
     id: string;
     displayName: string;

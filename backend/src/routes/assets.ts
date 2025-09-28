@@ -195,6 +195,14 @@ const mapImageAsset = (asset: HydratedImageAsset, options: { viewerId?: string |
       cfgScale: asset.cfgScale,
       steps: asset.steps,
     },
+    tagScan: {
+      pending: asset.tagScanPending,
+      status: asset.tagScanStatus,
+      queuedAt: asset.tagScanQueuedAt ? asset.tagScanQueuedAt.toISOString() : null,
+      completedAt: asset.tagScanCompletedAt ? asset.tagScanCompletedAt.toISOString() : null,
+      error: asset.tagScanError ?? null,
+    },
+    autoTags: asset.autoTagSummary ?? null,
     owner: asset.owner,
     flaggedBy: asset.flaggedBy
       ? {

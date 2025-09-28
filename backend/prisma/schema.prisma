@@ -146,9 +146,15 @@ model ImageAsset {
   cfgScale          Float?
   steps             Int?
   moderationSummary Json?
+  autoTagSummary   Json?
   tags              ImageTag[]
   isPublic          Boolean                 @default(true)
   isAdult           Boolean                 @default(false)
+  tagScanPending   Boolean                 @default(false)
+  tagScanStatus    String                  @default("idle")
+  tagScanQueuedAt  DateTime?
+  tagScanCompletedAt DateTime?
+  tagScanError     String?
   galleries         GalleryEntry[]          @relation("GalleryImage")
   ownerId           String
   owner             User                    @relation("ImageOwner", fields: [ownerId], references: [id])
