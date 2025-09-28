@@ -10,12 +10,14 @@ import { RegisterDialog } from './components/RegisterDialog';
 import { AdminPanel } from './components/AdminPanel';
 import { OnSiteGenerator } from './components/OnSiteGenerator';
 import { UserProfile as UserProfileView } from './components/UserProfile';
+import { ServiceStatusPage } from './components/ServiceStatusPage';
 import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
 import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from './lib/moderation';
 import { buildApiUrl, defaultSiteTitle } from './config';
+import type { ServiceIndicator, ServiceState, ServiceStatusKey } from './types/serviceStatus';
 import type {
   Gallery,
   GeneratorSettings,
@@ -29,16 +31,8 @@ import type {
   PlatformConfig,
 } from './types/api';
 
-type ViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin' | 'profile';
+type ViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin' | 'profile' | 'status';
 type PrimaryViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin';
-type ServiceStatusKey = 'frontend' | 'backend' | 'minio' | 'gpu';
-type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
-
-interface ServiceIndicator {
-  label: string;
-  status: ServiceState;
-  message: string;
-}
 
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   home: {
@@ -66,6 +60,10 @@ const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   profile: {
     title: 'Curator profile',
     description: 'Contribution overview for a selected curator.',
+  },
+  status: {
+    title: 'Service status',
+    description: 'Live health overview for the VisionSuit frontend, API, storage, and GPU services.',
   },
 };
 
@@ -306,9 +304,20 @@ export const App = () => {
     setActiveView(view);
   }, []);
 
-  const handleServiceStatusClick = useCallback((event: ReactMouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
+  const openStatusView = useCallback(() => {
+    setActiveProfileId(null);
+    setActiveProfile(null);
+    setProfileError(null);
+    setActiveView('status');
   }, []);
+
+  const handleServiceStatusClick = useCallback(
+    (event: ReactMouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault();
+      openStatusView();
+    },
+    [openStatusView],
+  );
 
   const handleGeneratorNotify = useCallback((payload: { type: 'success' | 'error'; message: string }) => {
     setToast(payload);
@@ -1335,23 +1344,12 @@ export const App = () => {
                 <p>{pendingModeration} items waiting on review across models and renders.</p>
               </div>
             </dl>
-            <div className="home-trust-services">
+            <div className="home-trust-summary">
               <h3>Live services</h3>
               <p>
-                {onlineServices} of {services.length} services report healthy status.
+                {onlineServices} of {services.length} services report healthy status. Dive into the dedicated service status
+                page for uptime notes and recovery guidance.
               </p>
-              <ul className="home-trust-statuses">
-                {(['frontend', 'backend', 'minio', 'gpu'] as ServiceStatusKey[]).map((key) => {
-                  const entry = serviceStatus[key];
-                  return (
-                    <li key={key} className={`home-trust-status home-trust-status--${entry.status}`}>
-                      <span className="home-trust-status__badge">{serviceBadgeLabels[key]}</span>
-                      <span className="home-trust-status__label">{entry.label}</span>
-                      <span className={`status-led status-led--${entry.status}`} aria-hidden="true" />
-                    </li>
-                  );
-                })}
-              </ul>
             </div>
           </div>
         </section>
@@ -1511,6 +1509,20 @@ export const App = () => {
       );
     }
 
+    if (activeView === 'status') {
+      return (
+        <ServiceStatusPage
+          services={(['frontend', 'backend', 'minio', 'gpu'] as ServiceStatusKey[]).map((key) => ({
+            key,
+            badge: serviceBadgeLabels[key],
+            indicator: serviceStatus[key],
+          }))}
+          statusLabels={statusLabels}
+          onBack={() => openPrimaryView(returnView)}
+        />
+      );
+    }
+
     return renderHome();
   };
 
@@ -1612,31 +1624,6 @@ export const App = () => {
             )}
           </div>
 
-          <div className="sidebar__status" aria-label="Service Status">
-            <h2>Service Status</h2>
-            <ul className="sidebar__status-list">
-              {(['frontend', 'backend', 'minio', 'gpu'] as ServiceStatusKey[]).map((key) => {
-                const entry = serviceStatus[key];
-                return (
-                  <li key={key} className={`sidebar__status-item sidebar__status-item--${entry.status}`}>
-                    <span className={`sidebar__status-icon sidebar__status-icon--${key}`} aria-hidden="true">
-                      {serviceBadgeLabels[key]}
-                    </span>
-                    <div className="sidebar__status-content">
-                      <div className="sidebar__status-header">
-                        <span className="sidebar__status-title">{entry.label}</span>
-                        <span className="status-led-wrapper">
-                          <span className={`status-led status-led--${entry.status}`} aria-hidden="true" />
-                          <span className="visually-hidden">{statusLabels[entry.status]}</span>
-                        </span>
-                      </div>
-                      <p className="sidebar__status-message">{entry.message}</p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
         </aside>
 
         <div className="content">
@@ -1711,6 +1698,18 @@ export const App = () => {
                 </a>
               </nav>
               <div className="footer__meta-group">
+                <div className="footer__status-summary" aria-label="Live service indicator">
+                  {(['frontend', 'backend', 'minio', 'gpu'] as ServiceStatusKey[]).map((key) => {
+                    const entry = serviceStatus[key];
+                    return (
+                      <span key={key} className={`footer__status-pill footer__status-pill--${entry.status}`}>
+                        <span className="footer__status-initial">{serviceBadgeLabels[key]}</span>
+                        <span className={`status-led status-led--${entry.status}`} aria-hidden="true" />
+                        <span className="sr-only">{`${entry.label}: ${statusLabels[entry.status]}`}</span>
+                      </span>
+                    );
+                  })}
+                </div>
                 <span>
                   © {currentYear} MythosMachina · All rights reserved · Developed by{' '}
                   <a href="https://github.com/AsaTyr2018/" target="_blank" rel="noreferrer noopener">
@@ -1718,13 +1717,7 @@ export const App = () => {
                   </a>
                   .
                 </span>
-                <a
-                  href="#service-status"
-                  className="footer__status-link"
-                  onClick={handleServiceStatusClick}
-                  aria-disabled="true"
-                  title="Status page coming soon"
-                >
+                <a href="#service-status" className="footer__status-link" onClick={handleServiceStatusClick}>
                   Service Status
                 </a>
               </div>

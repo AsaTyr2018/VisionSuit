@@ -1,3 +1,8 @@
+## 053 – [Standard Change] Dedicated service status page rollout
+- **Type**: Standard Change
+- **Reason**: The dashboard and sidebar were crowded by the embedded service status widgets, making it harder to surface uptime details in a focused way.
+- **Change**: Introduced a standalone service status view accessible from the footer, added compact LED indicators to the footer link, removed the sidebar and home dashboard widgets, refreshed styles, and updated the README to reflect the new navigation.
+
 ## 052 – [Normal Change] Auto tagger graceful degradation
 - **Type**: Normal Change
 - **Reason**: Hosts running Node.js versions without matching `onnxruntime-node` binaries caused the CPU execution provider check to fail, blocking the entire backend from starting.
