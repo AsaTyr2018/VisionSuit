@@ -12236,8 +12236,9 @@ button {
 
 .moderation-detail__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 256px) minmax(0, 1fr);
   gap: 1.5rem;
+  align-items: start;
 }
 
 .moderation-detail__media {
@@ -12249,12 +12250,30 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+}
+
+.moderation-detail__media-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.moderation-detail__media-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .moderation-detail__media img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
+  display: block;
 }
 
 .moderation-detail__media-placeholder {
@@ -12351,6 +12370,7 @@ button {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  margin-top: auto;
 }
 
 .moderation-detail__action-buttons {
@@ -12377,4 +12397,15 @@ button {
 .moderation-detail__section {
   border-top: 1px solid var(--surface-border-subtle);
   padding-top: 1rem;
+}
+
+@media (max-width: 960px) {
+  .moderation-detail__body {
+    grid-template-columns: 1fr;
+  }
+
+  .moderation-detail__media {
+    max-width: 256px;
+    margin: 0 auto;
+  }
 }
