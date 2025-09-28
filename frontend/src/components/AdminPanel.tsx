@@ -2453,6 +2453,17 @@ export const AdminPanel = ({
                         />
                         <span>Enable maintenance mode (admins only)</span>
                       </label>
+                      <label className="admin__checkbox">
+                        <input
+                          type="checkbox"
+                          checked={settingsDraft.general.bypassNsfwFilter}
+                          onChange={(event) =>
+                            updateGeneralSetting('bypassNsfwFilter', event.currentTarget.checked)
+                          }
+                          disabled={isSavingSettings}
+                        />
+                        <span>Bypass NSFW upload filtering</span>
+                      </label>
                     </div>
                   </>
                 ) : (

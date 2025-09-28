@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 
 import { analyzeImageModeration, serializeModerationSummary, type ImageModerationSummary } from '../nsfw-open-cv';
+import { appConfig } from '../../config';
 
 import type { ImageModerationDecision } from './moderation';
 import { evaluateImageModeration } from './moderation';
@@ -39,6 +40,20 @@ export interface ImageModerationWorkflowResult {
 export const runImageModerationWorkflow = async (
   input: ImageModerationWorkflowInput,
 ): Promise<ImageModerationWorkflowResult> => {
+  if (appConfig.nsfw.bypassFilter) {
+    return {
+      analysis: null,
+      summary: null,
+      serializedSummary: null,
+      decision: {
+        isAdult: false,
+        requiresModeration: false,
+        illegalMinor: false,
+        illegalBeast: false,
+      },
+    };
+  }
+
   const { buffer, adultKeywords, context, analysisOptions, existingSummary } = input;
 
   const [analysis, summary] = await Promise.all([

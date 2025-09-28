@@ -30,6 +30,7 @@ const settingsSchema = z.object({
     siteTitle: trimmedString.min(1, 'Site title is required.').max(120, 'Site title is too long.'),
     allowRegistration: z.boolean(),
     maintenanceMode: z.boolean(),
+    bypassNsfwFilter: z.boolean(),
   }),
   connections: z.object({
     backendHost: trimmedString.min(1, 'Backend host is required.').max(255, 'Backend host is too long.'),

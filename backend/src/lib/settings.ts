@@ -9,6 +9,7 @@ export interface AdminSettingsGeneral {
   siteTitle: string;
   allowRegistration: boolean;
   maintenanceMode: boolean;
+  bypassNsfwFilter: boolean;
 }
 
 export interface AdminSettingsConnections {
@@ -289,6 +290,7 @@ const resolveAdminSettings = async (): Promise<AdminSettings> => {
       siteTitle,
       allowRegistration: parseBoolean(backendEnv.ALLOW_REGISTRATION, appConfig.platform.allowRegistration),
       maintenanceMode: parseBoolean(backendEnv.MAINTENANCE_MODE, appConfig.platform.maintenanceMode),
+      bypassNsfwFilter: parseBoolean(backendEnv.BYPASS_NSFW_FILTER, appConfig.nsfw.bypassFilter),
     },
     connections: {
       backendHost,
@@ -329,6 +331,7 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
     SITE_TITLE: settings.general.siteTitle,
     ALLOW_REGISTRATION: toBooleanString(settings.general.allowRegistration),
     MAINTENANCE_MODE: toBooleanString(settings.general.maintenanceMode),
+    BYPASS_NSFW_FILTER: toBooleanString(settings.general.bypassNsfwFilter),
     HOST: settings.connections.backendHost,
     MINIO_ENDPOINT: settings.connections.minioEndpoint,
     GENERATOR_NODE_URL: settings.connections.generatorNode,
@@ -347,6 +350,7 @@ export const applyAdminSettings = async (settings: AdminSettings): Promise<Apply
   appConfig.platform.siteTitle = settings.general.siteTitle;
   appConfig.platform.allowRegistration = settings.general.allowRegistration;
   appConfig.platform.maintenanceMode = settings.general.maintenanceMode;
+  appConfig.nsfw.bypassFilter = settings.general.bypassNsfwFilter;
 
   const incomingThresholds = {
     adult: sanitizeThresholdValue(settings.safety.metadataThresholds.adult),

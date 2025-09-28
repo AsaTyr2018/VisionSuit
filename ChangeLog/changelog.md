@@ -1407,3 +1407,8 @@
 - **Type**: Normal Change
 - **Reason**: The refreshed homepage still left the Take action and Platform health areas feeling oversized and repetitive for operators reviewing the dashboard.
 - **Changes**: Condensed the Take action shortcuts into single-line pills with an inline affordance, trimmed Platform health metrics down to label-and-value pairs, tightened the surrounding spacing, and refreshed the styling tokens to reinforce the compact presentation.
+
+## 229 – [Fix] Restore uploads during NSFW queue outage
+- **Type**: Emergency Change
+- **Reason**: Gallery uploads failed once the NSFW analysis queue was unavailable, crashing with a `runNsfwImageAnalysis is not defined` error and blocking operators from publishing content.
+- **Changes**: Ensured the upload pipeline imports the NSFW analyzer correctly, added defensive bypass handling throughout the moderation workflow to short-circuit analysis when disabled, and exposed a temporary admin setting so operators can keep uploads flowing while the queue is offline.

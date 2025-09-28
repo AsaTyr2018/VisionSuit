@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import type { AnalyzerTaskOptions } from './runtime';
 import { nsfwAnalysisScheduler } from './runtime';
 import type { ImageAnalysisResult } from './imageAnalysis';
+import { appConfig } from '../../config';
 
 const toNumber = (value: number) => (Number.isFinite(value) ? value : 0);
 
@@ -23,6 +24,10 @@ export const runNsfwImageAnalysis = async (
   payload: Buffer,
   options: AnalyzerTaskOptions = {},
 ): Promise<ImageAnalysisResult | null> => {
+  if (appConfig.nsfw.bypassFilter) {
+    return null;
+  }
+
   try {
     return await nsfwAnalysisScheduler.enqueue(payload, options);
   } catch (error) {
