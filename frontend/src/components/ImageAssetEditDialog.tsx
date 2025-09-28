@@ -10,7 +10,7 @@ interface ImageAssetEditDialogProps {
   image: ImageAsset;
   token: string | null | undefined;
   onSuccess?: (updated: ImageAsset) => void;
-  owners: { id: string; label: string }[];
+  owners?: { id: string; label: string }[];
 }
 
 const parseTags = (value: string) =>
@@ -79,7 +79,7 @@ export const ImageAssetEditDialog = ({
   image,
   token,
   onSuccess,
-  owners,
+  owners = [],
 }: ImageAssetEditDialogProps) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');

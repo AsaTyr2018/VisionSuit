@@ -1,3 +1,8 @@
+## 055 – [Normal Change] Image edit dialog owner fallback hardening
+- **Type**: Normal Change
+- **Reason**: Opening the image edit dialog from gallery contexts crashed because curator owner options were not supplied, leaving the ownership selector without data.
+- **Change**: Made curator owner data optional in `ImageAssetEditDialog` so it gracefully falls back to the current owner when no list is provided, preventing the crash during gallery edits.
+
 ## 054 – [Standard Change] Homepage focus realignment
 - **Type**: Standard Change
 - **Reason**: The landing page dedicated too much space to admin-oriented actions and dense trust summaries, leaving little room to spotlight fresh catalog activity.
