@@ -526,6 +526,7 @@ export const AdminPanel = ({
   });
   const [rankingUserId, setRankingUserId] = useState('');
   const generatorAccessModeFromSettings = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
+  const isGpuEnabledFromSettings = generatorSettings?.isGpuEnabled ?? true;
   const generatorBaseModelsFromSettings = useMemo(
     () => (generatorSettings?.baseModels ?? []).map((entry) => ({ ...entry })),
     [generatorSettings?.baseModels],
@@ -536,6 +537,7 @@ export const AdminPanel = ({
   const [baseModelDrafts, setBaseModelDrafts] = useState<GeneratorBaseModelConfig[]>(
     generatorBaseModelsFromSettings,
   );
+  const [isGpuModuleEnabled, setIsGpuModuleEnabled] = useState(isGpuEnabledFromSettings);
   const [isSavingGeneratorSettings, setIsSavingGeneratorSettings] = useState(false);
   const [generatorSettingsError, setGeneratorSettingsError] = useState<string | null>(null);
   const [generatorQueue, setGeneratorQueue] = useState<GeneratorQueueResponse | null>(null);
@@ -702,6 +704,10 @@ export const AdminPanel = ({
     setBaseModelDrafts(generatorBaseModelsFromSettings);
   }, [generatorBaseModelsFromSettings]);
 
+  useEffect(() => {
+    setIsGpuModuleEnabled(isGpuEnabledFromSettings);
+  }, [isGpuEnabledFromSettings]);
+
   const normalizedSettingsBaseModels = useMemo(
     () => generatorBaseModelsFromSettings.map(normalizeGeneratorBaseModel),
     [generatorBaseModelsFromSettings],
@@ -713,6 +719,7 @@ export const AdminPanel = ({
 
   const isGeneratorDirty =
     generatorAccessMode !== generatorAccessModeFromSettings ||
+    isGpuModuleEnabled !== isGpuEnabledFromSettings ||
     JSON.stringify(normalizedBaseModelDrafts) !== JSON.stringify(normalizedSettingsBaseModels);
 
   const metadataThresholdsChanged = Boolean(
@@ -1493,6 +1500,12 @@ export const AdminPanel = ({
     resetStatus();
   };
 
+  const handleGpuModuleToggle = (enabled: boolean) => {
+    setIsGpuModuleEnabled(enabled);
+    setGeneratorSettingsError(null);
+    resetStatus();
+  };
+
   const handleGeneratorAccessChange = (mode: GeneratorAccessMode) => {
     setGeneratorAccessMode(mode);
     setGeneratorSettingsError(null);
@@ -1502,6 +1515,7 @@ export const AdminPanel = ({
   const handleResetGeneratorAccess = () => {
     setGeneratorAccessMode(generatorAccessModeFromSettings);
     setBaseModelDrafts(generatorBaseModelsFromSettings);
+    setIsGpuModuleEnabled(isGpuEnabledFromSettings);
     setGeneratorSettingsError(null);
     resetStatus();
   };
@@ -1509,11 +1523,14 @@ export const AdminPanel = ({
   const handleGeneratorSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isGeneratorDirty) {
-      setStatus({ type: 'success', message: 'Generator visibility already matches the stored configuration.' });
+      setStatus({
+        type: 'success',
+        message: 'Generator module already matches the stored configuration.',
+      });
       return;
     }
 
-    if (normalizedBaseModelDrafts.length === 0) {
+    if (isGpuModuleEnabled && normalizedBaseModelDrafts.length === 0) {
       setGeneratorSettingsError('Add at least one base model entry before saving.');
       return;
     }
@@ -1530,9 +1547,11 @@ export const AdminPanel = ({
       const updated = await api.updateGeneratorSettings(token, {
         accessMode: generatorAccessMode,
         baseModels: normalizedBaseModelDrafts,
+        isGpuEnabled: isGpuModuleEnabled,
       });
       setBaseModelDrafts(updated.baseModels.map((entry) => ({ ...entry })));
-      setStatus({ type: 'success', message: 'On-Site Generator visibility updated successfully.' });
+      setIsGpuModuleEnabled(updated.isGpuEnabled);
+      setStatus({ type: 'success', message: 'Generator module settings updated successfully.' });
       onGeneratorSettingsUpdated?.(updated);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'Failed to update generator settings.';
@@ -4750,10 +4769,31 @@ export const AdminPanel = ({
                   </p>
                 </div>
                 <form className="generator-settings" onSubmit={handleGeneratorSettingsSubmit}>
-                <fieldset>
-                  <legend>Choose the visibility mode</legend>
-                  <label className="generator-settings__option">
-                    <input
+                  <div className="generator-settings__switch">
+                    <div className="generator-settings__switch-copy">
+                      <h4>GPU module</h4>
+                      <p>
+                        Disable the GPU agent to hide the On-Site Generator and surface the module as
+                        <em>Deactivated</em> on the live status page.
+                      </p>
+                    </div>
+                    <label
+                      className={`generator-settings__switch-toggle${
+                        isGpuModuleEnabled ? ' generator-settings__switch-toggle--active' : ''
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isGpuModuleEnabled}
+                        onChange={(event) => handleGpuModuleToggle(event.target.checked)}
+                      />
+                      <span>{isGpuModuleEnabled ? 'Enabled' : 'Disabled'}</span>
+                    </label>
+                  </div>
+                  <fieldset>
+                    <legend>Choose the visibility mode</legend>
+                    <label className="generator-settings__option">
+                      <input
                       type="radio"
                       name="generator-access"
                       value="ADMIN_ONLY"

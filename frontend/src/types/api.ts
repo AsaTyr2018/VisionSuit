@@ -121,6 +121,7 @@ export interface GeneratorSettings {
   id?: string | number;
   accessMode: GeneratorAccessMode;
   baseModels: GeneratorBaseModelConfig[];
+  isGpuEnabled: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -523,7 +524,7 @@ export interface ModerationQueue {
   images: ImageAsset[];
 }
 
-export type ServiceHealthStatus = 'online' | 'offline' | 'degraded';
+export type ServiceHealthStatus = 'online' | 'offline' | 'degraded' | 'deactivated';
 
 export interface ServiceStatusDetails {
   status: ServiceHealthStatus;

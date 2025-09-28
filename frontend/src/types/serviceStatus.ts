@@ -1,6 +1,6 @@
 export type ServiceStatusKey = 'frontend' | 'backend' | 'minio' | 'gpu';
 
-export type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown';
+export type ServiceState = 'online' | 'offline' | 'degraded' | 'unknown' | 'deactivated';
 
 export interface ServiceIndicator {
   label: string;

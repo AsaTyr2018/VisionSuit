@@ -1442,3 +1442,8 @@
 - **Type**: Normal Change
 - **Reason**: The Support and credits footer looked improvised and needed a more intentional presentation for operators and community members.
 - **Changes**: Reoriented the floating footer into a three-column layout with a descriptive support panel, refreshed icon button styling, grouped credits alongside service health badges, and tuned responsive behavior for compact screens.
+
+## 233 – [Update] GPU module toggle & service status clarity
+- **Type**: Normal Change
+- **Reason**: Administrators requested a way to disable the GPU generator agent so the On-Site Generator hides when unavailable and service status reflects the intentional downtime.
+- **Changes**: Added a persisted GPU enable flag to generator settings, exposed an admin toggle that hides the generator navigation when off, surfaced a "Deactivated" health state on the live status page, refreshed styling for the new listing, and documented the workflow in the README.

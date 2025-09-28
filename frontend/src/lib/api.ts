@@ -376,7 +376,11 @@ const getGeneratorSettings = (token?: string) =>
 
 const updateGeneratorSettings = (
   token: string,
-  payload: { accessMode: GeneratorAccessMode; baseModels: GeneratorBaseModelConfig[] },
+  payload: {
+    accessMode: GeneratorAccessMode;
+    baseModels: GeneratorBaseModelConfig[];
+    isGpuEnabled: boolean;
+  },
 ) =>
   request<{ settings: GeneratorSettings }>(
     '/api/generator/settings',

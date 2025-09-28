@@ -6,6 +6,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 
 ### Operations & Governance
 - Unified administrator workspace with environment alignment, `.env` synchronization for frontend and backend settings, and a dedicated service status page accessible from the footer with per-service health probes.
+- Toggleable GPU generation module that lets admins disable the On-Site Generator, hides its navigation entry, and clearly marks the GPU worker as deactivated on the live status page.
 - Role-aware access control backed by JWT authentication, admin onboarding flows, and guarded upload paths for curators.
 - Configurable registration policies and a maintenance mode that collapses the UI to an admin-only login gate, plus guided restart prompts for safe rollouts.
 

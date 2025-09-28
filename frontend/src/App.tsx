@@ -72,6 +72,7 @@ const statusLabels: Record<ServiceState, string> = {
   offline: 'Offline',
   degraded: 'Degraded',
   unknown: 'Unknown',
+  deactivated: 'Deactivated',
 };
 
 const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
@@ -229,9 +230,14 @@ export const App = () => {
   const [isUpdatingAdultPreference, setIsUpdatingAdultPreference] = useState(false);
   const lastScrollY = useRef(0);
   const [isFooterVisible, setIsFooterVisible] = useState(true);
+  const isGpuModuleEnabled = generatorSettings?.isGpuEnabled ?? true;
   const generatorAccessMode = generatorSettings?.accessMode ?? 'ADMIN_ONLY';
 
   const canAccessGenerator = useMemo(() => {
+    if (!isGpuModuleEnabled) {
+      return false;
+    }
+
     if (!authUser || !isAuthenticated) {
       return false;
     }
@@ -241,7 +247,7 @@ export const App = () => {
     }
 
     return generatorAccessMode === 'MEMBERS';
-  }, [authUser, generatorAccessMode, isAuthenticated]);
+  }, [authUser, generatorAccessMode, isAuthenticated, isGpuModuleEnabled]);
 
   const userRole = authUser?.role ?? null;
   const isAdminUser = userRole === 'ADMIN';
@@ -257,6 +263,13 @@ export const App = () => {
     }
     return views;
   }, [authUser?.role, canAccessGenerator]);
+
+  useEffect(() => {
+    if (!canAccessGenerator && activeView === 'generator') {
+      setActiveView('home');
+      setReturnView('home');
+    }
+  }, [activeView, canAccessGenerator]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -353,7 +366,7 @@ export const App = () => {
         },
         gpu: {
           label: 'GPU node',
-          status: status.services.gpu.status ?? 'offline',
+          status: status.services.gpu.status ?? 'unknown',
           message: status.services.gpu.message ?? 'GPU node status unknown.',
         },
       });
@@ -1611,6 +1624,10 @@ export const App = () => {
     }
 
     if (activeView === 'generator') {
+      if (!isGpuModuleEnabled) {
+        return <div className="content__alert">The GPU module is disabled by an administrator.</div>;
+      }
+
       if (!authUser || !token || !canAccessGenerator) {
         return <div className="content__alert">The On-Site Generator requires a signed-in account.</div>;
       }

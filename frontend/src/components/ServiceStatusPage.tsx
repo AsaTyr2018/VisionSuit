@@ -18,6 +18,8 @@ export const ServiceStatusPage: FC<ServiceStatusPageProps> = ({ services, status
     indicator.status === 'degraded' || indicator.status === 'unknown'
   ).length;
   const offlineServices = services.filter(({ indicator }) => indicator.status === 'offline').length;
+  const deactivatedServices = services.filter(({ indicator }) => indicator.status === 'deactivated').length;
+  const deactivatedList = services.filter(({ indicator }) => indicator.status === 'deactivated');
 
   return (
     <div className="status-page">
@@ -50,6 +52,13 @@ export const ServiceStatusPage: FC<ServiceStatusPageProps> = ({ services, status
           <span className="status-page__metric-value">{offlineServices}</span>
           <span className="status-page__metric-description">Services requiring immediate action.</span>
         </div>
+        <div className="status-page__metric">
+          <span className="status-page__metric-label">Deactivated</span>
+          <span className="status-page__metric-value">{deactivatedServices}</span>
+          <span className="status-page__metric-description">
+            Modules intentionally switched off in administration.
+          </span>
+        </div>
       </section>
 
       <section className="status-page__services" aria-label="Service details">
@@ -70,6 +79,21 @@ export const ServiceStatusPage: FC<ServiceStatusPageProps> = ({ services, status
           ))}
         </ul>
       </section>
+
+      {deactivatedList.length > 0 ? (
+        <section className="status-page__deactivated" aria-label="Deactivated services">
+          <h3>Deactivated services</h3>
+          <ul>
+            {deactivatedList.map(({ key, indicator }) => (
+              <li key={key}>
+                <strong>{indicator.label}</strong>
+                <span>{statusLabels[indicator.status]}</span>
+                <p>{indicator.message}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="status-page__help" aria-label="Support guidance">
         <h3>Need support?</h3>

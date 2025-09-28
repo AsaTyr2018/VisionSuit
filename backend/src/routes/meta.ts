@@ -5,9 +5,39 @@ import { storageBuckets, storageClient } from '../lib/storage';
 import { appConfig } from '../config';
 import { AgentRequestError, GeneratorAgentClient } from '../lib/generator/agentClient';
 
-type ServiceHealthStatus = 'online' | 'offline' | 'degraded';
+type ServiceHealthStatus = 'online' | 'offline' | 'degraded' | 'deactivated';
+
+const loadGpuModuleEnabled = async (): Promise<boolean> => {
+  try {
+    const settings = await prisma.generatorSettings.findFirst({
+      select: { isGpuEnabled: true },
+      orderBy: { id: 'asc' },
+    });
+
+    if (!settings) {
+      return true;
+    }
+
+    return settings.isGpuEnabled ?? true;
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.warn('GPU module flag lookup failed:', error);
+    }
+
+    return true;
+  }
+};
 
 const getGpuNodeStatus = async (): Promise<{ status: ServiceHealthStatus; message: string }> => {
+  const isGpuEnabled = await loadGpuModuleEnabled();
+  if (!isGpuEnabled) {
+    return {
+      status: 'deactivated',
+      message: 'GPU module disabled in Administration → Generator.',
+    };
+  }
+
   const target = appConfig.network.generatorNodeUrl.trim();
   if (!target) {
     return {
