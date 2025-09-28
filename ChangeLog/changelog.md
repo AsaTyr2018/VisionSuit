@@ -1462,3 +1462,8 @@
 - **Type**: Normal Change
 - **Reason**: Administrators requested a way to disable the GPU generator agent so the On-Site Generator hides when unavailable and service status reflects the intentional downtime.
 - **Changes**: Added a persisted GPU enable flag to generator settings, exposed an admin toggle that hides the generator navigation when off, surfaced a "Deactivated" health state on the live status page, refreshed styling for the new listing, and documented the workflow in the README.
+
+## 234 – [Fix] Windows bulk duplicate detection pagination
+- **Type**: Normal Change
+- **Reason**: The Windows bulk uploader only checked the first page of existing models, so duplicate LoRA names beyond the initial batch were silently re-uploaded.
+- **Changes**: Added a paginated catalog fetcher that requests 100 models per page, walks the server-provided cursor until exhaustion, and reuses the normalized title and slug keys so duplicate detection now covers the entire remote library.
