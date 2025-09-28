@@ -44,7 +44,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
    ```bash
    ./dev-start.sh
    ```
-   The backend will automatically download the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` messages so you can track progress in the console.
+   The starter now refreshes the Prisma client before launching services so new schema fields—such as the GPU toggle—apply without manual regeneration, then the backend automatically downloads the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` messages so you can track progress in the console.
    VisionSuit now degrades gracefully if the native ONNX Runtime CPU backend cannot be loaded (for example, when `onnxruntime-node` does not provide binaries for the installed Node.js version). Startup logs `[startup] Auto tagger disabled` and continues serving requests, while affected uploads remain flagged with a descriptive `tagScanError`. Reinstall the dependency with `npm --prefix backend rebuild onnxruntime-node`, align the Node.js version with the published binaries, or set `ORT_BACKEND_PATH` to the directory that contains the native bindings to restore automatic tagging.
 4. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services.
 

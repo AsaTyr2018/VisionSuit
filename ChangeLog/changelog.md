@@ -1,3 +1,8 @@
+## 058 – [Normal Change] Prisma client regeneration for GPU toggle
+- **Type**: Normal Change
+- **Reason**: Toggling the GPU module failed because the Prisma client still referenced the older schema and rejected the new `isGpuEnabled` field.
+- **Change**: Ensured the dev starter runs `prisma generate` before launching services and refreshed the README to document the automatic regeneration so GPU settings updates succeed immediately.
+
 ## 057 – [Normal Change] Dedicated service health probes
 - **Type**: Normal Change
 - **Reason**: The service status dashboard incorrectly reported MinIO as offline whenever the backend API was unavailable because all probes flowed through the API, hiding the real storage state.

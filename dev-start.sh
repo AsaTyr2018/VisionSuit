@@ -18,6 +18,12 @@ echo "Starting Prisma Studio on ${PRISMA_STUDIO_HOST}:${PRISMA_STUDIO_PORT} (pro
 ) &
 PRISMA_STUDIO_PID=$!
 
+echo "Ensuring Prisma client artifacts are up to date" >&2
+(
+  cd "$ROOT_DIR/backend"
+  npx --yes prisma generate >/dev/null 2>&1 || npx --yes prisma generate
+)
+
 echo "Starting VisionSuit backend on ${HOST_ADDRESS}:${BACKEND_PORT}" >&2
 (
   cd "$ROOT_DIR/backend"
