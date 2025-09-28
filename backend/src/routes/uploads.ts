@@ -27,6 +27,8 @@ import {
 import { runImageModerationWorkflow } from '../lib/nsfw/workflow';
 import { toJsonImageAnalysis } from '../lib/nsfw/service';
 import { evaluateModelModeration } from '../lib/nsfw/moderation';
+import type { AutoTaggingJobInput } from '../lib/tagging/service';
+import { enqueueAutoTaggingJob } from '../lib/tagging/service';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -402,6 +404,8 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       const assignedTags = [...tagRecords];
       const adultKeywords = await getAdultKeywordLabels(tx);
 
+      const jobsToQueue: AutoTaggingJobInput[] = [];
+
       if (payload.assetType === 'lora') {
         const loraTag = await ensureLoraTypeTag(tx);
         if (!tagIds.includes(loraTag.id)) {
@@ -629,6 +633,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
           gallerySlug: gallery.slug,
           assetSlug: modelAsset.slug,
           entryIds: [entry.id],
+          autoTagJobs: jobsToQueue,
         };
       }
 
@@ -667,6 +672,66 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         const metadataList: Prisma.JsonValue[] = [];
         if (resolvedMetadata) {
           metadataList.push(resolvedMetadata);
+        }
+
+        const requiresAutoTagging = !metadata?.prompt || metadata.prompt.trim().length === 0;
+
+        if (requiresAutoTagging) {
+          const placeholderData: Prisma.ImageAssetCreateInput = {
+            title: 'Stellvertretend',
+            description: 'Scan in Progress',
+            width: metadata?.width ?? null,
+            height: metadata?.height ?? null,
+            fileSize: source.size,
+            storagePath: toS3Uri(stored.bucket, stored.objectName),
+            prompt: metadata?.prompt ?? null,
+            negativePrompt: metadata?.negativePrompt ?? null,
+            seed: metadata?.seed ?? null,
+            model: metadata?.model ?? null,
+            sampler: metadata?.sampler ?? null,
+            cfgScale: metadata?.cfgScale ?? null,
+            steps: metadata?.steps ?? null,
+            isPublic: false,
+            isAdult: false,
+            owner: { connect: { id: actor.id } },
+            tags: {
+              create: tagIds.map((tagId) => ({ tagId })),
+            },
+            tagScanPending: true,
+            tagScanStatus: 'queued',
+            tagScanQueuedAt: new Date(),
+          };
+
+          const placeholderAsset = await tx.imageAsset.create({
+            data: placeholderData,
+          });
+
+          const placeholderEntry = await tx.galleryEntry.create({
+            data: {
+              galleryId: gallery.id,
+              imageId: placeholderAsset.id,
+              position: positionCursor,
+              note: payload.description ?? null,
+            },
+          });
+
+          imageEntries.push({ imageId: placeholderAsset.id, entryId: placeholderEntry.id });
+          positionCursor += 1;
+
+          jobsToQueue.push({
+            imageId: placeholderAsset.id,
+            buffer: source.buffer,
+            finalTitle: title,
+            finalDescription: payload.description ?? null,
+            visibility: payload.visibility,
+            adultKeywords,
+            assignedTags: assignedTags.map((tag) => ({ label: tag.label, isAdult: tag.isAdult })),
+            metadata: metadata ?? null,
+            metadataPayload: resolvedMetadata,
+            metadataList,
+          });
+
+          continue;
         }
 
         const workflow = await runImageModerationWorkflow({
@@ -756,7 +821,13 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
         imageIds: imageEntries.map((entry) => entry.imageId),
         gallerySlug: gallery.slug,
         entryIds: imageEntries.map((entry) => entry.entryId),
+        autoTagJobs: jobsToQueue,
       };
+    });
+
+    const autoTagJobs = result.autoTagJobs ?? [];
+    autoTagJobs.forEach((job) => {
+      enqueueAutoTaggingJob(job);
     });
 
     res.status(201).json({

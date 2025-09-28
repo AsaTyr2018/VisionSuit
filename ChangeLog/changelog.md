@@ -1332,3 +1332,8 @@
 - **Type**: Normal Change
 - **Reason**: Launching Prisma Studio with the outdated `--host` flag caused the CLI to abort before starting, leaving the developer database console unavailable during local server boot.
 - **Changes**: Updated `dev-start.sh` to pass the supported `--hostname` parameter so Prisma Studio binds to the requested interface without error when running the development stack helper.
+
+## 223 – [Feature] Promptless upload tagging queue
+- **Type**: Normal Change
+- **Reason**: Prompt-free renders skipped NSFW screening because the moderation workflow relies on textual cues that were missing from those uploads.
+- **Changes**: Added a CPU-backed SmilingWolf/wd-swinv2 tagger that downloads on startup when absent, queued promptless gallery uploads behind a “Scan in Progress” placeholder until tagging and moderation complete, persisted scan status and auto-tag summaries in Prisma, exposed the state via the API and front end, and refreshed the README to document the workflow.

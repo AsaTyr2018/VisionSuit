@@ -3,9 +3,18 @@ import { createApp } from './app';
 import { createPrismaStudioUpgradeHandler } from './devtools/prismaStudioProxy';
 import { prisma } from './lib/prisma';
 import { initializeStorage } from './lib/storage';
+import { initializeAutoTagger } from './lib/tagging/service';
 import './types/express';
 
 const start = async () => {
+  try {
+    await initializeAutoTagger();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[startup] Failed to initialize auto tagger:', error);
+    process.exit(1);
+  }
+
   try {
     await initializeStorage();
   } catch (error) {

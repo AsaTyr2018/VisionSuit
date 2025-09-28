@@ -210,7 +210,9 @@ const buildSeededIndex = (seed: string, length: number) => {
 
 const selectPreviewImage = (gallery: Gallery, viewer?: User | null) => {
   const imageEntries = getImageEntries(gallery).filter(
-    (entry) => !isAuditHiddenFromViewer(entry.image.moderationStatus, entry.image.owner.id, viewer),
+    (entry) =>
+      !entry.image.tagScan.pending &&
+      !isAuditHiddenFromViewer(entry.image.moderationStatus, entry.image.owner.id, viewer),
   );
   if (imageEntries.length === 0) {
     return null;
@@ -381,7 +383,7 @@ export const GalleryExplorer = ({
     [activeImageIdValue],
   );
 
-  const activeImagePreviewUrl = activeImage
+  const activeImagePreviewUrl = activeImage && !activeImage.image.tagScan.pending
     ?
         resolveCachedStorageUrl(
           activeImage.image.storagePath,
@@ -517,6 +519,7 @@ export const GalleryExplorer = ({
 
   const activeImageOverlayClasses = [
     'gallery-image-modal__media',
+    activeImage?.image.tagScan.pending ? 'gallery-image-modal__media--scan' : '',
     activeImage?.image.moderationStatus === 'FLAGGED' ? 'moderation-overlay' : '',
     activeImage?.image.moderationStatus === 'FLAGGED' && currentUser?.role !== 'ADMIN'
       ? 'moderation-overlay--blurred'
@@ -1254,6 +1257,22 @@ export const GalleryExplorer = ({
               <div className="gallery-detail__grid" role="list">
                 {activeGalleryImages.length > 0 ? (
                   activeGalleryImages.map((entry) => {
+                    if (entry.image.tagScan.pending) {
+                      return (
+                        <div
+                          key={entry.entryId}
+                          role="listitem"
+                          className="gallery-detail__thumb gallery-detail__thumb--scan"
+                        >
+                          <div className="gallery-detail__thumb-trigger gallery-detail__thumb-trigger--scan" aria-disabled="true">
+                            <span>Scan in Progress</span>
+                          </div>
+                          <div className="gallery-detail__thumb-footer">
+                            <span className="gallery-detail__note">Stellvertretend</span>
+                          </div>
+                        </div>
+                      );
+                    }
                     const isAuditPlaceholder = isAuditPlaceholderForViewer(
                       entry.image.moderationStatus,
                       entry.image.owner.id,
@@ -1370,7 +1389,11 @@ export const GalleryExplorer = ({
                   onClick={() => {
                     void handleToggleLike(activeImage.image);
                   }}
-                  disabled={!canLikeImages || likeMutationId === activeImage.image.id}
+                  disabled={
+                    !canLikeImages ||
+                    likeMutationId === activeImage.image.id ||
+                    activeImage.image.tagScan.pending
+                  }
                   aria-pressed={activeImage.image.viewerHasLiked}
                   aria-label={
                     activeImage.image.viewerHasLiked
@@ -1415,14 +1438,14 @@ export const GalleryExplorer = ({
                     </button>
                   </>
                 ) : null}
-                {authToken && activeImage.image.moderationStatus !== 'FLAGGED' ? (
+                {authToken && activeImage.image.moderationStatus !== 'FLAGGED' && !activeImage.image.tagScan.pending ? (
                   <button
                     type="button"
                     className="gallery-image-modal__flag"
                     onClick={() => {
                       void handleFlagImage(activeImage.image);
                     }}
-                    disabled={isFlaggingImage}
+                    disabled={isFlaggingImage || activeImage.image.tagScan.pending}
                   >
                     {isFlaggingImage ? 'Sending…' : 'Flag image'}
                   </button>
@@ -1485,26 +1508,40 @@ export const GalleryExplorer = ({
                   }
                 } : undefined}
               >
-                <img src={activeImagePreviewUrl ?? activeImage.image.storagePath} alt={activeImage.image.title} />
-                {activeImage.image.moderationStatus === 'FLAGGED' ? (
-                  <span className="moderation-overlay__label">In audit</span>
-                ) : null}
+                {activeImage.image.tagScan.pending ? (
+                  <div className="gallery-image-modal__scan-placeholder" role="status">
+                    <span>Scan in progress</span>
+                  </div>
+                ) : (
+                  <>
+                    <img src={activeImagePreviewUrl ?? activeImage.image.storagePath} alt={activeImage.image.title} />
+                    {activeImage.image.moderationStatus === 'FLAGGED' ? (
+                      <span className="moderation-overlay__label">In audit</span>
+                    ) : null}
+                  </>
+                )}
               </div>
-              <div className="gallery-image-modal__meta">
-                <div className="gallery-image-modal__meta-scroll">
-                  {activeImage.note ? <p className="gallery-image-modal__note">Note: {activeImage.note}</p> : null}
-                  <dl>
-                    {buildMetadataRows(activeImage.image).map((row) => (
-                      <div key={row.label}>
-                        <dt>{row.label}</dt>
-                        <dd>{row.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <div
-                    className={`gallery-image-modal__comments${
-                      isImageCommentPanelOpen ? ' gallery-image-modal__comments--open' : ''
-                    }`}
+                <div className="gallery-image-modal__meta">
+                  <div className="gallery-image-modal__meta-scroll">
+                    {activeImage.note ? <p className="gallery-image-modal__note">Note: {activeImage.note}</p> : null}
+                    {activeImage.image.tagScan.pending ? (
+                      <p className="gallery-image-modal__scan-note" role="status">
+                        Scan in progress. Tags will be available once the automated review completes.
+                      </p>
+                    ) : (
+                      <dl>
+                        {buildMetadataRows(activeImage.image).map((row) => (
+                          <div key={row.label}>
+                            <dt>{row.label}</dt>
+                            <dd>{row.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    <div
+                      className={`gallery-image-modal__comments${
+                        isImageCommentPanelOpen ? ' gallery-image-modal__comments--open' : ''
+                      }`}
                     aria-hidden={!isImageCommentPanelOpen}
                   >
                     <CommentSection
