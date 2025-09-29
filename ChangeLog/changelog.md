@@ -1,3 +1,8 @@
+## 070 – [Emergency Change] Curator dialog hook order fix
+- **Type**: Emergency Change
+- **Reason**: Opening the curator application dialog as a member crashed the UI because React detected a changing hook order between closed and open renders, breaking the modal experience for normal users.
+- **Change**: Ensured the dialog's memoized status summary runs every render by moving it ahead of the early return so hook ordering stays stable even when the modal is closed.
+
 ## 069 – [Normal Change] Maintenance control center and service split
 - **Type**: Normal Change
 - **Reason**: Operating both stacks through a single launcher obscured which component failed, made service restarts clumsy, and lacked a central script for lifecycle tasks such as updates or rollbacks.
