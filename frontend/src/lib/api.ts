@@ -28,6 +28,9 @@ import type {
   SafetyKeyword,
   MetadataThresholdPreview,
   NsfwRescanSummary,
+  NotificationsSummary,
+  NotificationItem,
+  NotificationCategory,
 } from '../types/api';
 
 import { buildApiUrl } from '../config';
@@ -198,6 +201,30 @@ const getPlatformConfig = () =>
 
 const getAdminSettings = (token: string) =>
   request<AdminSettingsResponse>('/api/settings', {}, token).then((response) => response.settings);
+
+const getNotifications = (token: string) =>
+  request<NotificationsSummary>('/api/notifications', {}, token);
+
+const markNotificationRead = (token: string, id: string) =>
+  request<{
+    notification: NotificationItem;
+    unreadCounts: Record<NotificationCategory, number>;
+    totalUnread: number;
+  }>(`/api/notifications/${id}/read`, { method: 'POST' }, token);
+
+const markNotificationsReadBulk = (token: string, category?: NotificationCategory) =>
+  request<{
+    unreadCounts: Record<NotificationCategory, number>;
+    totalUnread: number;
+    updatedIds: string[];
+  }>(
+    `/api/notifications/read-all`,
+    {
+      method: 'POST',
+      body: JSON.stringify(category ? { category } : {}),
+    },
+    token,
+  );
 
 const getMetadataThresholdPreview = (token: string) =>
   request<{ preview: MetadataThresholdPreview }>(
@@ -516,6 +543,10 @@ const unlikeImageAsset = (token: string, imageId: string) =>
 
 export const api = {
   getPlatformConfig,
+  getNotifications,
+  markNotificationRead: (token: string, id: string) => markNotificationRead(token, id),
+  markNotificationsRead: (token: string, category?: NotificationCategory) =>
+    markNotificationsReadBulk(token, category),
   getStats: () => request<MetaStats>('/api/meta/stats'),
   getModelAssets: (
     options: ({ token?: string } & PaginationOptions) | string | undefined,

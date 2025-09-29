@@ -12,6 +12,7 @@ import { generatorRouter } from './generator';
 import { tagsRouter } from './tags';
 import { safetyRouter } from './safety';
 import { settingsRouter } from './settings';
+import { notificationsRouter } from './notifications';
 
 export const router = Router();
 
@@ -27,3 +28,4 @@ router.use('/generator', generatorRouter);
 router.use('/tags', tagsRouter);
 router.use('/safety', safetyRouter);
 router.use('/settings', settingsRouter);
+router.use('/notifications', notificationsRouter);

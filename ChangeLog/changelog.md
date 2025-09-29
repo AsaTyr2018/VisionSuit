@@ -1,3 +1,8 @@
+## 063 – [Standard Change] Real-time notification center rollout
+- **Type**: Standard Change
+- **Reason**: Members and curators had no unified space to receive announcements, moderation decisions, likes, and comments while they were signed in, so important updates could be missed during active sessions.
+- **Change**: Added a notification model and API routes with server-sent events, wired moderation, like, and comment flows to generate user-scoped notices, introduced an announcement broadcaster for admins, and shipped a frontend notification center with live badges and queue management alongside refreshed styles and documentation.
+
 ## 062 – [Normal Change] Prisma Studio transport rewrite for `/db`
 - **Type**: Normal Change
 - **Reason**: Prisma Studio 6 switched its internal HTTP transport to `/api`, so proxied sessions under `/db` kept calling the VisionSuit API namespace and received 404 responses instead of reaching the Prisma service.

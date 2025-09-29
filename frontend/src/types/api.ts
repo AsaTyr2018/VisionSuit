@@ -21,6 +21,32 @@ export interface User {
   showAdultContent: boolean;
 }
 
+export type NotificationType = 'ANNOUNCEMENT' | 'MODERATION' | 'LIKE' | 'COMMENT';
+export type NotificationCategory = 'announcements' | 'moderation' | 'likes' | 'comments';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  data: Record<string, unknown> | null;
+  readAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationsSummary {
+  notifications: Record<NotificationCategory, NotificationItem[]>;
+  unreadCounts: Record<NotificationCategory, number>;
+  totalUnread: number;
+}
+
+export interface NotificationStreamEvent {
+  notification: NotificationItem;
+  unreadCounts: Record<NotificationCategory, number>;
+  totalUnread: number;
+}
+
 export interface CommentAuthor {
   id: string;
   displayName: string;
