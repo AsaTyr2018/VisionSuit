@@ -1,3 +1,8 @@
+## 078 – [Normal Change] PostgreSQL preparation guide automation refresh
+- **Type**: Normal Change
+- **Reason**: The new automation bundle generates SSH credentials and configuration defaults, so the preparation playbook needed to show operators how to leverage the scripted flow instead of manually passing flags.
+- **Change**: Rewrote `docs/postgres-migration-preparation.md` to start with the automation-only run that mints the SSH key pair and config, documented copying the bundle to the remote host with `remote_prepare_helper.sh`, and clarified how the helper now persists the summary and configuration for future runs.
+
 ## 077 – [Normal Change] PostgreSQL migration automation bundle
 - **Type**: Normal Change
 - **Reason**: Operators asked for a nearly hands-free upgrade path so the remote helper, SSH credentials, and migration workflow stay in sync without manual parameter juggling.
