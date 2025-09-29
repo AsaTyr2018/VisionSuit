@@ -1,3 +1,8 @@
+## 073 – [Normal Change] PostgreSQL migration planning workspace
+- **Type**: Normal Change
+- **Reason**: Preparing for the upcoming move to PostgreSQL requires dedicated planning material and automation stubs so operators can evaluate the cutover approach before implementation begins.
+- **Change**: Added a PostgreSQL migration project plan and placeholder scripts covering target preparation, fresh installs, and production upgrades, and documented the workspace in the README.
+
 ## 072 – [Emergency Change] Frontend same-origin API fallback
 - **Type**: Emergency Change
 - **Reason**: After the deployment the frontend defaulted to `http://localhost:4000`, so browsers accessing a remote instance attempted to call the API on the viewer's machine, triggering connection refusals and breaking service status checks.
