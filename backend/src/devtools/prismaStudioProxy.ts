@@ -69,6 +69,89 @@ const applyProxyResponse = async (res: Parameters<RequestHandler>[1], proxyRes: 
   await pipeline(proxyRes, res);
 };
 
+const PRISMA_STUDIO_TRANSPORT_SCRIPTS = new Set(['/http/databrowser.js', '/http/splash.js']);
+
+const collectStream = async (stream: IncomingMessage): Promise<Buffer> =>
+  await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+
+    stream.on('data', (chunk) => {
+      if (typeof chunk === 'string') {
+        chunks.push(Buffer.from(chunk, 'utf8'));
+        return;
+      }
+
+      chunks.push(chunk);
+    });
+
+    stream.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+
+    stream.on('error', (error) => {
+      reject(error);
+    });
+  });
+
+const createTransportOverride = (initializer: string) =>
+  `(()=>{const base=new URL('.',import.meta.url).pathname.replace(/\\/$/,'');const resolved=base&&base!=='/http'&&base.endsWith('/http')?window.location.origin+base:window.location.origin+'/api';${initializer}({transport:{type:'http',url:resolved}})})();`;
+
+const rewriteTransportScript = (targetPath: string, body: string): string | null => {
+  if (!PRISMA_STUDIO_TRANSPORT_SCRIPTS.has(targetPath)) {
+    return null;
+  }
+
+  const initializers = ['window.databrowser', 'window.splash'];
+  let rewritten = body;
+  let didRewrite = false;
+
+  for (const initializer of initializers) {
+    const signature = `${initializer}({transport:{type:"http",url:\`${'$'}{window.location.origin}/api\`}});`;
+    if (!rewritten.includes(signature)) {
+      continue;
+    }
+
+    rewritten = rewritten.replace(signature, createTransportOverride(initializer));
+    didRewrite = true;
+  }
+
+  return didRewrite ? rewritten : null;
+};
+
+const applyPatchedProxyResponse = async (
+  res: Parameters<RequestHandler>[1],
+  proxyRes: IncomingMessage,
+  targetPath: string,
+) => {
+  const originalBody = await collectStream(proxyRes);
+  const originalText = originalBody.toString('utf8');
+  const rewrittenText = rewriteTransportScript(targetPath, originalText);
+
+  const payloadBuffer = rewrittenText ? Buffer.from(rewrittenText, 'utf8') : originalBody;
+
+  res.status(proxyRes.statusCode ?? 500);
+
+  for (const [key, value] of Object.entries(proxyRes.headers)) {
+    if (typeof value === 'undefined') {
+      continue;
+    }
+
+    const headerName = key.toLowerCase();
+
+    if (rewrittenText && (headerName === 'content-length' || headerName === 'content-encoding')) {
+      continue;
+    }
+
+    res.setHeader(key, value);
+  }
+
+  if (rewrittenText) {
+    res.setHeader('Content-Length', String(payloadBuffer.byteLength));
+  }
+
+  res.send(payloadBuffer);
+};
+
 const extractCookieValue = (cookieHeader: string | undefined, name: string): string | null => {
   if (!cookieHeader) {
     return null;
@@ -195,7 +278,12 @@ export const createPrismaStudioProxy = (): RequestHandler => {
     };
 
     const proxyReq = http.request(requestOptions, (proxyRes) => {
-      void applyProxyResponse(res, proxyRes).catch(() => {
+      const usePatchedResponse = PRISMA_STUDIO_TRANSPORT_SCRIPTS.has(targetPath);
+      const responder = usePatchedResponse
+        ? applyPatchedProxyResponse(res, proxyRes, targetPath)
+        : applyProxyResponse(res, proxyRes);
+
+      void responder.catch(() => {
         if (!res.headersSent) {
           res.status(502).json({ message: 'Prisma Studio response failed.' });
         }
