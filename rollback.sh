@@ -10,16 +10,16 @@ ASSUME_YES=false
 
 usage() {
   cat <<'USAGE'
-Nutzung: rollback.sh [Optionen]
+Usage: rollback.sh [options]
 
-Setzt die lokale VisionSuit-Installation zurück, indem Abhängigkeiten,
-Build-Artefakte, Konfigurationsdateien und Cache-Dateien für Backend und
-Frontend entfernt bzw. zurückgesetzt werden.
+Resets the local VisionSuit installation by removing dependencies,
+build artifacts, configuration files, and caches for the backend and
+frontend.
 
-Optionen:
-  -y, --yes       Durchführung ohne Rückfrage.
-  -n, --dry-run   Zeigt nur an, welche Schritte ausgeführt würden.
-  -h, --help      Zeigt diese Hilfe an.
+Options:
+  -y, --yes       Proceed without confirmation.
+  -n, --dry-run   Show which steps would run without making changes.
+  -h, --help      Show this help message.
 USAGE
 }
 
@@ -32,10 +32,10 @@ remove_path() {
   local path="$1"
   if [ -e "$path" ] || [ -L "$path" ]; then
     if $DRY_RUN; then
-      log INFO "Würde ${path#${ROOT_DIR}/} entfernen"
+      log INFO "Would remove ${path#${ROOT_DIR}/}"
     else
       rm -rf "$path"
-      log INFO "Entfernt ${path#${ROOT_DIR}/}"
+      log INFO "Removed ${path#${ROOT_DIR}/}"
     fi
   fi
 }
@@ -44,15 +44,15 @@ reset_from_example() {
   local example="$1"
   local target="$2"
   if [ ! -f "$example" ]; then
-    log WARN "Keine Beispielkonfiguration unter ${example#${ROOT_DIR}/} gefunden"
+    log WARN "No example configuration found at ${example#${ROOT_DIR}/}"
     return
   fi
   if $DRY_RUN; then
-    log INFO "Würde ${target#${ROOT_DIR}/} aus ${example#${ROOT_DIR}/} wiederherstellen"
+    log INFO "Would restore ${target#${ROOT_DIR}/} from ${example#${ROOT_DIR}/}"
   else
     mkdir -p "$(dirname "$target")"
     cp "$example" "$target"
-    log INFO "${target#${ROOT_DIR}/} aus Beispiel zurückgesetzt"
+    log INFO "${target#${ROOT_DIR}/} reset from example"
   fi
 }
 
@@ -60,29 +60,29 @@ restore_tracked_file() {
   local relative="$1"
   if git -C "$ROOT_DIR" ls-files --error-unmatch "$relative" >/dev/null 2>&1; then
     if $DRY_RUN; then
-      log INFO "Würde Git-Version von ${relative} wiederherstellen"
+      log INFO "Would restore Git version of ${relative}"
     else
       git -C "$ROOT_DIR" checkout -- "$relative"
-      log INFO "Git-Version von ${relative} wiederhergestellt"
+      log INFO "Restored Git version of ${relative}"
     fi
   fi
 }
 
 run_npm_cache_clean() {
   if ! command -v npm >/dev/null 2>&1; then
-    log INFO 'npm nicht gefunden, überspringe Cache-Leerung'
+    log INFO 'npm not found, skipping cache cleanup'
     return
   fi
 
   if $DRY_RUN; then
-    log INFO "Würde 'npm cache clean --force' ausführen"
+    log INFO "Would run 'npm cache clean --force'"
     return
   fi
 
   if npm cache clean --force >/dev/null 2>&1; then
-    log INFO 'npm Cache geleert'
+    log INFO 'npm cache cleared'
   else
-    log WARN 'npm Cache konnte nicht geleert werden'
+    log WARN 'Unable to clear npm cache'
   fi
 }
 
@@ -100,12 +100,12 @@ purge_npm_global_prefix() {
   fi
 
   if [[ "$prefix" == "$HOME" ]]; then
-    log WARN 'npm global Prefix entspricht dem Home-Verzeichnis und wird aus Sicherheitsgründen nicht entfernt'
+    log WARN 'npm global prefix matches the home directory and will not be removed for safety'
     return
   fi
 
   if [[ "$prefix" == /* ]] && [[ "$prefix" != "$HOME"* ]]; then
-    log INFO "npm global Prefix ($prefix) liegt außerhalb des Home-Verzeichnisses und wird nicht entfernt"
+    log INFO "npm global prefix ($prefix) is outside the home directory and will not be removed"
     return
   fi
 
@@ -185,12 +185,12 @@ confirm() {
   if $ASSUME_YES; then
     return
   fi
-  echo "Diese Aktion löscht installierte Abhängigkeiten und lokale Konfigurationen." >&2
-  read -r -p "Fortfahren? [y/N] " answer
+  echo "This action removes installed dependencies and local configuration." >&2
+  read -r -p "Continue? [y/N] " answer
   case "$answer" in
     [yY]|[yY][eE][sS]) ;;
     *)
-      log INFO "Rollback abgebrochen"
+      log INFO "Rollback cancelled"
       exit 0
       ;;
   esac
@@ -219,7 +219,7 @@ done
 
 confirm
 
-log INFO 'Rollback für Backend starten'
+log INFO 'Starting backend rollback'
 remove_path "$BACKEND_DIR/node_modules"
 remove_path "$BACKEND_DIR/dist"
 remove_path "$BACKEND_DIR/.ts-node"
@@ -234,7 +234,7 @@ remove_path "$BACKEND_DIR/.env.local"
 reset_from_example "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
 restore_tracked_file "backend/package-lock.json"
 
-log INFO 'Rollback für Frontend starten'
+log INFO 'Starting frontend rollback'
 remove_path "$FRONTEND_DIR/node_modules"
 remove_path "$FRONTEND_DIR/dist"
 remove_path "$FRONTEND_DIR/.turbo"
@@ -247,19 +247,19 @@ reset_from_example "$FRONTEND_DIR/.env.example" "$FRONTEND_DIR/.env"
 remove_path "$FRONTEND_DIR/.env.local"
 restore_tracked_file "frontend/package-lock.json"
 
-log INFO 'Allgemeine temporäre Dateien bereinigen'
+log INFO 'Cleaning general temporary files'
 remove_path "$ROOT_DIR/.turbo"
 remove_path "$ROOT_DIR/.cache"
 remove_path "$ROOT_DIR/.eslintcache"
 
-log INFO 'Node.js-Toolchains und globale Artefakte bereinigen'
+log INFO 'Cleaning Node.js toolchains and global artifacts'
 run_npm_cache_clean
 purge_npm_global_prefix
 purge_node_caches
 purge_node_versions
 
 if ! $DRY_RUN; then
-  log INFO 'Rollback abgeschlossen. Installationen wurden entfernt.'
+  log INFO 'Rollback complete. Installations were removed.'
 else
-  log INFO 'Dry-Run abgeschlossen. Es wurden keine Änderungen vorgenommen.'
+  log INFO 'Dry run complete. No changes were made.'
 fi

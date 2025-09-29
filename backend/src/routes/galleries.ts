@@ -126,19 +126,19 @@ galleriesRouter.put('/:id', requireAuth, requireCurator, async (req, res, next) 
   try {
     const { id } = req.params;
     if (!id) {
-      res.status(400).json({ message: 'Galerie-ID fehlt.' });
+      res.status(400).json({ message: 'Gallery ID is missing.' });
       return;
     }
 
     const parsed = updateGallerySchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const viewer = req.user;
     if (!viewer) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
@@ -148,18 +148,18 @@ galleriesRouter.put('/:id', requireAuth, requireCurator, async (req, res, next) 
     });
 
     if (!gallery) {
-      res.status(404).json({ message: 'Galerie wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The gallery could not be found.' });
       return;
     }
 
     const isAdmin = viewer.role === 'ADMIN';
     if (gallery.ownerId !== viewer.id && !isAdmin) {
-      res.status(403).json({ message: 'Keine Berechtigung zur Bearbeitung dieser Galerie.' });
+      res.status(403).json({ message: 'Not authorized to edit this gallery.' });
       return;
     }
 
     if (parsed.data.ownerId && parsed.data.ownerId !== gallery.ownerId && !isAdmin) {
-      res.status(403).json({ message: 'Nur Administrator:innen können den Besitz ändern.' });
+      res.status(403).json({ message: 'Only administrators can change the ownership.' });
       return;
     }
 
@@ -237,7 +237,7 @@ galleriesRouter.put('/:id', requireAuth, requireCurator, async (req, res, next) 
     });
 
     if (!updated) {
-      res.status(500).json({ message: 'Galerie konnte nicht aktualisiert werden.' });
+      res.status(500).json({ message: 'The gallery could not be updated.' });
       return;
     }
 
@@ -268,7 +268,7 @@ galleriesRouter.post('/:id/cover', requireAuth, requireCurator, (req, res, next)
       const { id } = req.params;
 
       if (!id) {
-        res.status(400).json({ message: 'Galerie-ID fehlt.' });
+        res.status(400).json({ message: 'Gallery ID is missing.' });
         return;
       }
 
@@ -290,7 +290,7 @@ galleriesRouter.post('/:id/cover', requireAuth, requireCurator, (req, res, next)
       }
 
       if (!isStaticImageFormat(format)) {
-        res.status(400).json({ message: 'Animierte GIFs werden für Cover nicht unterstützt.' });
+        res.status(400).json({ message: 'Animated GIFs are not supported for covers.' });
         return;
       }
 
@@ -301,12 +301,12 @@ galleriesRouter.post('/:id/cover', requireAuth, requireCurator, (req, res, next)
       });
 
       if (!gallery) {
-        res.status(404).json({ message: 'Galerie wurde nicht gefunden.' });
+        res.status(404).json({ message: 'The gallery could not be found.' });
         return;
       }
 
       if (!viewer) {
-        res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+        res.status(401).json({ message: 'Authentication required.' });
         return;
       }
 
@@ -377,12 +377,12 @@ galleriesRouter.delete('/:id', requireAuth, requireCurator, async (req, res, nex
   try {
     const { id } = req.params;
     if (!id) {
-      res.status(400).json({ message: 'Galerie-ID fehlt.' });
+      res.status(400).json({ message: 'Gallery ID is missing.' });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
@@ -392,12 +392,12 @@ galleriesRouter.delete('/:id', requireAuth, requireCurator, async (req, res, nex
     });
 
     if (!gallery) {
-      res.status(404).json({ message: 'Galerie wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The gallery could not be found.' });
       return;
     }
 
     if (gallery.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Löschen dieser Galerie.' });
+      res.status(403).json({ message: 'Not authorized to delete this gallery.' });
       return;
     }
 

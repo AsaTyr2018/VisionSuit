@@ -1228,7 +1228,7 @@ class GPUAgent:
             if key not in context and value is not None:
                 context[key] = value
 
-        # 2) Extra-Payload anwenden
+        # 2) Apply extra payload
         for key, value in extra_payload.items():
             if key in {"loras", "primary_lora_name", "primary_lora_strength_model", "primary_lora_strength_clip"}:
                 continue
@@ -1236,7 +1236,7 @@ class GPUAgent:
                 continue
             context[key] = value
 
-        # 3) Alias-Brücke für sampler_name / scheduler_name
+        # 3) Alias bridge for sampler_name / scheduler_name
         alias_map = {
             "sampler_name": "sampler",
             "scheduler_name": "scheduler",

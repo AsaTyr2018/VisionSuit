@@ -208,7 +208,7 @@ const createUploadSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['targetGallery'],
-        message: 'Bitte gib eine bestehende Galerie an oder wähle "Neue Galerie".',
+        message: 'Please select an existing gallery or choose "New gallery".',
       });
     }
 
@@ -216,7 +216,7 @@ const createUploadSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['trigger'],
-        message: 'Bitte gib einen Trigger oder Aktivator für das Modell an.',
+        message: 'Please provide a trigger or activator for the model.',
       });
     }
   });
@@ -228,7 +228,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
     const files = ((req as unknown as { files?: MulterFile[] }).files ?? []) as MulterFile[];
 
     if (files.length === 0) {
-      res.status(400).json({ message: 'Mindestens eine Datei wird für den Upload benötigt.' });
+      res.status(400).json({ message: 'At least one file is required for upload.' });
       return;
     }
 
@@ -241,7 +241,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
     if (!parseResult.success) {
       const errors = parseResult.error.flatten();
       res.status(400).json({
-        message: 'Übermittelte Upload-Daten sind nicht gültig.',
+        message: 'Submitted upload data is invalid.',
         errors,
       });
       return;
@@ -252,7 +252,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
 
     if (totalSize > MAX_TOTAL_SIZE_BYTES) {
       res.status(400).json({
-        message: 'Gesamtgröße der Dateien überschreitet das Limit von 2 GB.',
+        message: 'Total file size exceeds the 2 GB limit.',
       });
       return;
     }
@@ -261,7 +261,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       const invalidFiles = files.filter((file) => !file.mimetype.startsWith('image/'));
       if (invalidFiles.length > 0) {
         res.status(400).json({
-          message: 'Galerie-Uploads akzeptieren ausschließlich Bilddateien (PNG, JPG, WebP).',
+          message: 'Gallery uploads only accept image files (PNG, JPG, WebP).',
         });
         return;
       }
@@ -281,7 +281,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       });
 
       if (!gallery) {
-        res.status(404).json({ message: 'Die angegebene Galerie konnte nicht gefunden werden.' });
+        res.status(404).json({ message: 'The specified gallery could not be found.' });
         return;
       }
     }
@@ -345,7 +345,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
     );
 
     if (storedEntries.length === 0) {
-      res.status(400).json({ message: 'Es wurden keine verarbeitbaren Dateien gefunden.' });
+      res.status(400).json({ message: 'No processable files were found.' });
       return;
     }
 
@@ -360,7 +360,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
     const primaryStored = modelEntry?.storage;
 
     if (!primaryFile || !primaryStored) {
-      res.status(400).json({ message: 'Die Modelldatei konnte nicht verarbeitet werden.' });
+      res.status(400).json({ message: 'The model file could not be processed.' });
       return;
     }
 
@@ -375,7 +375,7 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
 
     const actor = req.user;
     if (!actor) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
@@ -846,19 +846,19 @@ uploadsRouter.post('/', requireAuth, requireCurator, upload.array('files'), asyn
       entryIds: result.entryIds,
       message:
         result.imageIds && result.imageIds.length > 1
-          ? `Upload abgeschlossen. ${result.imageIds.length} Bilder wurden hinzugefügt und stehen im Explorer zur Verfügung.`
-          : 'Upload abgeschlossen. Dateien wurden nach MinIO übertragen und stehen im Explorer zur Verfügung.',
+          ? `Upload complete. ${result.imageIds.length} images were added and are available in the explorer.`
+          : 'Upload complete. Files were transferred to MinIO and are available in the explorer.',
     });
   } catch (error) {
     if (error instanceof Error) {
       const statusCode = (error as { statusCode?: number }).statusCode;
       if (statusCode === 403) {
-        res.status(403).json({ message: 'Zugriff auf die ausgewählte Galerie ist nicht gestattet.' });
+        res.status(403).json({ message: 'Access to the selected gallery is not allowed.' });
         return;
       }
 
       if (error.message === 'Gallery not found') {
-        res.status(404).json({ message: 'Die ausgewählte Galerie konnte nicht gefunden werden.' });
+        res.status(404).json({ message: 'The selected gallery could not be found.' });
         return;
       }
     }

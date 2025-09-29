@@ -132,7 +132,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
       if (isPrismaStudioRequest(req)) {
         res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
       }
-      res.status(401).json({ message: 'Benutzerkonto nicht verfügbar oder deaktiviert.' });
+      res.status(401).json({ message: 'User account unavailable or deactivated.' });
       return;
     }
 
@@ -147,7 +147,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     if (isPrismaStudioRequest(req)) {
       res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
     }
-    res.status(401).json({ message: 'Token ungültig oder abgelaufen.' });
+    res.status(401).json({ message: 'Token invalid or expired.' });
   }
 };
 
@@ -192,7 +192,7 @@ export const attachOptionalUser = async (req: Request, res: Response, next: Next
 
 export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user || req.user.role !== 'ADMIN') {
-    res.status(403).json({ message: 'Administratorrechte erforderlich.' });
+    res.status(403).json({ message: 'Administrator privileges required.' });
     return;
   }
 
@@ -201,7 +201,7 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
 
 export const requireCurator = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
-    res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+    res.status(401).json({ message: 'Authentication required.' });
     return;
   }
 
@@ -215,7 +215,7 @@ export const requireCurator = (req: Request, res: Response, next: NextFunction) 
 
 export const requireSelfOrAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
-    res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+    res.status(401).json({ message: 'Authentication required.' });
     return;
   }
 
@@ -226,5 +226,5 @@ export const requireSelfOrAdmin = (req: Request, res: Response, next: NextFuncti
     return;
   }
 
-  res.status(403).json({ message: 'Keine Berechtigung für diese Aktion.' });
+  res.status(403).json({ message: 'Not authorized for this action.' });
 };

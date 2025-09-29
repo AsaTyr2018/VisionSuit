@@ -403,16 +403,16 @@ const commentInputSchema = z.object({
   content: z
     .string()
     .trim()
-    .min(1, 'Kommentartext ist erforderlich.')
-    .max(1000, 'Kommentare sind auf 1.000 Zeichen begrenzt.'),
+    .min(1, 'Comment text is required.')
+    .max(1000, 'Comments are limited to 1,000 characters.'),
 });
 
 const flagRequestSchema = z.object({
   reason: z
     .string()
     .trim()
-    .min(1, 'Bitte gib eine kurze Begründung an.')
-    .max(500, 'Begründungen sind auf 500 Zeichen begrenzt.')
+    .min(1, 'Please provide a brief reason.')
+    .max(500, 'Reasons are limited to 500 characters.')
     .optional(),
 });
 
@@ -420,8 +420,8 @@ const moderationDecisionSchema = z.object({
   reason: z
     .string()
     .trim()
-    .min(1, 'Bitte gib eine kurze Begründung an.')
-    .max(500, 'Begründungen sind auf 500 Zeichen begrenzt.')
+    .min(1, 'Please provide a brief reason.')
+    .max(500, 'Reasons are limited to 500 characters.')
     .optional(),
 });
 
@@ -866,12 +866,12 @@ const versionUpdateSchema = z
     version: z
       .string()
       .trim()
-      .min(1, { message: 'Die Versionsbezeichnung darf nicht leer sein.' })
-      .max(80, { message: 'Die Versionsbezeichnung ist zu lang.' })
+      .min(1, { message: 'The version label must not be empty.' })
+      .max(80, { message: 'The version label is too long.' })
       .optional(),
   })
   .refine((value) => value.version !== undefined, {
-    message: 'Es wurden keine Änderungen übermittelt.',
+    message: 'No changes were submitted.',
     path: ['version'],
   });
 
@@ -1117,13 +1117,13 @@ assetsRouter.post('/models/:id/flag', requireAuth, async (req, res, next) => {
   try {
     const parsed = flagRequestSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const { id: modelId } = req.params;
     if (!modelId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
@@ -1133,12 +1133,12 @@ assetsRouter.post('/models/:id/flag', requireAuth, async (req, res, next) => {
     });
 
     if (!model) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
     if (model.moderationStatus === ModerationStatus.REMOVED) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
@@ -1187,7 +1187,7 @@ assetsRouter.post('/models/:id/flag', requireAuth, async (req, res, next) => {
     });
 
     if (!updated) {
-      res.status(500).json({ message: 'Das Modell konnte nicht aktualisiert werden.' });
+      res.status(500).json({ message: 'The model could not be updated.' });
       return;
     }
 
@@ -1221,13 +1221,13 @@ assetsRouter.post('/images/:id/flag', requireAuth, async (req, res, next) => {
   try {
     const parsed = flagRequestSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -1237,12 +1237,12 @@ assetsRouter.post('/images/:id/flag', requireAuth, async (req, res, next) => {
     });
 
     if (!image) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
     if (image.moderationStatus === ModerationStatus.REMOVED) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
@@ -1288,7 +1288,7 @@ assetsRouter.post('/images/:id/flag', requireAuth, async (req, res, next) => {
     });
 
     if (!updated) {
-      res.status(500).json({ message: 'Bild konnte nicht aktualisiert werden.' });
+      res.status(500).json({ message: 'The image could not be updated.' });
       return;
     }
 
@@ -1373,7 +1373,7 @@ assetsRouter.post('/models/:id/moderation/approve', requireAuth, requireAdmin, a
   try {
     const { id: modelId } = req.params;
     if (!modelId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
@@ -1383,17 +1383,17 @@ assetsRouter.post('/models/:id/moderation/approve', requireAuth, requireAdmin, a
     });
 
     if (!model) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
     if (model.moderationStatus === ModerationStatus.REMOVED) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
     if (model.moderationStatus !== ModerationStatus.FLAGGED) {
-      res.status(400).json({ message: 'Das Modell befindet sich nicht im Prüfstatus.' });
+      res.status(400).json({ message: 'The model is not in review status.' });
       return;
     }
 
@@ -1418,7 +1418,7 @@ assetsRouter.post('/models/:id/moderation/approve', requireAuth, requireAdmin, a
       action: ModerationActionType.APPROVED,
       actorId: req.user!.id,
       targetUserId: refreshed.owner.id,
-      message: 'Freigabe nach Überprüfung.',
+      message: 'Approved after review.',
     });
 
     res.json({ model: mapModelAsset(refreshed) });
@@ -1431,19 +1431,19 @@ assetsRouter.post('/models/:id/moderation/remove', requireAuth, requireAdmin, as
   try {
     const { id: modelId } = req.params;
     if (!modelId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
     const parsed = moderationDecisionSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const trimmedReason = parsed.data.reason?.trim() ?? '';
     if (trimmedReason.length === 0) {
-      res.status(400).json({ message: 'Bitte gib eine Begründung für die Ablehnung an.' });
+      res.status(400).json({ message: 'Please provide a reason for the rejection.' });
       return;
     }
 
@@ -1460,12 +1460,12 @@ assetsRouter.post('/models/:id/moderation/remove', requireAuth, requireAdmin, as
     });
 
     if (!model) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
     if (model.moderationStatus === ModerationStatus.REMOVED) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
@@ -1490,7 +1490,7 @@ assetsRouter.post('/images/:id/moderation/approve', requireAuth, requireAdmin, a
   try {
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -1500,17 +1500,17 @@ assetsRouter.post('/images/:id/moderation/approve', requireAuth, requireAdmin, a
     });
 
     if (!image) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
     if (image.moderationStatus === ModerationStatus.REMOVED) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
     if (image.moderationStatus !== ModerationStatus.FLAGGED) {
-      res.status(400).json({ message: 'Das Bild befindet sich nicht im Prüfstatus.' });
+      res.status(400).json({ message: 'The image is not in review status.' });
       return;
     }
 
@@ -1530,7 +1530,7 @@ assetsRouter.post('/images/:id/moderation/approve', requireAuth, requireAdmin, a
       action: ModerationActionType.APPROVED,
       actorId: req.user!.id,
       targetUserId: refreshed.owner.id,
-      message: 'Freigabe nach Überprüfung.',
+      message: 'Approved after review.',
     });
 
     res.json({ image: mapImageAsset(refreshed, { viewerId: req.user?.id ?? null }) });
@@ -1543,19 +1543,19 @@ assetsRouter.post('/images/:id/moderation/remove', requireAuth, requireAdmin, as
   try {
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
     const parsed = moderationDecisionSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const trimmedReason = parsed.data.reason?.trim() ?? '';
     if (trimmedReason.length === 0) {
-      res.status(400).json({ message: 'Bitte gib eine Begründung für die Ablehnung an.' });
+      res.status(400).json({ message: 'Please provide a reason for the rejection.' });
       return;
     }
 
@@ -1565,12 +1565,12 @@ assetsRouter.post('/images/:id/moderation/remove', requireAuth, requireAdmin, as
     });
 
     if (!image) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
     if (image.moderationStatus === ModerationStatus.REMOVED) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
@@ -1598,15 +1598,15 @@ const ensureModelCommentAccess = async (modelId: string, viewerId: string | null
   });
 
   if (!model) {
-    return { status: 404, message: 'Modell konnte nicht gefunden werden.' } as const;
+    return { status: 404, message: 'The model could not be found.' } as const;
   }
 
   if (model.moderationStatus === ModerationStatus.REMOVED && role !== 'ADMIN') {
-    return { status: 404, message: 'Modell konnte nicht gefunden werden.' } as const;
+    return { status: 404, message: 'The model could not be found.' } as const;
   }
 
   if (!model.isPublic && role !== 'ADMIN' && model.ownerId !== viewerId) {
-    return { status: 403, message: 'Keine Berechtigung für dieses Modell.' } as const;
+    return { status: 403, message: 'Not authorized for this model.' } as const;
   }
 
   return { status: 200, model } as const;
@@ -1619,15 +1619,15 @@ const ensureImageVisibility = async (imageId: string, viewerId: string | null, r
   });
 
   if (!image) {
-    return { status: 404, message: 'Bild konnte nicht gefunden werden.' } as const;
+    return { status: 404, message: 'The image could not be found.' } as const;
   }
 
   if (image.moderationStatus === ModerationStatus.REMOVED && role !== 'ADMIN') {
-    return { status: 404, message: 'Bild konnte nicht gefunden werden.' } as const;
+    return { status: 404, message: 'The image could not be found.' } as const;
   }
 
   if (!image.isPublic && role !== 'ADMIN' && image.ownerId !== viewerId) {
-    return { status: 403, message: 'Keine Berechtigung für dieses Bild.' } as const;
+    return { status: 403, message: 'Not authorized for this image.' } as const;
   }
 
   return { status: 200, image } as const;
@@ -1647,7 +1647,7 @@ const respondWithUpdatedImage = async (
   });
 
   if (!updated) {
-    res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+    res.status(404).json({ message: 'The image could not be found.' });
     return;
   }
 
@@ -1657,13 +1657,13 @@ const respondWithUpdatedImage = async (
 assetsRouter.post('/images/:id/likes', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -1706,13 +1706,13 @@ assetsRouter.post('/images/:id/likes', requireAuth, async (req, res, next) => {
 assetsRouter.delete('/images/:id/likes', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -1734,7 +1734,7 @@ assetsRouter.get('/models/:modelId/comments', async (req, res, next) => {
   try {
     const { modelId } = req.params;
     if (!modelId) {
-      res.status(400).json({ message: 'Modell-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
@@ -1761,13 +1761,13 @@ assetsRouter.get('/models/:modelId/comments', async (req, res, next) => {
 assetsRouter.post('/models/:modelId/comments', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { modelId } = req.params;
     if (!modelId) {
-      res.status(400).json({ message: 'Modell-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
@@ -1781,7 +1781,7 @@ assetsRouter.post('/models/:modelId/comments', requireAuth, async (req, res, nex
 
     const parsed = commentInputSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Kommentar konnte nicht gespeichert werden.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'The comment could not be saved.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -1821,13 +1821,13 @@ assetsRouter.post('/models/:modelId/comments', requireAuth, async (req, res, nex
 assetsRouter.post('/models/:modelId/comments/:commentId/like', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { modelId, commentId } = req.params;
     if (!modelId || !commentId) {
-      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(400).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -1839,7 +1839,7 @@ assetsRouter.post('/models/:modelId/comments/:commentId/like', requireAuth, asyn
 
     const existing = await fetchModelComment(modelId, commentId, req.user.id);
     if (!existing) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -1851,7 +1851,7 @@ assetsRouter.post('/models/:modelId/comments/:commentId/like', requireAuth, asyn
 
     const refreshed = await fetchModelComment(modelId, commentId, req.user.id);
     if (!refreshed) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -1864,13 +1864,13 @@ assetsRouter.post('/models/:modelId/comments/:commentId/like', requireAuth, asyn
 assetsRouter.delete('/models/:modelId/comments/:commentId/like', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { modelId, commentId } = req.params;
     if (!modelId || !commentId) {
-      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(400).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -1882,7 +1882,7 @@ assetsRouter.delete('/models/:modelId/comments/:commentId/like', requireAuth, as
 
     const existing = await fetchModelComment(modelId, commentId, req.user.id);
     if (!existing) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -1890,7 +1890,7 @@ assetsRouter.delete('/models/:modelId/comments/:commentId/like', requireAuth, as
 
     const refreshed = await fetchModelComment(modelId, commentId, req.user.id);
     if (!refreshed) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -1904,7 +1904,7 @@ assetsRouter.get('/images/:imageId/comments', async (req, res, next) => {
   try {
     const { imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -1931,13 +1931,13 @@ assetsRouter.get('/images/:imageId/comments', async (req, res, next) => {
 assetsRouter.post('/images/:imageId/comments', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -1951,7 +1951,7 @@ assetsRouter.post('/images/:imageId/comments', requireAuth, async (req, res, nex
 
     const parsed = commentInputSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Kommentar konnte nicht gespeichert werden.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'The comment could not be saved.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -1991,13 +1991,13 @@ assetsRouter.post('/images/:imageId/comments', requireAuth, async (req, res, nex
 assetsRouter.post('/images/:imageId/comments/:commentId/like', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { imageId, commentId } = req.params;
     if (!imageId || !commentId) {
-      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(400).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -2009,7 +2009,7 @@ assetsRouter.post('/images/:imageId/comments/:commentId/like', requireAuth, asyn
 
     const existing = await fetchImageComment(imageId, commentId, req.user.id);
     if (!existing) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -2021,7 +2021,7 @@ assetsRouter.post('/images/:imageId/comments/:commentId/like', requireAuth, asyn
 
     const refreshed = await fetchImageComment(imageId, commentId, req.user.id);
     if (!refreshed) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -2034,13 +2034,13 @@ assetsRouter.post('/images/:imageId/comments/:commentId/like', requireAuth, asyn
 assetsRouter.delete('/images/:imageId/comments/:commentId/like', requireAuth, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { imageId, commentId } = req.params;
     if (!imageId || !commentId) {
-      res.status(400).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(400).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -2052,7 +2052,7 @@ assetsRouter.delete('/images/:imageId/comments/:commentId/like', requireAuth, as
 
     const existing = await fetchImageComment(imageId, commentId, req.user.id);
     if (!existing) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -2060,7 +2060,7 @@ assetsRouter.delete('/images/:imageId/comments/:commentId/like', requireAuth, as
 
     const refreshed = await fetchImageComment(imageId, commentId, req.user.id);
     if (!refreshed) {
-      res.status(404).json({ message: 'Kommentar konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The comment could not be found.' });
       return;
     }
 
@@ -2073,13 +2073,13 @@ assetsRouter.delete('/images/:imageId/comments/:commentId/like', requireAuth, as
 assetsRouter.post('/models/bulk-delete', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const parsed = bulkDeleteSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Ungültige Anfrage.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Invalid request.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -2096,7 +2096,7 @@ assetsRouter.post('/models/bulk-delete', requireAuth, requireCurator, async (req
     });
 
     if (assets.length === 0) {
-      res.status(404).json({ message: 'Keine passenden Modelle gefunden.' });
+      res.status(404).json({ message: 'No matching models found.' });
       return;
     }
 
@@ -2104,7 +2104,7 @@ assetsRouter.post('/models/bulk-delete', requireAuth, requireCurator, async (req
     const unauthorized = assets.filter((asset) => !isAdmin && asset.ownerId !== req.user?.id);
 
     if (unauthorized.length > 0) {
-      res.status(403).json({ message: 'Mindestens ein Modell gehört nicht zum eigenen Bestand.' });
+      res.status(403).json({ message: 'At least one model is not owned by you.' });
       return;
     }
 
@@ -2179,19 +2179,19 @@ assetsRouter.post(
   async (req, res, next) => {
     try {
       if (!req.user) {
-        res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+        res.status(401).json({ message: 'Authentication required.' });
         return;
       }
 
       const { id: assetId } = req.params;
       if (!assetId) {
-        res.status(400).json({ message: 'Model-ID fehlt.' });
+        res.status(400).json({ message: 'Model ID is missing.' });
         return;
       }
 
       const parseResult = versionUploadSchema.safeParse(req.body);
       if (!parseResult.success) {
-        res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parseResult.error.flatten() });
+        res.status(400).json({ message: 'Submitted data is invalid.', errors: parseResult.error.flatten() });
         return;
       }
 
@@ -2200,22 +2200,22 @@ assetsRouter.post(
       const previewFile = files?.preview?.[0];
 
       if (!modelFile) {
-        res.status(400).json({ message: 'Es wurde keine Safetensors-Datei übermittelt.' });
+        res.status(400).json({ message: 'No safetensors file was provided.' });
         return;
       }
 
       if (!modelFile.originalname.toLowerCase().endsWith('.safetensors')) {
-        res.status(400).json({ message: 'Nur Safetensors-Dateien werden als Modellversion akzeptiert.' });
+        res.status(400).json({ message: 'Only safetensors files are accepted for model versions.' });
         return;
       }
 
       if (!previewFile) {
-        res.status(400).json({ message: 'Bitte lade ein Vorschaubild für die neue Version hoch.' });
+        res.status(400).json({ message: 'Please upload a preview image for the new version.' });
         return;
       }
 
       if (!previewFile.mimetype.startsWith('image/')) {
-        res.status(400).json({ message: 'Das Vorschaubild muss ein gültiges Bildformat besitzen.' });
+        res.status(400).json({ message: 'The preview image must use a supported image format.' });
         return;
       }
 
@@ -2251,12 +2251,12 @@ assetsRouter.post(
       });
 
       if (!asset) {
-        res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+        res.status(404).json({ message: 'The requested model could not be found.' });
         return;
       }
 
       if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-        res.status(403).json({ message: 'Keine Berechtigung zum Aktualisieren dieses Modells.' });
+        res.status(403).json({ message: 'Not authorized to update this model.' });
         return;
       }
 
@@ -2264,7 +2264,7 @@ assetsRouter.post(
       const normalizedRequested = requestedVersion.toLowerCase();
       const existingVersions = [asset.version, ...asset.versions.map((entry) => entry.version.toLowerCase())];
       if (existingVersions.some((entry) => entry === normalizedRequested)) {
-        res.status(409).json({ message: `Version "${requestedVersion}" ist bereits vorhanden.` });
+        res.status(409).json({ message: `Version "${requestedVersion}" already exists.` });
         return;
       }
 
@@ -2540,19 +2540,19 @@ assetsRouter.post(
 assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { modelId, versionId } = req.params;
     if (!modelId || !versionId) {
-      res.status(400).json({ message: 'Model-ID oder Versions-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID or version ID is missing.' });
       return;
     }
 
     const parsed = versionUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -2566,12 +2566,12 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCur
     });
 
     if (!asset) {
-      res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The requested model could not be found.' });
       return;
     }
 
     if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieser Version.' });
+      res.status(403).json({ message: 'Not authorized to edit this version.' });
       return;
     }
 
@@ -2582,13 +2582,13 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCur
 
     const targetVersion = candidateVersions.find((entry) => entry.id === versionId);
     if (!targetVersion) {
-      res.status(404).json({ message: 'Die gewünschte Version gehört nicht zu diesem Modell.' });
+      res.status(404).json({ message: 'The requested version does not belong to this model.' });
       return;
     }
 
     const requestedVersion = parsed.data.version?.trim();
     if (!requestedVersion) {
-      res.status(400).json({ message: 'Die Versionsbezeichnung darf nicht leer sein.' });
+      res.status(400).json({ message: 'The version label must not be empty.' });
       return;
     }
 
@@ -2598,7 +2598,7 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCur
     );
 
     if (hasDuplicate) {
-      res.status(409).json({ message: `Version "${requestedVersion}" ist bereits vorhanden.` });
+      res.status(409).json({ message: `Version "${requestedVersion}" already exists.` });
       return;
     }
 
@@ -2642,13 +2642,13 @@ assetsRouter.put('/models/:modelId/versions/:versionId', requireAuth, requireCur
 assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { modelId, versionId } = req.params;
     if (!modelId || !versionId) {
-      res.status(400).json({ message: 'Model-ID oder Versions-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID or version ID is missing.' });
       return;
     }
 
@@ -2662,23 +2662,23 @@ assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, r
     });
 
     if (!asset) {
-      res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The requested model could not be found.' });
       return;
     }
 
     if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieses Modells.' });
+      res.status(403).json({ message: 'Not authorized to edit this model.' });
       return;
     }
 
     if (versionId === asset.id) {
-      res.status(400).json({ message: 'Diese Version ist bereits als Primärversion hinterlegt.' });
+      res.status(400).json({ message: 'This version is already marked as the primary version.' });
       return;
     }
 
     const targetVersion = asset.versions.find((entry) => entry.id === versionId);
     if (!targetVersion) {
-      res.status(404).json({ message: 'Die gewünschte Version gehört nicht zu diesem Modell.' });
+      res.status(404).json({ message: 'The requested version does not belong to this model.' });
       return;
     }
 
@@ -2725,13 +2725,13 @@ assetsRouter.post('/models/:modelId/versions/:versionId/promote', requireAuth, r
 assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const { modelId, versionId } = req.params;
     if (!modelId || !versionId) {
-      res.status(400).json({ message: 'Model-ID oder Versions-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID or version ID is missing.' });
       return;
     }
 
@@ -2745,23 +2745,23 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
     });
 
     if (!asset) {
-      res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The requested model could not be found.' });
       return;
     }
 
     if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Löschen dieser Version.' });
+      res.status(403).json({ message: 'Not authorized to delete this version.' });
       return;
     }
 
     if (versionId === asset.id) {
-      res.status(400).json({ message: 'Die Primärversion kann nicht gelöscht werden.' });
+      res.status(400).json({ message: 'The primary version cannot be deleted.' });
       return;
     }
 
     const targetVersion = asset.versions.find((entry) => entry.id === versionId);
     if (!targetVersion) {
-      res.status(404).json({ message: 'Die gewünschte Version gehört nicht zu diesem Modell.' });
+      res.status(404).json({ message: 'The requested version does not belong to this model.' });
       return;
     }
 
@@ -2888,13 +2888,13 @@ assetsRouter.delete('/models/:modelId/versions/:versionId', requireAuth, require
 assetsRouter.post('/images/bulk-delete', requireAuth, requireCurator, async (req, res, next) => {
   try {
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const parsed = bulkDeleteSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Ungültige Anfrage.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Invalid request.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -2905,7 +2905,7 @@ assetsRouter.post('/images/bulk-delete', requireAuth, requireCurator, async (req
     });
 
     if (images.length === 0) {
-      res.status(404).json({ message: 'Keine passenden Bilder gefunden.' });
+      res.status(404).json({ message: 'No matching images found.' });
       return;
     }
 
@@ -2913,7 +2913,7 @@ assetsRouter.post('/images/bulk-delete', requireAuth, requireCurator, async (req
     const unauthorized = images.filter((image) => !isAdmin && image.ownerId !== req.user?.id);
 
     if (unauthorized.length > 0) {
-      res.status(403).json({ message: 'Mindestens ein Bild gehört nicht zum eigenen Bestand.' });
+      res.status(403).json({ message: 'At least one image is not owned by you.' });
       return;
     }
 
@@ -2951,13 +2951,13 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
   try {
     const { id: assetId } = req.params;
     if (!assetId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
     const parsed = updateModelSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -2970,24 +2970,24 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
     });
 
     if (!asset) {
-      res.status(404).json({ message: 'Das angeforderte Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The requested model could not be found.' });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const isAdmin = req.user.role === 'ADMIN';
 
     if (asset.ownerId !== req.user.id && !isAdmin) {
-      res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieses Modells.' });
+      res.status(403).json({ message: 'Not authorized to edit this model.' });
       return;
     }
 
     if (parsed.data.ownerId && parsed.data.ownerId !== asset.ownerId && !isAdmin) {
-      res.status(403).json({ message: 'Nur Administrator:innen können den Besitz ändern.' });
+      res.status(403).json({ message: 'Only administrators can change the ownership.' });
       return;
     }
 
@@ -2998,7 +2998,7 @@ assetsRouter.put('/models/:id', requireAuth, requireCurator, async (req, res, ne
       (asset.moderationStatus === ModerationStatus.FLAGGED || asset.flaggedAt != null)
     ) {
       res.status(403).json({
-        message: 'Dieses Modell befindet sich in der Moderationsprüfung und kann erst nach Freigabe wieder veröffentlicht werden.',
+        message: 'This model is under moderation review and can be published again only after approval.',
       });
       return;
     }
@@ -3142,18 +3142,18 @@ assetsRouter.post('/models/:id/galleries', requireAuth, requireCurator, async (r
   try {
     const { id: modelId } = req.params;
     if (!modelId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const parsed = linkModelToGallerySchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
@@ -3163,14 +3163,14 @@ assetsRouter.post('/models/:id/galleries', requireAuth, requireCurator, async (r
     });
 
     if (!model) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
     const actor = req.user;
     const isAdmin = actor.role === 'ADMIN';
     if (!isAdmin && model.ownerId !== actor.id) {
-      res.status(403).json({ message: 'Keine Berechtigung zur Verknüpfung dieses Modells.' });
+      res.status(403).json({ message: 'Not authorized to link this model.' });
       return;
     }
 
@@ -3180,12 +3180,12 @@ assetsRouter.post('/models/:id/galleries', requireAuth, requireCurator, async (r
     });
 
     if (!gallery) {
-      res.status(404).json({ message: 'Die Galerie wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The gallery could not be found.' });
       return;
     }
 
     if (!isAdmin && gallery.ownerId !== actor.id) {
-      res.status(403).json({ message: 'Nur eigene Galerien können verknüpft werden.' });
+      res.status(403).json({ message: 'Only your own galleries can be linked.' });
       return;
     }
 
@@ -3195,7 +3195,7 @@ assetsRouter.post('/models/:id/galleries', requireAuth, requireCurator, async (r
     });
 
     if (existingEntry) {
-      res.status(409).json({ message: 'Dieses Modell ist der Galerie bereits zugeordnet.' });
+      res.status(409).json({ message: 'This model is already linked to the gallery.' });
       return;
     }
 
@@ -3232,7 +3232,7 @@ assetsRouter.post('/models/:id/galleries', requireAuth, requireCurator, async (r
       });
 
     if (!refreshed) {
-      res.status(500).json({ message: 'Galerie konnte nach dem Verknüpfen nicht geladen werden.' });
+      res.status(500).json({ message: 'Failed to load the gallery after linking.' });
       return;
     }
 
@@ -3246,7 +3246,7 @@ assetsRouter.delete('/models/:id', requireAuth, requireCurator, async (req, res,
   try {
     const { id: assetId } = req.params;
     if (!assetId) {
-      res.status(400).json({ message: 'Model-ID fehlt.' });
+      res.status(400).json({ message: 'Model ID is missing.' });
       return;
     }
 
@@ -3262,17 +3262,17 @@ assetsRouter.delete('/models/:id', requireAuth, requireCurator, async (req, res,
     });
 
     if (!asset) {
-      res.status(404).json({ message: 'Das Modell wurde nicht gefunden.' });
+      res.status(404).json({ message: 'The model could not be found.' });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     if (asset.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Löschen dieses Modells.' });
+      res.status(403).json({ message: 'Not authorized to delete this model.' });
       return;
     }
 
@@ -3288,13 +3288,13 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
   try {
     const parsed = updateImageSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Übermittelte Daten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Submitted data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -3307,24 +3307,24 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
     });
 
     if (!image) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const isAdmin = req.user.role === 'ADMIN';
 
     if (image.ownerId !== req.user.id && !isAdmin) {
-      res.status(403).json({ message: 'Keine Berechtigung zum Bearbeiten dieses Bildes.' });
+      res.status(403).json({ message: 'Not authorized to edit this image.' });
       return;
     }
 
     if (parsed.data.ownerId && parsed.data.ownerId !== image.ownerId && !isAdmin) {
-      res.status(403).json({ message: 'Nur Administrator:innen können den Besitz ändern.' });
+      res.status(403).json({ message: 'Only administrators can change the ownership.' });
       return;
     }
 
@@ -3335,7 +3335,7 @@ assetsRouter.put('/images/:id', requireAuth, requireCurator, async (req, res, ne
       (image.moderationStatus === ModerationStatus.FLAGGED || image.flaggedAt != null)
     ) {
       res.status(403).json({
-        message: 'Dieses Bild befindet sich in der Moderationsprüfung und kann erst nach Freigabe wieder veröffentlicht werden.',
+        message: 'This image is under moderation review and can be published again only after approval.',
       });
       return;
     }
@@ -3479,7 +3479,7 @@ assetsRouter.delete('/images/:id', requireAuth, requireCurator, async (req, res,
   try {
     const { id: imageId } = req.params;
     if (!imageId) {
-      res.status(400).json({ message: 'Bild-ID fehlt.' });
+      res.status(400).json({ message: 'Image ID is missing.' });
       return;
     }
 
@@ -3489,17 +3489,17 @@ assetsRouter.delete('/images/:id', requireAuth, requireCurator, async (req, res,
     });
 
     if (!image) {
-      res.status(404).json({ message: 'Bild konnte nicht gefunden werden.' });
+      res.status(404).json({ message: 'The image could not be found.' });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     if (image.ownerId !== req.user.id && req.user.role !== 'ADMIN') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Löschen dieses Bildes.' });
+      res.status(403).json({ message: 'Not authorized to delete this image.' });
       return;
     }
 

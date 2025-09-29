@@ -1,3 +1,8 @@
+## 067 – [Normal Change] English messaging consistency pass
+- **Type**: Normal Change
+- **Reason**: German strings persisted across installers, backend APIs, storage proxy responses, rollback tooling, and deletion confirmations, contradicting the English-only standard and confusing operators during audits.
+- **Change**: Translated the remaining German shell, backend, and frontend messages to English, aligned storage and installer responses, refreshed rollback guidance, and marked the audit language consistency gap as remediated.
+
 ## 066 – [Normal Change] Project documentation audit refresh
 - **Type**: Normal Change
 - **Reason**: The repository lacked an up-to-date audit aligning README promises with current implementation, leaving stakeholders without a consolidated scorecard of what is delivered versus pending.

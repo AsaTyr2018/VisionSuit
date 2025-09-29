@@ -123,7 +123,7 @@ export const createApp = () => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
         res.status(400).json({
-          message: `Es können maximal ${MAX_UPLOAD_FILES} Dateien pro Upload übertragen werden.`,
+          message: `A maximum of ${MAX_UPLOAD_FILES} files can be uploaded per request.`,
         });
         return;
       }
@@ -131,7 +131,7 @@ export const createApp = () => {
       if (err.code === 'LIMIT_FILE_SIZE') {
         const maxSizeGb = (MAX_TOTAL_SIZE_BYTES / (1024 * 1024 * 1024)).toFixed(0);
         res.status(400).json({
-          message: `Eine der Dateien überschreitet das erlaubte Größenlimit von ${maxSizeGb} GB.`,
+          message: `One of the files exceeds the allowed size limit of ${maxSizeGb} GB.`,
         });
         return;
       }

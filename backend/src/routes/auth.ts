@@ -23,7 +23,7 @@ authRouter.post('/login', async (req, res, next) => {
   try {
     const result = loginSchema.safeParse(req.body);
     if (!result.success) {
-      res.status(400).json({ message: 'Bitte gültige Zugangsdaten angeben.' });
+      res.status(400).json({ message: 'Please provide valid credentials.' });
       return;
     }
 
@@ -44,13 +44,13 @@ authRouter.post('/login', async (req, res, next) => {
     });
 
     if (!user || !user.isActive) {
-      res.status(401).json({ message: 'Benutzerkonto nicht gefunden oder deaktiviert.' });
+      res.status(401).json({ message: 'User account not found or deactivated.' });
       return;
     }
 
     const passwordValid = await verifyPassword(password, user.passwordHash);
     if (!passwordValid) {
-      res.status(401).json({ message: 'E-Mail oder Passwort sind nicht korrekt.' });
+      res.status(401).json({ message: 'Email or password is incorrect.' });
       return;
     }
 
@@ -94,14 +94,14 @@ authRouter.post('/register', async (req, res, next) => {
 
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Registrierungsdaten sind ungültig.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Registration data is invalid.', errors: parsed.error.flatten() });
       return;
     }
 
     const email = parsed.data.email.toLowerCase();
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      res.status(409).json({ message: 'Für diese E-Mail-Adresse existiert bereits ein Konto.' });
+      res.status(409).json({ message: 'An account already exists for this email address.' });
       return;
     }
 

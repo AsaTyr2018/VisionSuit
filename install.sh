@@ -11,8 +11,8 @@ SYSTEMD_SERVICE_NAME="visionsuit-dev.service"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "Fehler: Benötigtes Kommando '$1' wurde nicht gefunden." >&2
-    echo "Bitte installiere es und führe das Skript anschließend erneut aus." >&2
+    echo "Error: Required command '$1' was not found." >&2
+    echo "Please install it and run the script again." >&2
     exit 1
   fi
 }
@@ -32,21 +32,21 @@ detect_docker_compose() {
 }
 
 ensure_docker_requirements() {
-  info "Prüfe Docker-Voraussetzungen"
+  info "Checking Docker prerequisites"
   require_command docker
 
   if ! docker info >/dev/null 2>&1; then
-    echo "Fehler: Docker-Daemon ist nicht verfügbar. Bitte stelle sicher, dass Docker läuft und du Zugriffsrechte besitzt." >&2
+    echo "Error: Docker daemon is not available. Please ensure Docker is running and you have permission to access it." >&2
     exit 1
   fi
 
   if ! detect_docker_compose; then
-    echo "Fehler: Weder 'docker compose' noch 'docker-compose' ist verfügbar." >&2
-    echo "Bitte installiere Docker Compose (Plugin oder Legacy-Binary) und starte das Skript erneut." >&2
+    echo "Error: Neither 'docker compose' nor 'docker-compose' is available." >&2
+    echo "Please install Docker Compose (plugin or legacy binary) and run the script again." >&2
     exit 1
   fi
 
-  success "Docker Compose erkannt (${DOCKER_COMPOSE_CMD})."
+  success "Docker Compose detected (${DOCKER_COMPOSE_CMD})."
 }
 
 ensure_portainer() {
@@ -55,15 +55,15 @@ ensure_portainer() {
 
   if docker container inspect "$container_name" >/dev/null 2>&1; then
     if ! docker ps --filter "name=^${container_name}$" --filter "status=running" --format '{{.Names}}' | grep -q "^${container_name}$"; then
-      info "Starte vorhandenen Portainer-Container"
+      info "Starting existing Portainer container"
       docker start "$container_name" >/dev/null
     fi
-    success "Portainer ist bereits installiert (https://$SERVER_IP:9443)."
+    success "Portainer is already installed (https://$SERVER_IP:9443)."
     return
   fi
 
-  if confirm "Portainer CE (Docker-Dashboard) installieren?"; then
-    info "Installiere Portainer CE"
+  if confirm "Install Portainer CE (Docker dashboard)?"; then
+    info "Installing Portainer CE"
     if ! docker volume inspect "$volume_name" >/dev/null 2>&1; then
       docker volume create "$volume_name" >/dev/null
     fi
@@ -75,9 +75,9 @@ ensure_portainer() {
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "$volume_name:/data" \
       portainer/portainer-ce:latest >/dev/null
-    success "Portainer CE wurde gestartet (UI: https://$SERVER_IP:9443)."
+    success "Portainer CE started (UI: https://$SERVER_IP:9443)."
   else
-    info "Portainer-Installation übersprungen. Du kannst sie später jederzeit mit 'docker run portainer/portainer-ce' nachholen."
+    info "Skipped Portainer installation. You can add it later with 'docker run portainer/portainer-ce'."
   fi
 }
 
@@ -93,19 +93,19 @@ setup_minio_container() {
   mkdir -p "$data_dir"
 
   if docker container inspect "$container_name" >/dev/null 2>&1; then
-    info "MinIO-Container '$container_name' existiert bereits."
-    if confirm "Container mit neuer Konfiguration neu erstellen?"; then
+    info "MinIO container '$container_name' already exists."
+    if confirm "Recreate container with new configuration?"; then
       docker rm -f "$container_name" >/dev/null
     else
       if ! docker ps --filter "name=^${container_name}$" --filter "status=running" --format '{{.Names}}' | grep -q "^${container_name}$"; then
         docker start "$container_name" >/dev/null
       fi
-      success "Vorhandener MinIO-Container wird weiterverwendet (Konsole: http://$SERVER_IP:$console_port)."
+      success "Existing MinIO container will be reused (console: http://$SERVER_IP:$console_port)."
       return
     fi
   fi
 
-  info "Starte MinIO über Docker"
+  info "Starting MinIO via Docker"
   docker run -d \
     --name "$container_name" \
     --restart unless-stopped \
@@ -115,7 +115,7 @@ setup_minio_container() {
     -e MINIO_ROOT_USER="$minio_access_key" \
     -e MINIO_ROOT_PASSWORD="$minio_secret_key" \
     minio/minio server /data --console-address ":9001" >/dev/null
-  success "MinIO läuft jetzt im Container '$container_name' (Konsole: http://$SERVER_IP:$console_port)."
+  success "MinIO is now running in container '$container_name' (console: http://$SERVER_IP:$console_port)."
 }
 
 info() {
@@ -278,7 +278,7 @@ confirm() {
     case "${answer:-}" in
       [Yy]|[Yy][Ee][Ss]) return 0 ;;
       [Nn]|[Nn][Oo]|"") return 1 ;;
-      *) echo "Bitte mit 'y' oder 'n' antworten." ;;
+      *) echo "Please answer with 'y' or 'n'." ;;
     esac
   done
 }
@@ -324,7 +324,7 @@ prompt_ipv4_with_default() {
       return
     fi
 
-    echo "Bitte eine gültige Server-IP-Adresse (keine Loopback- oder Link-Local-IP) eingeben."
+    echo "Please enter a valid server IP address (no loopback or link-local IP)."
   done
 }
 
@@ -338,7 +338,7 @@ prompt_for_ipv4() {
       printf '%s' "$value"
       return
     fi
-    echo "Bitte eine gültige Server-IP-Adresse (keine Loopback- oder Link-Local-IP) eingeben."
+    echo "Please enter a valid server IP address (no loopback or link-local IP)."
   done
 }
 
@@ -359,7 +359,7 @@ prompt_port_with_default() {
       return
     fi
 
-    echo "Bitte eine gültige Portnummer zwischen 1 und 65535 eingeben."
+    echo "Please enter a valid port number between 1 and 65535."
   done
 }
 
@@ -376,7 +376,7 @@ mask_secret() {
 }
 
 detect_server_ip() {
-  info "Ermittle Server-IP-Adresse"
+  info "Detecting server IP address"
   local -a candidates=()
   local line
 
@@ -385,24 +385,24 @@ detect_server_ip() {
   done < <(ip -4 -o addr show scope global 2>/dev/null | awk '!($2 ~ /^(docker|br-|veth|lo|cni|flannel|virbr|vz|lxc|kube|tun|tap)/) {print $4}' | cut -d'/' -f1 | sort -u)
 
   if [ "${#candidates[@]}" -eq 0 ]; then
-    echo "Es konnte keine geeignete IP automatisch ermittelt werden."
-    SERVER_IP="$(prompt_for_ipv4 "Bitte Server-IP-Adresse eingeben")"
+    echo "No suitable IP address could be detected automatically."
+    SERVER_IP="$(prompt_for_ipv4 "Please enter the server IP address")"
     return
   fi
 
   if [ "${#candidates[@]}" -eq 1 ]; then
     local candidate="${candidates[0]}"
-    echo "Gefundene IP-Adresse: $candidate"
-    if confirm "Diese IP verwenden?"; then
+    echo "Detected IP address: $candidate"
+    if confirm "Use this IP?"; then
       SERVER_IP="$candidate"
       return
     fi
 
-    SERVER_IP="$(prompt_for_ipv4 "Bitte Server-IP-Adresse eingeben")"
+    SERVER_IP="$(prompt_for_ipv4 "Please enter the server IP address")"
     return
   fi
 
-  echo "Mehrere mögliche IP-Adressen wurden gefunden:"
+  echo "Multiple possible IP addresses were found:"
   local idx
   for idx in "${!candidates[@]}"; do
     printf '  [%d] %s\n' "$((idx + 1))" "${candidates[idx]}"
@@ -410,16 +410,16 @@ detect_server_ip() {
 
   local selection
   while true; do
-    read -r -p "Auswahl [1-${#candidates[@]}]: " selection || true
+    read -r -p "Selection [1-${#candidates[@]}]: " selection || true
     if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -ge 1 ] && [ "$selection" -le "${#candidates[@]}" ]; then
       SERVER_IP="${candidates[selection-1]}"
       break
     fi
-    echo "Bitte eine gültige Zahl eingeben."
+    echo "Please enter a valid number."
   done
 
-  if ! confirm "IP ${SERVER_IP} verwenden?"; then
-    SERVER_IP="$(prompt_for_ipv4 "Bitte Server-IP-Adresse eingeben")"
+  if ! confirm "Use IP ${SERVER_IP}?"; then
+    SERVER_IP="$(prompt_for_ipv4 "Please enter the server IP address")"
   fi
 }
 
@@ -508,7 +508,7 @@ create_env_if_missing() {
   local target_file="$2"
   if [ ! -f "$target_file" ] && [ -f "$example_file" ]; then
     cp "$example_file" "$target_file"
-    success "${target_file#$ROOT_DIR/} aus ${example_file#$ROOT_DIR/} erstellt."
+    success "${target_file#$ROOT_DIR/} created from ${example_file#$ROOT_DIR/}."
   fi
 }
 
@@ -527,14 +527,14 @@ ensure_node_and_npm() {
   fi
 
   if [ -z "$installer" ]; then
-    echo "Fehler: Node.js ist nicht installiert und das Skript kann es auf diesem System nicht automatisch bereitstellen." >&2
-    echo "Bitte installiere Node.js 18+ (inklusive npm) und starte das Skript erneut." >&2
+    echo "Error: Node.js is not installed and the script cannot provision it automatically on this system." >&2
+    echo "Please install Node.js 18+ (including npm) and run the script again." >&2
     exit 1
   fi
 
   if [ "$installer" = "apt" ]; then
-    if ! confirm "Node.js fehlt. Soll Node.js 18 LTS jetzt über NodeSource installiert werden?"; then
-      echo "Installation abgebrochen, da Node.js benötigt wird." >&2
+    if ! confirm "Node.js is missing. Install Node.js 18 LTS via NodeSource now?"; then
+      echo "Installation aborted because Node.js is required." >&2
       exit 1
     fi
 
@@ -543,7 +543,7 @@ ensure_node_and_npm() {
       if command -v sudo >/dev/null 2>&1; then
         sudo_cmd="sudo"
       else
-        echo "Fehler: Für die Installation von Node.js werden Root-Rechte oder sudo benötigt." >&2
+        echo "Error: Installing Node.js requires root privileges or sudo." >&2
         exit 1
       fi
     fi
@@ -569,8 +569,8 @@ ensure_node_and_npm() {
     $sudo_cmd apt-get update
     $sudo_cmd apt-get install -y nodejs
   elif [ "$installer" = "brew" ]; then
-    if ! confirm "Node.js fehlt. Soll Node.js jetzt über Homebrew installiert werden?"; then
-      echo "Installation abgebrochen, da Node.js benötigt wird." >&2
+    if ! confirm "Node.js is missing. Install Node.js via Homebrew now?"; then
+      echo "Installation aborted because Node.js is required." >&2
       exit 1
     fi
 
@@ -579,7 +579,7 @@ ensure_node_and_npm() {
   fi
 
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "Fehler: Die automatische Installation von Node.js ist fehlgeschlagen." >&2
+    echo "Error: Automatic installation of Node.js failed." >&2
     exit 1
   fi
 
@@ -592,13 +592,13 @@ ensure_docker_requirements
 
 prompt_startup_mode
 
-info "Installiere Backend-Abhängigkeiten"
+info "Installing backend dependencies"
 (
   cd "$BACKEND_DIR"
   npm install
 )
 
-info "Installiere Frontend-Abhängigkeiten"
+info "Installing frontend dependencies"
 (
   cd "$FRONTEND_DIR"
   npm install
@@ -688,7 +688,7 @@ else
   esac
 fi
 
-info "Konfigurationsvorschlag"
+info "Suggested configuration"
 printf '  %-28s %s\n' "Server-IP:" "$SERVER_IP"
 printf '  %-28s %s\n' "Backend Host:" "$backend_host"
 printf '  %-28s %s\n' "Backend Port:" "$backend_port"
@@ -702,10 +702,10 @@ printf '  %-28s %s\n' "MinIO Secret Key:" "$(mask_secret "$minio_secret_key")"
 printf '  %-28s %s / %s\n' "MinIO Buckets:" "$minio_bucket_models" "$minio_bucket_images"
 printf '  %-28s %s\n' "MinIO Auto Buckets:" "$minio_auto_create"
 printf '  %-28s %s\n' "MinIO Public URL:" "$minio_public_url"
-printf '  %-28s %s\n' "MinIO Region:" "${minio_region:-(nicht gesetzt)}"
+printf '  %-28s %s\n' "MinIO Region:" "${minio_region:-(not set)}"
 
-if ! confirm "Diese Einstellungen übernehmen?"; then
-  info "Manuelle Konfiguration"
+if ! confirm "Apply these settings?"; then
+  info "Manual configuration"
   backend_host="$(prompt_ipv4_with_default "Backend Host" "$backend_host")"
   backend_port="$(prompt_port_with_default "Backend Port" "$backend_port")"
   frontend_port="$(prompt_port_with_default "Frontend Dev-Port" "$frontend_port")"
@@ -727,7 +727,7 @@ if ! confirm "Diese Einstellungen übernehmen?"; then
 
   minio_endpoint="$(prompt_ipv4_with_default "MinIO Endpoint" "$minio_endpoint")"
   minio_port="$(prompt_port_with_default "MinIO Port" "$minio_port")"
-  minio_use_ssl="$(prompt_default "MinIO HTTPS verwenden? (true/false)" "$minio_use_ssl")"
+  minio_use_ssl="$(prompt_default "Use MinIO HTTPS? (true/false)" "$minio_use_ssl")"
   minio_use_ssl="${minio_use_ssl,,}"
   if [ "$minio_use_ssl" != "true" ]; then
     minio_use_ssl="false"
@@ -740,9 +740,9 @@ if ! confirm "Diese Einstellungen übernehmen?"; then
     minio_secret_key="$secret_input"
   fi
 
-  minio_bucket_models="$(prompt_default "Bucket für Modell-Assets" "$minio_bucket_models")"
-  minio_bucket_images="$(prompt_default "Bucket für Bild-Assets" "$minio_bucket_images")"
-  minio_auto_create="$(prompt_default "Buckets automatisch erstellen? (true/false)" "$minio_auto_create")"
+  minio_bucket_models="$(prompt_default "Bucket for model assets" "$minio_bucket_models")"
+  minio_bucket_images="$(prompt_default "Bucket for image assets" "$minio_bucket_images")"
+  minio_auto_create="$(prompt_default "Auto-create buckets? (true/false)" "$minio_auto_create")"
   minio_auto_create="${minio_auto_create,,}"
   if [ "$minio_auto_create" != "false" ]; then
     minio_auto_create="true"
@@ -766,59 +766,59 @@ if ! confirm "Diese Einstellungen übernehmen?"; then
 fi
 
 apply_configuration
-success "Backend-Umgebung aktualisiert."
-success "Frontend-Umgebung aktualisiert."
-success "Storage-Umgebung aktualisiert."
+success "Backend environment updated."
+success "Frontend environment updated."
+success "Storage environment updated."
 
 setup_minio_container
 ensure_portainer
 
-if confirm "Soll 'npm run prisma:migrate' jetzt ausgeführt werden?"; then
-  info "Führe Datenbankmigrationen aus"
+if confirm "Run 'npm run prisma:migrate' now?"; then
+  info "Running database migrations"
   (
     cd "$BACKEND_DIR"
     npm run prisma:migrate
   )
 fi
 
-if confirm "Soll 'npm run seed' jetzt ausgeführt werden?"; then
-  info "Befülle Demodaten"
+if confirm "Run 'npm run seed' now?"; then
+  info "Seeding demo data"
   (
     cd "$BACKEND_DIR"
     npm run seed
   )
 fi
 
-if confirm "Jetzt einen Admin-Benutzer anlegen?"; then
-  info "Lege Admin-Benutzer an"
+if confirm "Create an admin user now?"; then
+  info "Creating admin user"
   admin_email=""
   admin_password=""
   admin_name=""
   admin_bio=""
 
   while [ -z "$admin_email" ]; do
-    read -r -p "Admin E-Mail: " admin_email || true
+    read -r -p "Admin email: " admin_email || true
     if [ -z "$admin_email" ]; then
-      echo "Die E-Mail darf nicht leer sein."
+      echo "Email must not be empty."
     fi
   done
 
   while [ -z "$admin_password" ]; do
-    read -s -p "Admin Passwort: " admin_password || true
+    read -s -p "Admin password: " admin_password || true
     echo
     if [ -z "$admin_password" ]; then
-      echo "Das Passwort darf nicht leer sein."
+      echo "Password must not be empty."
     fi
   done
 
   while [ -z "$admin_name" ]; do
-    read -r -p "Admin Anzeigename: " admin_name || true
+    read -r -p "Admin display name: " admin_name || true
     if [ -z "$admin_name" ]; then
-      echo "Der Anzeigename darf nicht leer sein."
+      echo "Display name must not be empty."
     fi
   done
 
-  read -r -p "Admin Bio (optional): " admin_bio || true
+  read -r -p "Admin bio (optional): " admin_bio || true
 
   (
     cd "$BACKEND_DIR"
@@ -828,9 +828,9 @@ if confirm "Jetzt einen Admin-Benutzer anlegen?"; then
       --name="$admin_name" \
       --bio="${admin_bio:-}"
   )
-  success "Admin-Benutzer wurde angelegt oder aktualisiert."
+  success "Admin user created or updated."
 fi
 
 configure_startup_mode
 
-success "Installation abgeschlossen."
+success "Installation complete."
