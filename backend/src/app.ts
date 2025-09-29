@@ -5,7 +5,11 @@ import morgan from 'morgan';
 import { URL } from 'node:url';
 
 import { appConfig } from './config';
-import { PRISMA_STUDIO_COOKIE_NAME } from './devtools/constants';
+import {
+  PRISMA_STUDIO_COOKIE_NAME,
+  PRISMA_STUDIO_COOKIE_PATH,
+  PRISMA_STUDIO_PROXY_PREFIXES,
+} from './devtools/constants';
 import { createPrismaStudioProxy } from './devtools/prismaStudioProxy';
 import { attachOptionalUser, requireAdmin, requireAuth } from './lib/middleware/auth';
 import { MAX_TOTAL_SIZE_BYTES, MAX_UPLOAD_FILES } from './lib/uploadLimits';
@@ -46,7 +50,7 @@ const persistPrismaStudioSession: RequestHandler = (req, res, next) => {
     sameSite: 'lax',
     secure: appConfig.env === 'production',
     maxAge: 60 * 60 * 1000,
-    path: '/db',
+    path: PRISMA_STUDIO_COOKIE_PATH,
   });
 
   try {
@@ -91,13 +95,22 @@ export const createApp = () => {
   });
 
   app.post('/db/logout', (_req, res) => {
-    res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+    res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
     res.status(204).end();
   });
 
-  app.use('/db', persistPrismaStudioSession);
-  app.use('/db', attachOptionalUser);
-  app.use('/db', requireAuth, requireAdmin, createPrismaStudioProxy());
+  const prismaProxyHandler = createPrismaStudioProxy();
+  for (const prefix of PRISMA_STUDIO_PROXY_PREFIXES) {
+    app.use(prefix, persistPrismaStudioSession);
+  }
+
+  for (const prefix of PRISMA_STUDIO_PROXY_PREFIXES) {
+    app.use(prefix, attachOptionalUser);
+  }
+
+  for (const prefix of PRISMA_STUDIO_PROXY_PREFIXES) {
+    app.use(prefix, requireAuth, requireAdmin, prismaProxyHandler);
+  }
 
   app.use('/api', attachOptionalUser);
   app.use('/api', router);

@@ -1,3 +1,8 @@
+## 061 – [Normal Change] Prisma Studio asset proxy alignment
+- **Type**: Normal Change
+- **Reason**: Opening Prisma Studio from the dashboard failed because requests for `/http/databrowser.js`, `/assets/index.js`, and the stylesheet landed on the frontend dev server, which returned HTML with a `text/html` MIME type that the browser refused to execute as JavaScript or CSS.
+- **Change**: Broadened the backend proxy and authentication guards to cover Prisma Studio asset prefixes, widened the session cookie scope so static requests stay authorised, taught the Vite dev server to forward Studio asset paths to the API host, and updated the README with the refreshed launch guidance.
+
 ## 060 – [Normal Change] Windows bulk uploader duplicate guard restoration
 - **Type**: Normal Change
 - **Reason**: The latest Windows bulk uploader revision re-uploaded models that were already live because the duplicate detector no longer understood the paginated `/api/assets/models` response wrapper.
