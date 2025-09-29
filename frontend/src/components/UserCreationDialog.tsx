@@ -278,6 +278,7 @@ export const UserCreationDialog = ({
                   }
                   disabled={isSubmitting}
                 >
+                  <option value="USER">Member — community access</option>
                   <option value="CURATOR">Curator — content curation & uploads</option>
                   <option value="ADMIN">Admin — full platform access</option>
                 </select>
@@ -350,7 +351,13 @@ export const UserCreationDialog = ({
                 </div>
                 <div>
                   <dt>Role</dt>
-                  <dd>{formState.role === 'ADMIN' ? 'Admin — full access' : 'Curator — uploads & curation'}</dd>
+                  <dd>
+                    {formState.role === 'ADMIN'
+                      ? 'Admin — full access'
+                      : formState.role === 'CURATOR'
+                        ? 'Curator — uploads & curation'
+                        : 'Member — community access'}
+                  </dd>
                 </div>
                 <div>
                   <dt>Password</dt>

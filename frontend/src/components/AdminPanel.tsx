@@ -26,6 +26,8 @@ import type {
   NsfwRescanSummary,
   NsfwSnapshot,
   NsfwReason,
+  CuratorApplicationSummary,
+  CuratorApplicationStatus,
 } from '../types/api';
 import { FilterChip } from './FilterChip';
 import { ImageAssetEditDialog } from './ImageAssetEditDialog';
@@ -106,6 +108,17 @@ const nsfwReasonLabels: Record<NsfwReason, string> = {
   METADATA: 'Metadata',
   OPENCV: 'OpenCV',
 };
+
+const curatorApplicationStatusLabels: Record<CuratorApplicationStatus, string> = {
+  PENDING: 'Pending review',
+  APPROVED: 'Approved',
+  REJECTED: 'Declined',
+};
+
+const adminDateFormatter = new Intl.DateTimeFormat('en', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
 
 type ModerationEntry =
   | {
@@ -505,6 +518,11 @@ export const AdminPanel = ({
   const [moderationAction, setModerationAction] = useState<
     { entity: 'model' | 'image'; action: 'approve' | 'remove'; id: string } | null
   >(null);
+  const [curatorApplications, setCuratorApplications] = useState<CuratorApplicationSummary[]>([]);
+  const [isCuratorApplicationsLoading, setIsCuratorApplicationsLoading] = useState(false);
+  const [curatorApplicationsError, setCuratorApplicationsError] = useState<string | null>(null);
+  const [curatorDecisionNotes, setCuratorDecisionNotes] = useState<Record<string, string>>({});
+  const [curatorAction, setCuratorAction] = useState<{ id: string; action: 'approve' | 'reject' } | null>(null);
   const [activeModerationTarget, setActiveModerationTarget] = useState<
     { entity: 'model' | 'image'; id: string } | null
   >(null);
@@ -710,6 +728,50 @@ export const AdminPanel = ({
     : false;
   const trimmedModerationDecisionReason = moderationDecisionReason.trim();
 
+  const handleCuratorDecision = useCallback(
+    async (application: CuratorApplicationSummary, action: 'approve' | 'reject') => {
+      if (!token) {
+        setCuratorApplicationsError('Authentication required to manage applications.');
+        return;
+      }
+
+      setCuratorApplicationsError(null);
+      setCuratorAction({ id: application.id, action });
+
+      try {
+        const note = (curatorDecisionNotes[application.id] ?? '').trim();
+        const payload = note.length > 0 ? { reason: note } : undefined;
+        const response =
+          action === 'approve'
+            ? await api.approveCuratorApplication(token, application.id, payload)
+            : await api.rejectCuratorApplication(token, application.id, payload);
+
+        setCuratorApplications((previous) =>
+          previous.map((entry) => (entry.id === response.application.id ? response.application : entry)),
+        );
+        setCuratorDecisionNotes((previous) => ({ ...previous, [application.id]: '' }));
+        setStatus({
+          type: 'success',
+          message: action === 'approve' ? 'Curator application approved.' : 'Curator application declined.',
+        });
+        onRefresh()
+          .catch((refreshError) => console.error('Failed to refresh after curator decision', refreshError));
+      } catch (error) {
+        const message =
+          error instanceof ApiError
+            ? error.message
+            : action === 'approve'
+              ? 'Failed to approve curator application.'
+              : 'Failed to reject curator application.';
+        setCuratorApplicationsError(message);
+        setStatus({ type: 'error', message });
+      } finally {
+        setCuratorAction(null);
+      }
+    },
+    [token, curatorDecisionNotes, onRefresh],
+  );
+
   useEffect(() => {
     setGeneratorAccessMode((current) =>
       current === generatorAccessModeFromSettings ? current : generatorAccessModeFromSettings,
@@ -787,6 +849,40 @@ export const AdminPanel = ({
     [token],
   );
 
+  const refreshCuratorApplications = useCallback(async () => {
+    if (!token) {
+      setCuratorApplications([]);
+      setCuratorDecisionNotes({});
+      setCuratorApplicationsError(null);
+      return;
+    }
+
+    setCuratorApplicationsError(null);
+    setIsCuratorApplicationsLoading(true);
+
+    try {
+      const { applications } = await api.getCuratorApplications(token);
+      setCuratorApplications(applications);
+      setCuratorDecisionNotes((previous) => {
+        const next: Record<string, string> = {};
+        for (const application of applications) {
+          next[application.id] = previous[application.id] ?? '';
+        }
+        return next;
+      });
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : 'Failed to load curator applications.';
+      setCuratorApplications([]);
+      setCuratorDecisionNotes({});
+      setCuratorApplicationsError(message);
+    } finally {
+      setIsCuratorApplicationsLoading(false);
+    }
+  }, [token]);
+
   const userOptions = useMemo(() => users.map((user) => ({ id: user.id, label: user.displayName })), [users]);
 
   useEffect(() => {
@@ -794,6 +890,14 @@ export const AdminPanel = ({
       setActiveGeneratorSection('queue');
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'users') {
+      refreshCuratorApplications().catch((error) =>
+        console.error('Failed to refresh curator applications', error),
+      );
+    }
+  }, [activeTab, refreshCuratorApplications]);
 
   useEffect(() => {
     if (!token) {
@@ -2670,6 +2774,140 @@ export const AdminPanel = ({
         </div>
       ) : activeTab === 'users' ? (
         <div className="admin__panel">
+          <section className="admin__section">
+            <div className="admin__section-header admin__section-header--split">
+              <div>
+                <h3>Curator applications</h3>
+                <p className="admin__section-description">
+                  Review member upgrade requests and add notes before promoting new curators.
+                </p>
+              </div>
+              <div className="admin__section-actions">
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={() => refreshCuratorApplications()}
+                  disabled={isCuratorApplicationsLoading}
+                >
+                  {isCuratorApplicationsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+            {curatorApplicationsError ? (
+              <p className="admin__status admin__status--error" role="alert">
+                {curatorApplicationsError}
+              </p>
+            ) : null}
+            {isCuratorApplicationsLoading ? (
+              <p className="admin__loading" role="status">
+                Loading curator applications…
+              </p>
+            ) : curatorApplications.length === 0 ? (
+              <p className="admin__empty">No curator applications are waiting for review.</p>
+            ) : (
+              <ul className="curator-application-list" role="list">
+                {curatorApplications.map((application) => {
+                  const noteValue = curatorDecisionNotes[application.id] ?? '';
+                  const submitted = adminDateFormatter.format(new Date(application.createdAt));
+                  const decided = application.decidedAt
+                    ? adminDateFormatter.format(new Date(application.decidedAt))
+                    : null;
+                  const isPending = application.status === 'PENDING';
+                  const isApproveBusy = curatorAction?.id === application.id && curatorAction?.action === 'approve';
+                  const isRejectBusy = curatorAction?.id === application.id && curatorAction?.action === 'reject';
+
+                  return (
+                    <li key={application.id} className="curator-application-card">
+                      <header className="curator-application-card__header">
+                        <div className="curator-application-card__identity">
+                          <h4>{application.user.displayName}</h4>
+                          <span>{application.user.email}</span>
+                        </div>
+                        <span
+                          className={`curator-application-card__status curator-application-card__status--${application.status.toLowerCase()}`}
+                        >
+                          {curatorApplicationStatusLabels[application.status]}
+                        </span>
+                      </header>
+                      <dl className="curator-application-card__meta">
+                        <div>
+                          <dt>Submitted</dt>
+                          <dd>{submitted}</dd>
+                        </div>
+                        <div>
+                          <dt>Account role</dt>
+                          <dd>{application.user.role}</dd>
+                        </div>
+                        <div>
+                          <dt>Status</dt>
+                          <dd>{curatorApplicationStatusLabels[application.status]}</dd>
+                        </div>
+                      </dl>
+                      <p className="curator-application-card__message">{application.message}</p>
+                      {isPending ? (
+                        <>
+                          <label className="form-field curator-application-card__note-field">
+                            <span>Decision note (optional)</span>
+                            <textarea
+                              rows={3}
+                              value={noteValue}
+                              onChange={(event) =>
+                                setCuratorDecisionNotes((previous) => ({
+                                  ...previous,
+                                  [application.id]: event.currentTarget.value,
+                                }))
+                              }
+                              placeholder="Share onboarding guidance or follow-up steps."
+                              disabled={isApproveBusy || isRejectBusy}
+                            />
+                          </label>
+                          <div className="curator-application-card__actions">
+                            <button
+                              type="button"
+                              className="button"
+                              onClick={() => handleCuratorDecision(application, 'reject')}
+                              disabled={isRejectBusy || isApproveBusy}
+                            >
+                              {isRejectBusy ? 'Declining…' : 'Decline'}
+                            </button>
+                            <button
+                              type="button"
+                              className="button button--primary"
+                              onClick={() => handleCuratorDecision(application, 'approve')}
+                              disabled={isApproveBusy || isRejectBusy}
+                            >
+                              {isApproveBusy ? 'Approving…' : 'Approve'}
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="curator-application-card__resolution">
+                          <p>
+                            {application.status === 'APPROVED' ? 'Approved' : 'Declined'}
+                            {decided ? (
+                              <>
+                                {' '}
+                                on <strong>{decided}</strong>
+                              </>
+                            ) : null}
+                            {application.decidedBy ? (
+                              <>
+                                {' '}
+                                by <strong>{application.decidedBy.displayName}</strong>
+                              </>
+                            ) : null}
+                          </p>
+                          {application.decisionReason ? (
+                            <p className="curator-application-card__note">{application.decisionReason}</p>
+                          ) : null}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
           <section className="admin__section admin__section--onboarding">
             <div className="admin__section-intro">
               <h3>Invite new teammates</h3>

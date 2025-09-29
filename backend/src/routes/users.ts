@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 
 import type { Prisma, User } from '@prisma/client';
-import { ModerationStatus } from '@prisma/client';
+import { CuratorApplicationStatus, ModerationStatus } from '@prisma/client';
 import type { NextFunction, Request, Response } from 'express';
 import { Router } from 'express';
 import multer from 'multer';
@@ -17,6 +17,7 @@ import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/st
 import { MAX_AVATAR_SIZE_BYTES } from '../lib/uploadLimits';
 import type { ContributionCounts } from '../lib/ranking';
 import { resolveUserRank } from '../lib/ranking';
+import { createNotification } from '../lib/notifications';
 
 const createUserSchema = z.object({
   email: z.string().email(),
@@ -59,6 +60,22 @@ const changePasswordSchema = z
 
 const bulkDeleteSchema = z.object({
   ids: z.array(z.string().trim().min(1)).min(1),
+});
+
+const curatorApplicationSchema = z.object({
+  message: z
+    .string()
+    .trim()
+    .min(40, 'Share enough context so admins understand your focus.')
+    .max(1200, 'Keep the application under 1,200 characters.'),
+});
+
+const curatorDecisionSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .max(600, 'Decision notes must stay under 600 characters.')
+    .optional(),
 });
 
 export const usersRouter = Router();
@@ -112,6 +129,87 @@ const serializeUserWithOrigin = (
     avatarUrl: resolveAvatarUrl(user.id, user.avatarUrl ?? null, { origin, location }),
   };
 };
+
+const curatorApplicationUserInclude = {
+  decidedBy: {
+    select: {
+      id: true,
+      displayName: true,
+    },
+  },
+} satisfies Prisma.CuratorApplicationInclude;
+
+type CuratorApplicationUserView = Prisma.CuratorApplicationGetPayload<{
+  include: typeof curatorApplicationUserInclude;
+}>;
+
+const serializeCuratorApplicationForUser = (application: CuratorApplicationUserView) => ({
+  id: application.id,
+  userId: application.userId,
+  status: application.status,
+  message: application.message,
+  decisionReason: application.decisionReason ?? null,
+  createdAt: application.createdAt.toISOString(),
+  updatedAt: application.updatedAt.toISOString(),
+  decidedAt: application.decidedAt ? application.decidedAt.toISOString() : null,
+  decidedBy: application.decidedBy
+    ? { id: application.decidedBy.id, displayName: application.decidedBy.displayName }
+    : null,
+});
+
+const curatorApplicationAdminInclude = {
+  user: {
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      role: true,
+      bio: true,
+      avatarUrl: true,
+      showAdultContent: true,
+      isActive: true,
+      lastLoginAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
+  decidedBy: {
+    select: {
+      id: true,
+      displayName: true,
+      email: true,
+    },
+  },
+} satisfies Prisma.CuratorApplicationInclude;
+
+type CuratorApplicationAdminView = Prisma.CuratorApplicationGetPayload<{
+  include: typeof curatorApplicationAdminInclude;
+}>;
+
+const serializeCuratorApplicationForAdmin = (req: Request, application: CuratorApplicationAdminView) => ({
+  id: application.id,
+  userId: application.userId,
+  status: application.status,
+  message: application.message,
+  decisionReason: application.decisionReason ?? null,
+  createdAt: application.createdAt.toISOString(),
+  updatedAt: application.updatedAt.toISOString(),
+  decidedAt: application.decidedAt ? application.decidedAt.toISOString() : null,
+  user: {
+    ...serializeUserWithOrigin(req, application.user),
+    isActive: application.user.isActive,
+    lastLoginAt: application.user.lastLoginAt ? application.user.lastLoginAt.toISOString() : null,
+    createdAt: application.user.createdAt.toISOString(),
+    updatedAt: application.user.updatedAt.toISOString(),
+  },
+  decidedBy: application.decidedBy
+    ? {
+        id: application.decidedBy.id,
+        displayName: application.decidedBy.displayName,
+        email: application.decidedBy.email,
+      }
+    : null,
+});
 
 const handleAvatarRequest = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -635,7 +733,238 @@ usersRouter.put('/:id/password', requireAuth, requireSelfOrAdmin, async (req, re
   }
 });
 
+usersRouter.get('/me/curator-application', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentication required.' });
+      return;
+    }
+
+    const latest = await prisma.curatorApplication.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      include: curatorApplicationUserInclude,
+    });
+
+    res.json({ application: latest ? serializeCuratorApplicationForUser(latest) : null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+usersRouter.post('/me/curator-application', requireAuth, async (req, res, next) => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ message: 'Authentication required.' });
+      return;
+    }
+
+    if (req.user.role !== 'USER') {
+      res.status(400).json({ message: 'Curator applications are only available to member accounts.' });
+      return;
+    }
+
+    const parsed = curatorApplicationSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Application submission failed.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const pending = await prisma.curatorApplication.findFirst({
+      where: { userId: req.user.id, status: CuratorApplicationStatus.PENDING },
+    });
+
+    if (pending) {
+      res.status(409).json({ message: 'An application is already awaiting review.' });
+      return;
+    }
+
+    const application = await prisma.curatorApplication.create({
+      data: {
+        userId: req.user.id,
+        message: parsed.data.message.trim(),
+      },
+      include: curatorApplicationUserInclude,
+    });
+
+    const admins = await prisma.user.findMany({
+      where: { role: 'ADMIN', isActive: true },
+      select: { id: true },
+    });
+
+    await Promise.all(
+      admins.map((admin) =>
+        createNotification({
+          userId: admin.id,
+          type: 'MODERATION_QUEUE',
+          title: 'New curator application',
+          body: `${req.user?.displayName ?? 'A member'} requested curator access.`,
+          data: {
+            category: 'curator-application',
+            applicationId: application.id,
+            applicantId: req.user?.id ?? null,
+          },
+        }),
+      ),
+    );
+
+    res.status(201).json({ application: serializeCuratorApplicationForUser(application) });
+  } catch (error) {
+    next(error);
+  }
+});
+
 usersRouter.use(requireAuth, requireAdmin);
+
+usersRouter.get('/curator-applications', async (req, res, next) => {
+  try {
+    const applications = await prisma.curatorApplication.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: curatorApplicationAdminInclude,
+    });
+
+    res.json({
+      applications: applications.map((application) => serializeCuratorApplicationForAdmin(req, application)),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+usersRouter.post('/curator-applications/:id/approve', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ message: 'Application ID missing.' });
+      return;
+    }
+
+    const parsed = curatorDecisionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Approval failed.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const existing = await prisma.curatorApplication.findUnique({
+      where: { id },
+      include: curatorApplicationAdminInclude,
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: 'Curator application not found.' });
+      return;
+    }
+
+    if (existing.status !== CuratorApplicationStatus.PENDING) {
+      res.status(400).json({ message: 'Curator application already resolved.' });
+      return;
+    }
+
+    const note = parsed.data.reason?.trim() ?? null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const resolved = await tx.curatorApplication.update({
+        where: { id },
+        data: {
+          status: CuratorApplicationStatus.APPROVED,
+          decisionReason: note,
+          decidedAt: new Date(),
+          decidedById: req.user?.id ?? null,
+        },
+        include: curatorApplicationAdminInclude,
+      });
+
+      await tx.user.update({
+        where: { id: existing.userId },
+        data: { role: 'CURATOR' },
+      });
+
+      return resolved;
+    });
+
+    await createNotification({
+      userId: updated.userId,
+      type: 'MODERATION',
+      title: 'Curator application approved',
+      body:
+        note && note.length > 0
+          ? note
+          : 'Welcome aboard! Your account now includes curator tools across VisionSuit.',
+      data: {
+        category: 'curator-application',
+        status: 'approved',
+        applicationId: updated.id,
+      },
+    });
+
+    res.json({ application: serializeCuratorApplicationForAdmin(req, updated) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+usersRouter.post('/curator-applications/:id/reject', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) {
+      res.status(400).json({ message: 'Application ID missing.' });
+      return;
+    }
+
+    const parsed = curatorDecisionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Rejection failed.', errors: parsed.error.flatten() });
+      return;
+    }
+
+    const existing = await prisma.curatorApplication.findUnique({
+      where: { id },
+      include: curatorApplicationAdminInclude,
+    });
+
+    if (!existing) {
+      res.status(404).json({ message: 'Curator application not found.' });
+      return;
+    }
+
+    if (existing.status !== CuratorApplicationStatus.PENDING) {
+      res.status(400).json({ message: 'Curator application already resolved.' });
+      return;
+    }
+
+    const note = parsed.data.reason?.trim() ?? null;
+
+    const updated = await prisma.curatorApplication.update({
+      where: { id },
+      data: {
+        status: CuratorApplicationStatus.REJECTED,
+        decisionReason: note,
+        decidedAt: new Date(),
+        decidedById: req.user?.id ?? null,
+      },
+      include: curatorApplicationAdminInclude,
+    });
+
+    await createNotification({
+      userId: updated.userId,
+      type: 'MODERATION',
+      title: 'Curator application reviewed',
+      body:
+        note && note.length > 0
+          ? note
+          : 'Thanks for applying. Share portfolio links or moderation experience before trying again.',
+      data: {
+        category: 'curator-application',
+        status: 'rejected',
+        applicationId: updated.id,
+      },
+    });
+
+    res.json({ application: serializeCuratorApplicationForAdmin(req, updated) });
+  } catch (error) {
+    next(error);
+  }
+});
 
 usersRouter.get('/', async (req, res, next) => {
   try {

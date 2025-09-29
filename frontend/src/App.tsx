@@ -13,7 +13,8 @@ import { UserProfile as UserProfileView } from './components/UserProfile';
 import { ServiceStatusPage } from './components/ServiceStatusPage';
 import { AccountSettingsDialog } from './components/AccountSettingsDialog';
 import { NotificationsCenter } from './components/NotificationsCenter';
-import { api } from './lib/api';
+import { CuratorApplicationDialog } from './components/CuratorApplicationDialog';
+import { ApiError, api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
 import { isAuditHiddenFromViewer, isAuditPlaceholderForViewer } from './lib/moderation';
@@ -34,6 +35,7 @@ import type {
   NotificationCategory,
   NotificationStreamEvent,
   NotificationType,
+  CuratorApplication,
 } from './types/api';
 
 type ViewKey =
@@ -259,6 +261,10 @@ export const App = () => {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
   const [registerError, setRegisterError] = useState<string | null>(null);
+  const [curatorApplication, setCuratorApplication] = useState<CuratorApplication | null>(null);
+  const [isCuratorApplicationOpen, setIsCuratorApplicationOpen] = useState(false);
+  const [isSubmittingCuratorApplication, setIsSubmittingCuratorApplication] = useState(false);
+  const [curatorApplicationError, setCuratorApplicationError] = useState<string | null>(null);
   const [focusedAssetId, setFocusedAssetId] = useState<string | null>(null);
   const [focusedGalleryId, setFocusedGalleryId] = useState<string | null>(null);
   const [modelTagQuery, setModelTagQuery] = useState<string | null>(null);
@@ -318,6 +324,13 @@ export const App = () => {
       setReturnView('home');
     }
   }, [activeView, canAccessGenerator]);
+
+  useEffect(() => {
+    if (authUser?.role !== 'USER') {
+      setCuratorApplication(null);
+      setIsCuratorApplicationOpen(false);
+    }
+  }, [authUser?.role]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -581,6 +594,19 @@ export const App = () => {
         setNotificationDeck(createEmptyNotificationDeck());
         setNotificationUnread(createEmptyNotificationCounts());
         setTotalUnreadNotifications(0);
+      }
+
+      if (token && authUser?.role === 'USER') {
+        try {
+          const { application } = await api.getMyCuratorApplication(token);
+          setCuratorApplication(application ?? null);
+          setCuratorApplicationError(null);
+        } catch (applicationError) {
+          console.error('Failed to load curator application', applicationError);
+          setCuratorApplication(null);
+        }
+      } else {
+        setCuratorApplication(null);
       }
       setErrorMessage(null);
     } catch (error) {
@@ -1067,6 +1093,42 @@ export const App = () => {
       return;
     }
     setIsGalleryUploadOpen(true);
+  };
+
+  const handleOpenCuratorApplication = () => {
+    if (!authUser || !token) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    setCuratorApplicationError(null);
+    setIsCuratorApplicationOpen(true);
+  };
+
+  const handleSubmitCuratorApplication = async (message: string) => {
+    if (!token) {
+      setCuratorApplicationError('Sign in to submit a curator application.');
+      return;
+    }
+
+    setIsSubmittingCuratorApplication(true);
+    setCuratorApplicationError(null);
+
+    try {
+      const response = await api.submitCuratorApplication(token, { message });
+      setCuratorApplication(response.application);
+      setToast({ type: 'success', message: 'Application submitted for review.' });
+      setIsCuratorApplicationOpen(false);
+    } catch (submissionError) {
+      const messageText =
+        submissionError instanceof ApiError
+          ? submissionError.message
+          : 'Failed to submit curator application. Please try again.';
+      setCuratorApplicationError(messageText);
+      throw submissionError;
+    } finally {
+      setIsSubmittingCuratorApplication(false);
+    }
   };
 
   const handleOpenGeneratorCta = useCallback(() => {
@@ -1565,11 +1627,21 @@ export const App = () => {
       totalPublished === 0
         ? '100%'
         : `${Math.max(0, Math.round(((totalPublished - pendingModeration) / totalPublished) * 100))}%`;
+    const curatorApplicationStatus = curatorApplication?.status ?? null;
+    const curatorCtaLabel = !authUser
+      ? 'Become curator'
+      : curatorApplicationStatus === 'PENDING'
+        ? 'Curator application pending'
+        : curatorApplicationStatus === 'REJECTED'
+          ? 'Reapply for curator'
+          : curatorApplicationStatus === 'APPROVED'
+            ? 'Curator application approved'
+            : 'Become curator';
     const callToActions = [
       {
         id: 'upload-model',
-        title: isCurator ? 'Upload model' : 'Become curator',
-        onClick: isCurator ? handleOpenAssetUpload : () => setIsLoginOpen(true),
+        title: isCurator ? 'Upload model' : curatorCtaLabel,
+        onClick: isCurator ? handleOpenAssetUpload : handleOpenCuratorApplication,
         accent: 'violet' as const,
       },
       {
@@ -2148,6 +2220,16 @@ export const App = () => {
           onPasswordChanged={(message) => {
             setToast({ type: 'success', message });
           }}
+        />
+      ) : null}
+      {authUser && token ? (
+        <CuratorApplicationDialog
+          isOpen={isCuratorApplicationOpen}
+          onClose={() => setIsCuratorApplicationOpen(false)}
+          onSubmit={handleSubmitCuratorApplication}
+          isSubmitting={isSubmittingCuratorApplication}
+          application={curatorApplication}
+          error={curatorApplicationError}
         />
       ) : null}
       <LoginDialog

@@ -1499,6 +1499,51 @@ body {
   line-height: 1.5;
 }
 
+.curator-application-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.curator-application-dialog__summary {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(203, 213, 225, 0.85);
+  line-height: 1.6;
+}
+
+.curator-application-dialog__panel {
+  margin: 0;
+  padding: 1.1rem 1.35rem;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.curator-application-dialog__panel h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #bfdbfe;
+}
+
+.curator-application-dialog__panel p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.9);
+  line-height: 1.6;
+}
+
+.curator-application-dialog__note {
+  font-size: 0.9rem;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.curator-application-dialog__form {
+  display: grid;
+  gap: 1rem;
+}
+
 .modal__header {
   display: flex;
   align-items: center;
@@ -2277,6 +2322,141 @@ body {
 .moderation-detail-dialog__actions {
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+.curator-application-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.curator-application-card {
+  padding: 1.35rem;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  display: grid;
+  gap: 1rem;
+}
+
+.curator-application-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.curator-application-card__identity h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #f8fafc;
+}
+
+.curator-application-card__identity span {
+  display: block;
+  margin-top: 0.25rem;
+  color: rgba(203, 213, 225, 0.8);
+  font-size: 0.9rem;
+}
+
+.curator-application-card__status {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 0.3rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.curator-application-card__status--pending {
+  background: rgba(96, 165, 250, 0.12);
+  color: rgba(147, 197, 253, 0.95);
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.curator-application-card__status--approved {
+  background: rgba(34, 197, 94, 0.14);
+  color: rgba(134, 239, 172, 0.95);
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.curator-application-card__status--rejected {
+  background: rgba(248, 113, 113, 0.14);
+  color: rgba(252, 165, 165, 0.95);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.curator-application-card__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.85rem;
+  margin: 0;
+}
+
+.curator-application-card__meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.curator-application-card__meta dt {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(148, 163, 184, 0.75);
+}
+
+.curator-application-card__meta dd {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.curator-application-card__message {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: rgba(226, 232, 240, 0.95);
+  line-height: 1.6;
+}
+
+.curator-application-card__note-field textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.curator-application-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.curator-application-card__resolution {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.curator-application-card__resolution p {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.9);
+  line-height: 1.6;
+}
+
+.curator-application-card__note {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(148, 163, 184, 0.85);
+  line-height: 1.5;
 }
 
 .user-onboarding-grid {
