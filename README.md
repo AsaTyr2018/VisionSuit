@@ -61,6 +61,16 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 - `./maintenance.sh update` – Refresh backend and frontend dependencies, then re-run the Prisma migration workflow to apply schema updates.
 - Historical helpers now live in `Legacy-scripts/` for reference if you need to review the previous combined launcher or installer behaviour.
 
+### Migrating from the legacy systemd unit
+
+Administrators who previously enabled the `visionsuit-dev.service` unit can switch to the maintenance controller by running the migration helper:
+
+```bash
+sudo ./scripts/migrate_systemd_to_maintenance.sh
+```
+
+The script stops and removes the legacy systemd unit, installs a `/usr/local/bin/visionsuit-maintenance` wrapper that proxies to `maintenance.sh`, and prints follow-up steps so production automation can call `visionsuit-maintenance start|stop|status` instead of the retired service.
+
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 
 ## Maintenance Restart Checklist

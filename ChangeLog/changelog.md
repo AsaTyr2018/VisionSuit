@@ -1562,3 +1562,8 @@
 - **Type**: Normal Change
 - **Reason**: Administrators needed a real-time cue when new assets enter the moderation queue so reviews start immediately without polling the dashboard.
 - **Changes**: Added an admin-only notification type emitted whenever a model or image is newly flagged, wired backend helpers to fan out the alerts, updated unread counts and the frontend notification type map, and clarified the moderation tab copy.
+
+## 245 – [Addition] Maintenance migration helper
+- **Type**: Normal Change
+- **Reason**: Production hosts that previously relied on the monolithic `visionsuit-dev.service` unit needed a guided path to adopt the new maintenance workflow without leaving orphaned systemd entries behind.
+- **Changes**: Added a `scripts/migrate_systemd_to_maintenance.sh` helper that disables and removes the legacy systemd service, installs a `/usr/local/bin/visionsuit-maintenance` wrapper for the unified maintenance controller, and documented the migration steps in the README.
