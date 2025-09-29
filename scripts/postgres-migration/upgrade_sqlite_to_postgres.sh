@@ -71,6 +71,7 @@ UPGRADE_PGLOADER_BIN="${UPGRADE_PGLOADER_BIN:-pgloader}"
 UPGRADE_PGLOADER_EXTRA_ARGS="${UPGRADE_PGLOADER_EXTRA_ARGS:-}"
 UPGRADE_HEALTHCHECK_CMD="${UPGRADE_HEALTHCHECK_CMD:-}"
 UPGRADE_SKIP_SANITY="${UPGRADE_SKIP_SANITY:-false}"
+UPGRADE_AUTOMATION_ONLY="${UPGRADE_AUTOMATION_ONLY:-false}"
 UPGRADE_SANITY_PRISMA_PROJECT="${UPGRADE_SANITY_PRISMA_PROJECT:-${UPGRADE_PRISMA_PROJECT_DIR}}"
 UPGRADE_SANITY_SSH_TARGET="${UPGRADE_SANITY_SSH_TARGET:-}"
 UPGRADE_SANITY_SSH_PORT="${UPGRADE_SANITY_SSH_PORT:-22}"
@@ -78,6 +79,66 @@ UPGRADE_SANITY_SSH_IDENTITY="${UPGRADE_SANITY_SSH_IDENTITY:-}"
 UPGRADE_SANITY_REQUIRED_EXTENSIONS="${UPGRADE_SANITY_REQUIRED_EXTENSIONS:-$UPGRADE_REQUIRED_EXTENSIONS}"
 UPGRADE_SANITY_MIN_POSTGRES_MAJOR="${UPGRADE_SANITY_MIN_POSTGRES_MAJOR:-14}"
 UPGRADE_SANITY_MIN_PRISMA_MAJOR="${UPGRADE_SANITY_MIN_PRISMA_MAJOR:-6}"
+UPGRADE_AUTOMATION_DIR="${UPGRADE_AUTOMATION_DIR:-${REPO_ROOT}/scripts/postgres-migration/generated}"
+UPGRADE_REMOTE_UNIX_USER="${UPGRADE_REMOTE_UNIX_USER:-visionsuit-migrator}"
+UPGRADE_REMOTE_SUDO_ACCESS="${UPGRADE_REMOTE_SUDO_ACCESS:-true}"
+UPGRADE_REMOTE_PG_ROLE="${UPGRADE_REMOTE_PG_ROLE:-visionsuit_migrate}"
+UPGRADE_REMOTE_PG_CREATEDB="${UPGRADE_REMOTE_PG_CREATEDB:-true}"
+UPGRADE_REMOTE_PG_DATABASE="${UPGRADE_REMOTE_PG_DATABASE:-visionsuit}"
+UPGRADE_REMOTE_SSH_KEY_NAME="${UPGRADE_REMOTE_SSH_KEY_NAME:-visionsuit_migration}"
+UPGRADE_REMOTE_CONFIG_FILENAME="${UPGRADE_REMOTE_CONFIG_FILENAME:-visionsuit_migration_config.env}"
+
+ensure_automation_assets() {
+  local automation_dir="$UPGRADE_AUTOMATION_DIR"
+  mkdir -p "$automation_dir"
+
+  local key_path="${automation_dir}/${UPGRADE_REMOTE_SSH_KEY_NAME}"
+  local pub_path="${key_path}.pub"
+  if [[ ! -f "$key_path" || ! -f "$pub_path" ]]; then
+    log "Generating dedicated SSH key pair for remote automation in ${automation_dir}."
+    ssh-keygen -t ed25519 -N '' -f "$key_path" >/dev/null
+  fi
+
+  local public_key
+  public_key=$(<"$pub_path")
+
+  local sudo_flag="false"
+  if parse_bool "$UPGRADE_REMOTE_SUDO_ACCESS"; then
+    sudo_flag="true"
+  fi
+
+  local createdb_flag="false"
+  if parse_bool "$UPGRADE_REMOTE_PG_CREATEDB"; then
+    createdb_flag="true"
+  fi
+
+  local config_path="${automation_dir}/${UPGRADE_REMOTE_CONFIG_FILENAME}"
+  {
+    printf '# VisionSuit migration automation config generated %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    printf 'UNIX_USER=%q\n' "$UPGRADE_REMOTE_UNIX_USER"
+    printf 'SUDO_ACCESS=%q\n' "$sudo_flag"
+    printf 'PG_ROLE=%q\n' "$UPGRADE_REMOTE_PG_ROLE"
+    printf 'PG_CREATEDB=%q\n' "$createdb_flag"
+    printf 'PG_DATABASE=%q\n' "$UPGRADE_REMOTE_PG_DATABASE"
+    printf 'SSH_PUBKEY=%q\n' "$public_key"
+  } >"$config_path"
+
+  chmod 600 "$config_path"
+
+  log "Prepared remote automation assets:"
+  log "  - SSH private key: ${key_path}"
+  log "  - SSH public key: ${pub_path}"
+  log "  - Remote config: ${config_path}"
+  log "Copy these files alongside remote_prepare_helper.sh before executing it on the PostgreSQL host."
+
+  if [[ -z "${UPGRADE_SANITY_SSH_IDENTITY// }" ]]; then
+    UPGRADE_SANITY_SSH_IDENTITY="$key_path"
+  fi
+
+  export VISIONSUIT_AUTOMATION_CONFIG="$config_path"
+  export VISIONSUIT_AUTOMATION_PUBLIC_KEY="$pub_path"
+  export VISIONSUIT_AUTOMATION_PRIVATE_KEY="$key_path"
+}
 
 set_bool() {
   local var_name="$1"
@@ -101,11 +162,20 @@ set_bool PRISMA_GENERATE "$UPGRADE_PRISMA_GENERATE"
 set_bool PRISMA_MIGRATE_STATUS "$UPGRADE_PRISMA_MIGRATE_STATUS"
 set_bool VERIFY_ROW_COUNTS "$UPGRADE_VERIFY_ROW_COUNTS"
 set_bool SKIP_SANITY "$UPGRADE_SKIP_SANITY"
+set_bool AUTOMATION_ONLY "$UPGRADE_AUTOMATION_ONLY"
 
 require_command sqlite3
 require_command psql
+require_command ssh-keygen
 if ! $DRY_RUN; then
   require_command "$UPGRADE_PGLOADER_BIN"
+fi
+
+ensure_automation_assets
+
+if $AUTOMATION_ONLY; then
+  log "UPGRADE_AUTOMATION_ONLY=true – automation assets are ready; exiting without running the migration sequence."
+  exit 0
 fi
 
 if ! $SKIP_SANITY; then

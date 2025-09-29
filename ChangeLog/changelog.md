@@ -1,3 +1,8 @@
+## 077 – [Normal Change] PostgreSQL migration automation bundle
+- **Type**: Normal Change
+- **Reason**: Operators asked for a nearly hands-free upgrade path so the remote helper, SSH credentials, and migration workflow stay in sync without manual parameter juggling.
+- **Change**: Taught `upgrade_sqlite_to_postgres.sh` to mint a dedicated SSH key pair and `visionsuit_migration_config.env`, added an `UPGRADE_AUTOMATION_ONLY` mode that exits after generating those assets, updated `remote_prepare_helper.sh` to auto-load the config and copy it to the deployment user, and refreshed the README with the streamlined rehearsal steps.
+
 ## 076 – [Normal Change] Remote preparation key export and guide
 - **Type**: Normal Change
 - **Reason**: Operators needed key-based root access, credential exports, and a dedicated playbook before VisionSuit could safely connect to the PostgreSQL target without managing database passwords.

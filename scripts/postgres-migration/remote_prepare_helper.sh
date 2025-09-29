@@ -5,35 +5,52 @@ SCRIPT_NAME="$(basename "$0")"
 
 usage() {
   cat <<USAGE
-Usage: $SCRIPT_NAME --unix-user <name> --pg-role <role> [options]
+Usage: $SCRIPT_NAME [--config <file>] --unix-user <name> --pg-role <role> [options]
 
 Prepare a remote host for VisionSuit PostgreSQL migrations by creating a dedicated SSH user
-and PostgreSQL role with the required privileges.
+and PostgreSQL role with the required privileges. When a configuration file is present the
+script becomes non-interactive so that operators only need to execute it remotely.
 
 Required arguments:
   --unix-user <name>        Linux user to create or update for SSH access.
   --pg-role <role>          PostgreSQL role used for migrations and schema changes.
 
 Optional arguments:
+  --config <file>           Source automation defaults from the provided file (default:
+                            visionsuit_migration_config.env next to this script).
   --ssh-pubkey <key>        Public key string to place in the UNIX user's and root's authorized_keys.
   --ssh-pubkey-file <path>  Read the public key from a local file on the remote host.
   --sudo-access             Add the UNIX user to the sudo group when available.
   --pg-createdb             Grant CREATEDB on the PostgreSQL role (default: disabled).
   --pg-database <name>      Grant CONNECT, TEMP, and CREATE on the specified database when it exists.
   -h, --help                Show this help text.
+
+The configuration file accepts the same variable names as the long options above. Variables set
+through CLI arguments take precedence over file-based defaults.
 USAGE
 }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_CONFIG_FILE="${SCRIPT_DIR}/visionsuit_migration_config.env"
 
 UNIX_USER=""
 SSH_PUBKEY=""
 SSH_PUBKEY_FILE=""
 SUDO_ACCESS=false
+CLI_SUDO_ACCESS_SET=false
 PG_ROLE=""
 PG_CREATEDB=false
+CLI_PG_CREATEDB_SET=false
 PG_DATABASE=""
+CONFIG_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --config)
+      [[ $# -lt 2 ]] && { echo "[remote-prepare] --config requires a value." >&2; usage; exit 1; }
+      CONFIG_FILE="$2"
+      shift 2
+      ;;
     --unix-user)
       [[ $# -lt 2 ]] && { echo "[remote-prepare] --unix-user requires a value." >&2; usage; exit 1; }
       UNIX_USER="$2"
@@ -51,6 +68,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --sudo-access)
       SUDO_ACCESS=true
+      CLI_SUDO_ACCESS_SET=true
       shift
       ;;
     --pg-role)
@@ -60,6 +78,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --pg-createdb)
       PG_CREATEDB=true
+      CLI_PG_CREATEDB_SET=true
       shift
       ;;
     --pg-database)
@@ -83,6 +102,43 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+CLI_UNIX_USER="$UNIX_USER"
+CLI_PG_ROLE="$PG_ROLE"
+CLI_PG_DATABASE="$PG_DATABASE"
+CLI_SSH_PUBKEY="$SSH_PUBKEY"
+CLI_SSH_PUBKEY_FILE="$SSH_PUBKEY_FILE"
+CLI_SUDO_ACCESS="$SUDO_ACCESS"
+CLI_PG_CREATEDB="$PG_CREATEDB"
+
+if [[ -z "$CONFIG_FILE" && -f "$DEFAULT_CONFIG_FILE" ]]; then
+  CONFIG_FILE="$DEFAULT_CONFIG_FILE"
+fi
+
+if [[ -n "$CONFIG_FILE" ]]; then
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "[remote-prepare] Configuration file ${CONFIG_FILE} does not exist." >&2
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$CONFIG_FILE"
+  echo "[remote-prepare] Loaded automation defaults from ${CONFIG_FILE}."
+  [[ -n "$CLI_UNIX_USER" ]] && UNIX_USER="$CLI_UNIX_USER"
+  [[ -n "$CLI_PG_ROLE" ]] && PG_ROLE="$CLI_PG_ROLE"
+  [[ -n "$CLI_PG_DATABASE" ]] && PG_DATABASE="$CLI_PG_DATABASE"
+  if ! $CLI_SUDO_ACCESS_SET; then
+    SUDO_ACCESS="$SUDO_ACCESS"
+  else
+    SUDO_ACCESS="$CLI_SUDO_ACCESS"
+  fi
+  if ! $CLI_PG_CREATEDB_SET; then
+    PG_CREATEDB="$PG_CREATEDB"
+  else
+    PG_CREATEDB="$CLI_PG_CREATEDB"
+  fi
+  [[ -n "$CLI_SSH_PUBKEY" ]] && SSH_PUBKEY="$CLI_SSH_PUBKEY"
+  [[ -n "$CLI_SSH_PUBKEY_FILE" ]] && SSH_PUBKEY_FILE="$CLI_SSH_PUBKEY_FILE"
+fi
 
 if [[ -z "$UNIX_USER" ]]; then
   echo "[remote-prepare] --unix-user is required." >&2
@@ -171,6 +227,8 @@ summary_file="${home_dir}/visionsuit_remote_access.txt"
 key_fingerprint="No SSH public key supplied."
 key_note="VisionSuit server must supply the matching private key to authenticate."
 root_login_status="Root login unavailable until an SSH key is installed."
+config_copy_path="${home_dir}/visionsuit_migration_config.env"
+config_summary_note="Applied configuration: (not supplied)"
 
 if [[ -n "$SSH_PUBKEY" ]]; then
   if command -v ssh-keygen >/dev/null 2>&1; then
@@ -191,6 +249,10 @@ fi
 createdb_status="disabled"
 if $PG_CREATEDB; then
   createdb_status="enabled"
+fi
+
+if [[ -n "$CONFIG_FILE" ]]; then
+  config_summary_note="Applied configuration: ${config_copy_path}"
 fi
 
 cat <<SUMMARY >"$summary_file"
@@ -216,11 +278,21 @@ Authentication: passwordless role provisioning (configure pg_hba.conf for host-b
 Notes
 -----
 ${key_note}
+
+Automation assets stored with this user:
+  - Remote summary: ${summary_file}
+  - ${config_summary_note}
 SUMMARY
 
 chmod 600 "$summary_file"
 chown "$UNIX_USER":"$UNIX_USER" "$summary_file"
 echo "[remote-prepare] Wrote access summary to ${summary_file}."
+
+if [[ -n "$CONFIG_FILE" ]]; then
+  echo "[remote-prepare] Copying automation configuration to ${config_copy_path}."
+  install -m 600 "$CONFIG_FILE" "$config_copy_path"
+  chown "$UNIX_USER":"$UNIX_USER" "$config_copy_path"
+fi
 
 run_as_postgres() {
   if command -v sudo >/dev/null 2>&1; then
