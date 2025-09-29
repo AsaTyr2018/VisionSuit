@@ -1592,3 +1592,8 @@
 - **Type**: Normal Change
 - **Reason**: Administrators could not select the base "User" role when inviting accounts, leaving new members stuck with curator defaults.
 - **Changes**: Added the Member option to the admin user-creation dialog, refreshed the review summary to surface the correct label, and ensured presets default to the intended community access role without console warnings.
+
+## 248 – [Update] Collection upload shortcuts
+- **Type**: Normal Change
+- **Reason**: Curators struggled to target specific collections during uploads because the wizard hid private galleries and forced navigation through a long, unsorted list.
+- **Changes**: Added a dedicated "Upload to this collection" action inside owned gallery details, allowed the wizard to preload that selection, exposed private collections by authenticating gallery lookups, and introduced a search field so curators can quickly filter the target list.
