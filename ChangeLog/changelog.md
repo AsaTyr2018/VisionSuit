@@ -1,3 +1,8 @@
+## 068 – [Normal Change] Maintenance restart checklist documentation
+- **Type**: Normal Change
+- **Reason**: The audit identified that README promised guided restart prompts even though only maintenance mode existed, leaving operators without documented steps for bringing services back after downtime.
+- **Change**: Replaced the outdated guided prompt claim with a manual restart checklist in the README and marked the audit recommendation as remediated.
+
 ## 067 – [Normal Change] English messaging consistency pass
 - **Type**: Normal Change
 - **Reason**: German strings persisted across installers, backend APIs, storage proxy responses, rollback tooling, and deletion confirmations, contradicting the English-only standard and confusing operators during audits.

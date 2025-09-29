@@ -8,7 +8,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 - Unified administrator workspace with environment alignment, `.env` synchronization for frontend and backend settings, and a dedicated service status page accessible from the footer with per-service health probes.
 - Toggleable GPU generation module that lets admins disable the On-Site Generator, hides its navigation entry, and clearly marks the GPU worker as deactivated on the live status page.
 - Role-aware access control backed by JWT authentication, admin onboarding flows, and guarded upload paths for curators.
-- Configurable registration policies and a maintenance mode that collapses the UI to an admin-only login gate, plus guided restart prompts for safe rollouts.
+- Configurable registration policies and a maintenance mode that collapses the UI to an admin-only login gate. Operators follow the documented restart checklist to bring services back online after upgrades without relying on in-app prompts.
 
 ### Moderation & Safety
 - Layered moderation queues with severity filters, audit trails, and rejection requirements for administrators.
@@ -56,6 +56,18 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 5. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services. Administrators can now launch Prisma Studio directly from the dashboard link—asset requests stay proxied through the backend so the interface loads end-to-end even when the frontend is served via the Vite development server. The proxy now rewrites Prisma Studio’s transport bootstrap so Prisma 6’s new `/api` default keeps flowing through the `/db` tunnel instead of colliding with the VisionSuit API namespace.
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
+
+## Maintenance Restart Checklist
+
+1. **Engage maintenance mode** – Toggle the "Enable maintenance mode (admins only)" switch under **Admin → Platform → Maintenance** or set `MAINTENANCE_MODE=true` in the backend environment configuration. Confirm the public UI shows the maintenance lock screen in an incognito browser session.
+2. **Restart application services** – Apply your deployment changes and restart the processes that run the backend API, frontend bundle, and GPU worker through your chosen supervisor (for example, `systemctl restart visionsuit-backend` or `pm2 restart visionsuit-backend`). Restart auxiliary services such as the asset proxy or CDN cache if they were part of the maintenance scope.
+3. **Verify health checks** – Call the platform status endpoint to confirm each service is healthy before reopening access:
+   ```bash
+   curl -s https://<your-host>/api/meta/platform | jq '{maintenanceMode, services}'
+   ```
+   Ensure `services.api`, `services.storage`, and `services.gpu` report `"status": "ONLINE"` (or `"UNKNOWN"` for intentionally offline components) and that `maintenanceMode` remains `true` while inspections run.
+4. **Restore optional modules** – Re-enable the GPU generator or other optional integrations from the admin settings once their workers are confirmed online.
+5. **Disable maintenance mode** – Flip the maintenance toggle off to reopen the site and monitor the notification center for any failure alerts triggered during restart.
 
 ## Database Maintenance
 
