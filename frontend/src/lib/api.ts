@@ -31,6 +31,8 @@ import type {
   NotificationsSummary,
   NotificationItem,
   NotificationCategory,
+  CuratorApplication,
+  CuratorApplicationSummary,
 } from '../types/api';
 
 import { buildApiUrl } from '../config';
@@ -698,6 +700,37 @@ export const api = {
     return request<{ profile: UserProfile }>(path, {}, options?.token);
   },
   getUsers: (token: string) => request<{ users: User[] }>('/api/users', {}, token),
+  getCuratorApplications: (token: string) =>
+    request<{ applications: CuratorApplicationSummary[] }>('/api/users/curator-applications', {}, token),
+  approveCuratorApplication: (token: string, id: string, payload?: { reason?: string }) =>
+    request<{ application: CuratorApplicationSummary }>(
+      `/api/users/curator-applications/${id}/approve`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+      token,
+    ),
+  rejectCuratorApplication: (token: string, id: string, payload?: { reason?: string }) =>
+    request<{ application: CuratorApplicationSummary }>(
+      `/api/users/curator-applications/${id}/reject`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+      token,
+    ),
+  getMyCuratorApplication: (token: string) =>
+    request<{ application: CuratorApplication | null }>('/api/users/me/curator-application', {}, token),
+  submitCuratorApplication: (token: string, payload: { message: string }) =>
+    request<{ application: CuratorApplication }>(
+      '/api/users/me/curator-application',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
   createUser: (token: string, payload: { email: string; displayName: string; password: string; role: string; bio?: string }) =>
     request<{ user: User }>(
       '/api/users',

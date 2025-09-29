@@ -1567,3 +1567,13 @@
 - **Type**: Normal Change
 - **Reason**: Production hosts that previously relied on the monolithic `visionsuit-dev.service` unit needed a guided path to adopt the new maintenance workflow without leaving orphaned systemd entries behind.
 - **Changes**: Added a `scripts/migrate_systemd_to_maintenance.sh` helper that disables and removes the legacy systemd service, installs a `/usr/local/bin/visionsuit-maintenance` wrapper for the unified maintenance controller, and documented the migration steps in the README.
+
+## 246 – [Addition] Curator application workflow
+- **Type**: Normal Change
+- **Reason**: Members needed a guided way to request curator promotion and provide context without relying on direct admin contact or manual account edits.
+- **Changes**: Added a Prisma-backed curator application table with migrations, exposed member submission and admin approval/rejection routes with notifications, introduced a frontend application dialog plus admin review console, refreshed styles, and updated the README to highlight the new flow.
+
+## 247 – [Fix] Member role provisioning clarity
+- **Type**: Normal Change
+- **Reason**: Administrators could not select the base "User" role when inviting accounts, leaving new members stuck with curator defaults.
+- **Changes**: Added the Member option to the admin user-creation dialog, refreshed the review summary to surface the correct label, and ensured presets default to the intended community access role without console warnings.

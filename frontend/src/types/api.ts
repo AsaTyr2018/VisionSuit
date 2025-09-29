@@ -21,6 +21,24 @@ export interface User {
   showAdultContent: boolean;
 }
 
+export type CuratorApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface CuratorApplication {
+  id: string;
+  userId: string;
+  status: CuratorApplicationStatus;
+  message: string;
+  decisionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
+  decidedBy: { id: string; displayName: string; email?: string } | null;
+}
+
+export interface CuratorApplicationSummary extends CuratorApplication {
+  user: User;
+}
+
 export type NotificationType = 'ANNOUNCEMENT' | 'MODERATION' | 'MODERATION_QUEUE' | 'LIKE' | 'COMMENT';
 export type NotificationCategory = 'announcements' | 'moderation' | 'likes' | 'comments';
 

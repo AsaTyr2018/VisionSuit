@@ -24,6 +24,12 @@ enum ModerationStatus {
   REMOVED
 }
 
+enum CuratorApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ModerationEntityType {
   MODEL
   IMAGE
@@ -80,6 +86,25 @@ model User {
   notifications          Notification[]
   modelModerationReports ModelModerationReport[]
   imageModerationReports ImageModerationReport[]
+  curatorApplications    CuratorApplication[]
+  curatorDecisions       CuratorApplication[] @relation("CuratorApplicationDecider")
+}
+
+model CuratorApplication {
+  id             String                    @id @default(cuid())
+  userId         String
+  user           User                      @relation(fields: [userId], references: [id])
+  message        String
+  status         CuratorApplicationStatus  @default(PENDING)
+  decisionReason String?
+  decidedAt      DateTime?
+  decidedById    String?
+  decidedBy      User?                     @relation("CuratorApplicationDecider", fields: [decidedById], references: [id])
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@index([status])
+  @@index([userId])
 }
 
 model Gallery {
