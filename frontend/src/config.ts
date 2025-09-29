@@ -1,5 +1,5 @@
 const resolveApiBase = () => {
-  const rawValue = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+  const rawValue = import.meta.env.VITE_API_URL ?? '@origin';
   const trimmed = rawValue.trim();
 
   const sameOriginTokens = new Set(['', '/', '@origin', 'origin', 'same-origin', 'relative']);
