@@ -52,15 +52,21 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
    ```bash
    ./maintenance.sh start
    ```
-   The maintenance hub now launches the dedicated `vs-Backend` and `vs-Frontend` service scripts, refreshing the Prisma client before the API boots and tailing logs to `./logs`. The backend still downloads the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` so you can monitor progress. VisionSuit continues to degrade gracefully if the native ONNX Runtime CPU backend cannot load (for example, when `onnxruntime-node` lacks binaries for the installed Node.js version): startup logs `[startup] Auto tagger disabled`, the stack keeps serving requests, and affected uploads are flagged with a descriptive `tagScanError`. Reinstall the dependency with `npm --prefix backend rebuild onnxruntime-node`, align the Node.js version with the published binaries, or set `ORT_BACKEND_PATH` to the directory that contains the native bindings to restore automatic tagging.
+   Installation now provisions `vs-backend.service` and `vs-frontend.service` so `./maintenance.sh start` simply proxies to `systemctl` on hosts with systemd. The backend still downloads the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` so you can monitor progress. VisionSuit continues to degrade gracefully if the native ONNX Runtime CPU backend cannot load (for example, when `onnxruntime-node` lacks binaries for the installed Node.js version): startup logs `[startup] Auto tagger disabled`, the stack keeps serving requests, and affected uploads are flagged with a descriptive `tagScanError`. Reinstall the dependency with `npm --prefix backend rebuild onnxruntime-node`, align the Node.js version with the published binaries, or set `ORT_BACKEND_PATH` to the directory that contains the native bindings to restore automatic tagging.
 5. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services. Administrators can now launch Prisma Studio directly from the dashboard link—asset requests stay proxied through the backend so the interface loads end-to-end even when the frontend is served via the Vite development server. The proxy now rewrites Prisma Studio’s transport bootstrap so Prisma 6’s new `/api` default keeps flowing through the `/db` tunnel instead of colliding with the VisionSuit API namespace.
 
 ## Service Control
 
-- `./maintenance.sh status` – Display aggregate health information from the `vs-Backend` and `vs-Frontend` service helpers alongside Prisma Studio if it is enabled.
-- `./maintenance.sh stop` / `./maintenance.sh restart` – Gracefully stop or restart both services in sequence. Individual service wrappers live in `services/vs-backend.sh` and `services/vs-frontend.sh` when you need fine-grained control.
-- `./maintenance.sh update` – Refresh backend and frontend dependencies, then re-run the Prisma migration workflow to apply schema updates.
+- `./maintenance.sh status` – Proxy to `systemctl status` when the managed units are installed, or fall back to the legacy shell wrappers when systemd is unavailable.
+- `./maintenance.sh stop` / `./maintenance.sh restart` – Gracefully stop or restart both services, using `systemctl` when present and the historical PID managers otherwise.
+- `./maintenance.sh update` – Refresh backend and frontend dependencies, re-run Prisma migrations, reinstall the systemd unit files, and restart both services with the new build.
 - Historical helpers now live in `Legacy-scripts/` for reference if you need to review the previous combined launcher or installer behaviour.
+
+### Systemd deployment notes
+
+- Systemd unit templates reside in `services/systemd/` and render to `/etc/systemd/system/vs-backend.service` and `/etc/systemd/system/vs-frontend.service` with the repository path baked in during installation.
+- Override runtime configuration with optional environment files at `/etc/visionsuit/vs-backend.env` and `/etc/visionsuit/vs-frontend.env` before restarting the services.
+- Hosts without systemd continue to use the legacy shell controllers; the maintenance entry points detect the environment automatically.
 
 ### Migrating from the legacy systemd unit
 
