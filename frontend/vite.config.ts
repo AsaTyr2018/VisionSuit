@@ -171,11 +171,25 @@ const resolveApiProxy = (env: Record<string, string>) => {
     },
   }
 
-  if (!mappings['/db']) {
-    mappings['/db'] = {
-      target: proxyTarget,
-      changeOrigin: true,
-      ws: true,
+  const prismaProxyPaths: Array<[string, ProxyOptions]> = [
+    [
+      '/db',
+      {
+        target: proxyTarget,
+        changeOrigin: true,
+        ws: true,
+      },
+    ],
+    ['/http', { target: proxyTarget, changeOrigin: true }],
+    ['/assets', { target: proxyTarget, changeOrigin: true }],
+    ['/index.css', { target: proxyTarget, changeOrigin: true }],
+    ['/manifest.webmanifest', { target: proxyTarget, changeOrigin: true }],
+    ['/favicon.ico', { target: proxyTarget, changeOrigin: true }],
+  ]
+
+  for (const [path, options] of prismaProxyPaths) {
+    if (!mappings[path]) {
+      mappings[path] = options
     }
   }
 

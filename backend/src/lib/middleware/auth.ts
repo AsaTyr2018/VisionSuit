@@ -3,10 +3,19 @@ import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../prisma';
 import { toAuthUser, verifyAccessToken } from '../auth';
 import { appConfig } from '../../config';
-import { PRISMA_STUDIO_COOKIE_NAME } from '../../devtools/constants';
+import {
+  PRISMA_STUDIO_COOKIE_NAME,
+  PRISMA_STUDIO_COOKIE_PATH,
+  PRISMA_STUDIO_PROXY_PREFIXES,
+} from '../../devtools/constants';
 
-const isPrismaStudioRequest = (req: Request) =>
-  req.baseUrl.startsWith('/db') || req.originalUrl.startsWith('/db');
+const isPrismaStudioRequest = (req: Request) => {
+  const url = req.originalUrl ?? '';
+  const base = req.baseUrl ?? '';
+  return PRISMA_STUDIO_PROXY_PREFIXES.some(
+    (prefix) => url.startsWith(prefix) || base.startsWith(prefix),
+  );
+};
 
 const extractTokenFromQuery = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -98,7 +107,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     const token = extractToken(req);
     if (!token) {
       if (isPrismaStudioRequest(req)) {
-        res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+        res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
       }
       res.status(401).json({ message: 'Authentication token missing.' });
       return;
@@ -121,7 +130,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
 
     if (!user || !user.isActive) {
       if (isPrismaStudioRequest(req)) {
-        res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+        res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
       }
       res.status(401).json({ message: 'Benutzerkonto nicht verfügbar oder deaktiviert.' });
       return;
@@ -136,7 +145,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     next();
   } catch (error) {
     if (isPrismaStudioRequest(req)) {
-      res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+      res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
     }
     res.status(401).json({ message: 'Token ungültig oder abgelaufen.' });
   }
@@ -170,7 +179,7 @@ export const attachOptionalUser = async (req: Request, res: Response, next: Next
     }
   } catch (error) {
     if (isPrismaStudioRequest(req)) {
-      res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: '/db' });
+      res.clearCookie(PRISMA_STUDIO_COOKIE_NAME, { path: PRISMA_STUDIO_COOKIE_PATH });
     }
     if (process.env.NODE_ENV === 'development') {
       // eslint-disable-next-line no-console

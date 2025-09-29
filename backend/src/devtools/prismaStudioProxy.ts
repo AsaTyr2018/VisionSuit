@@ -9,11 +9,12 @@ import type { RequestHandler } from 'express';
 import { appConfig } from '../config';
 import { prisma } from '../lib/prisma';
 import { verifyAccessToken } from '../lib/auth';
-import { PRISMA_STUDIO_COOKIE_NAME } from './constants';
+import { PRISMA_STUDIO_COOKIE_NAME, PRISMA_STUDIO_PROXY_PREFIXES } from './constants';
 
 type UpgradeHandler = (req: IncomingMessage, socket: Socket, head: Buffer) => Promise<boolean>;
 
-const isPrismaRequest = (url: string | undefined) => Boolean(url && url.startsWith('/db'));
+const isPrismaRequest = (url: string | undefined) =>
+  Boolean(url && PRISMA_STUDIO_PROXY_PREFIXES.some((prefix) => url.startsWith(prefix)));
 
 const sanitizeProxyPath = (originalUrl: string | undefined): string => {
   if (!originalUrl) {
