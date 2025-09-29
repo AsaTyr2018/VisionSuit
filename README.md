@@ -101,6 +101,13 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
   ```
   The script writes a timestamped copy of the database next to the original file, removes the legacy migration entries from `_prisma_migrations`, and uses `prisma migrate resolve` to register `00000000000000_baseline` so subsequent deploys and `prisma migrate deploy` executions align with the trimmed migration directory.
 
+### PostgreSQL Migration Planning
+
+- **PostgreSQL migration workspace** – Early planning artifacts and placeholder automation for moving from SQLite to a remote PostgreSQL instance now live in `scripts/postgres-migration/`. The directory includes:
+  - `PROJECT_PLAN.md` outlining goals, deliverables, and the development timeline for the migration effort.
+  - `prepare_postgres_target.sh`, `fresh_install_postgres_setup.sh`, and `upgrade_sqlite_to_postgres.sh` placeholder scripts that will orchestrate target validation, fresh installs, and production upgrades once implementation begins.
+- The upgrade script sequence is designed to toggle maintenance mode, back up the SQLite database, import data into PostgreSQL, validate the cutover, and disable maintenance mode after health checks succeed. Future revisions will automate connectivity checks against remote database hosts before the migration starts.
+
 ## Moderation CLI Helpers
 
 - **Approve all flagged assets** – Clear the moderation queue in one sweep after an incident review:
