@@ -99,6 +99,8 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
 - [Technical Overview](docs/technical-overview.md)
 - [NSFW Moderation Deployment Plan](docs/nsfw-deployment-plan.md)
 - [Workflow Plan](docs/workflow-plan.md)
+- [Project Audit — 2025-10-05](docs/project-audit-2025-10-05.md)
+- [Project Audit — 2025-09-27](docs/project-audit-2025-09-27.md)
 - Additional planning notes and community updates live alongside these documents in the `docs/` directory.
 
 ## Community & Support
