@@ -1,4 +1,4 @@
-# Project Audit — 2025-10-05
+# Project Audit — 2025-09-29
 
 ## Scorecard
 | Area | Score | Rationale |
