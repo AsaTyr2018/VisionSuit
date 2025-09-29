@@ -1,3 +1,8 @@
+## 071 – [Normal Change] Systemd rollout for maintenance workflow
+- **Type**: Normal Change
+- **Reason**: The PID-based shell launchers required manual babysitting during updates and could leave orphaned processes when deployments switched to the systemd-backed environment.
+- **Change**: Updated `maintenance.sh` to install and manage `vs-backend.service` and `vs-frontend.service`, shut down legacy PID runners during installs and updates, and documented the new unit templates and environment overrides in the README.
+
 ## 070 – [Emergency Change] Curator dialog hook order fix
 - **Type**: Emergency Change
 - **Reason**: Opening the curator application dialog as a member crashed the UI because React detected a changing hook order between closed and open renders, breaking the modal experience for normal users.

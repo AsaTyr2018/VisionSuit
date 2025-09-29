@@ -1,0 +1,14 @@
+[Unit]
+Description=VisionSuit Frontend Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@ROOT_DIR@/frontend
+EnvironmentFile=-/etc/visionsuit/vs-frontend.env
+ExecStart=/usr/bin/env npm run dev
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
