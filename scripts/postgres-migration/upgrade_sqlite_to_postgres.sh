@@ -18,8 +18,49 @@ if [[ ! -f "${SQLITE_PATH}" ]]; then
   exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+parse_bool() {
+  local value="${1:-}"
+  case "${value,,}" in
+    ""|"1"|"true"|"yes"|"on")
+      return 0
+      ;;
+    "0"|"false"|"no"|"off")
+      return 1
+      ;;
+    *)
+      echo "[upgrade] Invalid boolean value: ${value}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+UPGRADE_SKIP_TARGET_PREPARE="${UPGRADE_SKIP_TARGET_PREPARE:-false}"
+UPGRADE_REQUIRED_EXTENSIONS="${UPGRADE_REQUIRED_EXTENSIONS:-pg_trgm,uuid-ossp}"
+UPGRADE_REQUIRE_TLS="${UPGRADE_REQUIRE_TLS:-true}"
+UPGRADE_CREATE_DB="${UPGRADE_CREATE_DB:-false}"
+
+if ! parse_bool "$UPGRADE_SKIP_TARGET_PREPARE"; then
+  declare -a PREPARE_ARGS
+  if parse_bool "$UPGRADE_CREATE_DB"; then
+    PREPARE_ARGS+=("--create-db")
+  fi
+  if [[ -n "${UPGRADE_REQUIRED_EXTENSIONS// }" ]]; then
+    PREPARE_ARGS+=("--extensions" "$UPGRADE_REQUIRED_EXTENSIONS")
+  fi
+  if parse_bool "$UPGRADE_REQUIRE_TLS"; then
+    PREPARE_ARGS+=("--require-tls")
+  fi
+  echo "[upgrade] Running target validation before migration."
+  "${SCRIPT_DIR}/prepare_postgres_target.sh" "${PREPARE_ARGS[@]}" "$POSTGRES_URL"
+else
+  echo "[upgrade] Skipping target validation (UPGRADE_SKIP_TARGET_PREPARE=true)."
+fi
+
 cat <<PLAN
 [upgrade] Planned workflow (not yet implemented):
+  Step 0. Confirm the PostgreSQL target is ready (this script now runs prepare_postgres_target.sh unless skipped).
   Step 1. Enable maintenance mode via maintenance.sh or the admin API to freeze writes.
   Step 2. Create a timestamped backup copy of ${SQLITE_PATH} and archive it for rollback.
   Step 3. Export SQLite data and import it into PostgreSQL at ${POSTGRES_URL}.
@@ -37,7 +78,6 @@ PLAN
 
 cat <<'TODO'
 [upgrade] TODO: Implement the following helpers during development:
-  - Automatic invocation of prepare_postgres_target.sh with credentials.
   - Integrity check comparing row counts between SQLite and PostgreSQL.
   - Structured logging for each migration phase to assist with audit trails.
   - Optional dry-run flag that performs all checks without switching production traffic.

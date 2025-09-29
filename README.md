@@ -103,10 +103,11 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
 
 ### PostgreSQL Migration Planning
 
-- **PostgreSQL migration workspace** – Early planning artifacts and placeholder automation for moving from SQLite to a remote PostgreSQL instance now live in `scripts/postgres-migration/`. The directory includes:
+- **PostgreSQL migration workspace** – Early planning artifacts and evolving automation for moving from SQLite to a remote PostgreSQL instance now live in `scripts/postgres-migration/`. The directory includes:
   - `PROJECT_PLAN.md` outlining goals, deliverables, and the development timeline for the migration effort.
-  - `prepare_postgres_target.sh`, `fresh_install_postgres_setup.sh`, and `upgrade_sqlite_to_postgres.sh` placeholder scripts that will orchestrate target validation, fresh installs, and production upgrades once implementation begins.
-- The upgrade script sequence is designed to toggle maintenance mode, back up the SQLite database, import data into PostgreSQL, validate the cutover, and disable maintenance mode after health checks succeed. Future revisions will automate connectivity checks against remote database hosts before the migration starts.
+  - `prepare_postgres_target.sh`, which now validates connectivity, optionally creates the target database, enforces TLS policies, and installs required extensions before the cutover.
+  - `fresh_install_postgres_setup.sh` and `upgrade_sqlite_to_postgres.sh`, which call the target preparation helper automatically (unless skipped via environment flags) before continuing with install or upgrade workflows.
+- The upgrade script sequence toggles maintenance mode, backs up the SQLite database, imports data into PostgreSQL, validates the cutover, and disables maintenance mode after health checks succeed. Upcoming revisions will focus on data integrity checks and richer audit logging once the migration flow is fully automated.
 
 ## Moderation CLI Helpers
 
