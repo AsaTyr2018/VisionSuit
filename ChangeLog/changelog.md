@@ -1,3 +1,8 @@
+## 062 – [Normal Change] Prisma Studio transport rewrite for `/db`
+- **Type**: Normal Change
+- **Reason**: Prisma Studio 6 switched its internal HTTP transport to `/api`, so proxied sessions under `/db` kept calling the VisionSuit API namespace and received 404 responses instead of reaching the Prisma service.
+- **Change**: Rewrote the proxied Prisma Studio bootstrap scripts on the fly to detect the proxied base path, redirect transport calls back through `/db/http`, and updated the README to note the compatibility shim for the new Prisma Studio default.
+
 ## 061 – [Normal Change] Prisma Studio asset proxy alignment
 - **Type**: Normal Change
 - **Reason**: Opening Prisma Studio from the dashboard failed because requests for `/http/databrowser.js`, `/assets/index.js`, and the stylesheet landed on the frontend dev server, which returned HTML with a `text/html` MIME type that the browser refused to execute as JavaScript or CSS.
