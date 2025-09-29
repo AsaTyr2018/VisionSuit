@@ -245,6 +245,7 @@ export const App = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isAssetUploadOpen, setIsAssetUploadOpen] = useState(false);
   const [isGalleryUploadOpen, setIsGalleryUploadOpen] = useState(false);
+  const [galleryUploadTarget, setGalleryUploadTarget] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [platformConfig, setPlatformConfig] = useState<PlatformConfig>({
     siteTitle: defaultSiteTitle,
@@ -956,6 +957,7 @@ export const App = () => {
     if (!isAuthenticated) {
       setIsAssetUploadOpen(false);
       setIsGalleryUploadOpen(false);
+      setGalleryUploadTarget(null);
       setIsAccountSettingsOpen(false);
     }
   }, [isAuthenticated]);
@@ -972,6 +974,7 @@ export const App = () => {
     } else {
       setToast({ type: 'error', message: result.message });
     }
+    setGalleryUploadTarget(null);
   };
 
   const handleAssetUpdated = useCallback((updatedAsset: ModelAsset) => {
@@ -1080,7 +1083,7 @@ export const App = () => {
     setIsAssetUploadOpen(true);
   };
 
-  const handleOpenGalleryUpload = () => {
+  const handleOpenGalleryUpload = (targetGallerySlug?: string) => {
     if (!isAuthenticated) {
       setIsLoginOpen(true);
       return;
@@ -1092,6 +1095,7 @@ export const App = () => {
       });
       return;
     }
+    setGalleryUploadTarget(targetGallerySlug ?? null);
     setIsGalleryUploadOpen(true);
   };
 
@@ -2204,8 +2208,12 @@ export const App = () => {
       <UploadWizard
         mode="gallery"
         isOpen={isGalleryUploadOpen}
-        onClose={() => setIsGalleryUploadOpen(false)}
+        onClose={() => {
+          setIsGalleryUploadOpen(false);
+          setGalleryUploadTarget(null);
+        }}
         onComplete={handleWizardCompletion}
+        initialTargetGallery={galleryUploadTarget ?? undefined}
       />
       {isAuthenticated && token && authUser ? (
         <AccountSettingsDialog

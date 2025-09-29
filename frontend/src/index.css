@@ -7607,6 +7607,30 @@ main {
   display: block;
 }
 
+.upload-wizard__gallery-search {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.upload-wizard__gallery-search input {
+  width: 100%;
+  padding: 0.6rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.upload-wizard__gallery-search input::placeholder {
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.upload-wizard__gallery-search input:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+}
+
 .upload-wizard__gallery-select select {
   width: 100%;
   padding: 0.7rem 1rem;
@@ -8208,6 +8232,26 @@ button {
   display: flex;
   align-items: center;
   gap: 0.65rem;
+}
+
+.gallery-detail__upload {
+  border: none;
+  background: rgba(34, 197, 94, 0.28);
+  color: rgba(236, 253, 245, 0.95);
+  border-radius: 999px;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.gallery-detail__upload:hover,
+.gallery-detail__upload:focus-visible {
+  background: rgba(34, 197, 94, 0.45);
+  color: #ffffff;
+  outline: none;
 }
 
 .gallery-detail__edit {

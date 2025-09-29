@@ -15,7 +15,7 @@ import { CommentSection } from './CommentSection';
 interface GalleryExplorerProps {
   galleries: Gallery[];
   isLoading: boolean;
-  onStartGalleryDraft: () => void;
+  onStartGalleryDraft: (targetGallerySlug?: string) => void;
   onNavigateToModel?: (modelId: string) => void;
   initialGalleryId?: string | null;
   onCloseDetail?: () => void;
@@ -977,7 +977,7 @@ export const GalleryExplorer = ({
             Curated collections with random preview tiles, fixed column widths, and detailed image views including EXIF data.
           </p>
         </div>
-        <button type="button" className="panel__action" onClick={onStartGalleryDraft}>
+        <button type="button" className="panel__action" onClick={() => onStartGalleryDraft()}>
           Open gallery upload
         </button>
       </header>
@@ -1175,6 +1175,16 @@ export const GalleryExplorer = ({
                 <div className="gallery-detail__actions">
                   {canManageActiveGallery ? (
                     <>
+                      <button
+                        type="button"
+                        className="gallery-detail__upload"
+                        onClick={() => {
+                          closeDetail();
+                          onStartGalleryDraft(activeGallery.slug);
+                        }}
+                      >
+                        Upload to this collection
+                      </button>
                       <button
                         type="button"
                         className="gallery-detail__edit"

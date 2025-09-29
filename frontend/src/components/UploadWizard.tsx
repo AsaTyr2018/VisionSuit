@@ -17,6 +17,7 @@ interface UploadWizardProps {
   onClose: () => void;
   onComplete?: (result: UploadWizardResult) => void;
   mode?: UploadWizardMode;
+  initialTargetGallery?: string;
 }
 
 const stepDefinitions = [
@@ -118,7 +119,13 @@ const simulateProgress = (update: (value: number) => void) =>
     }, 280);
   });
 
-export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: UploadWizardProps) => {
+export const UploadWizard = ({
+  isOpen,
+  onClose,
+  onComplete,
+  mode = 'asset',
+  initialTargetGallery,
+}: UploadWizardProps) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [formState, setFormState] = useState<UploadFormState>(() => buildInitialState(mode));
   const [tagDraft, setTagDraft] = useState('');
@@ -130,6 +137,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
   const [availableGalleries, setAvailableGalleries] = useState<Gallery[]>([]);
   const [isLoadingGalleries, setIsLoadingGalleries] = useState(false);
   const [galleryError, setGalleryError] = useState<string | null>(null);
+  const [gallerySearchTerm, setGallerySearchTerm] = useState('');
   const { token, user } = useAuth();
 
   const isGalleryMode = mode === 'gallery';
@@ -152,6 +160,29 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
     () => availableGalleries.find((gallery) => gallery.slug === formState.targetGallery.trim()),
     [availableGalleries, formState.targetGallery],
   );
+
+  const normalizedGallerySearch = gallerySearchTerm.trim().toLowerCase();
+
+  const displayedGalleries = useMemo(() => {
+    if (!normalizedGallerySearch) {
+      return availableGalleries;
+    }
+
+    const matches = availableGalleries.filter((gallery) => {
+      const ownerName = gallery.owner?.displayName ?? '';
+      const haystack = `${gallery.title} ${gallery.slug} ${ownerName}`.toLowerCase();
+      return haystack.includes(normalizedGallerySearch);
+    });
+
+    if (
+      selectedTargetGallery &&
+      !matches.some((gallery) => gallery.id === selectedTargetGallery.id)
+    ) {
+      return [...matches, selectedTargetGallery];
+    }
+
+    return matches;
+  }, [availableGalleries, normalizedGallerySearch, selectedTargetGallery]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -185,6 +216,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       setAvailableGalleries([]);
       setIsLoadingGalleries(false);
       setGalleryError(null);
+      setGallerySearchTerm('');
     }
   }, [isOpen, mode]);
 
@@ -200,7 +232,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       setGalleryError(null);
 
       try {
-        const entries = await api.getGalleries();
+        const entries = await api.getGalleries(token ?? undefined);
         if (!isActive) return;
 
         const filtered =
@@ -226,7 +258,7 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
     return () => {
       isActive = false;
     };
-  }, [isOpen, isGalleryMode, userId, userRole]);
+  }, [isOpen, isGalleryMode, token, userId, userRole]);
 
   useEffect(() => {
     if (!isGalleryMode || formState.galleryMode !== 'existing') {
@@ -246,6 +278,27 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
       setFormState((prev) => ({ ...prev, targetGallery: availableGalleries[0].slug }));
     }
   }, [availableGalleries, formState.galleryMode, formState.targetGallery, isGalleryMode]);
+
+  useEffect(() => {
+    if (!isOpen || !isGalleryMode || !initialTargetGallery) {
+      return;
+    }
+
+    setFormState((previous) => {
+      if (
+        previous.galleryMode === 'existing' &&
+        previous.targetGallery.trim() === initialTargetGallery.trim()
+      ) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        galleryMode: 'existing',
+        targetGallery: initialTargetGallery,
+      };
+    });
+  }, [initialTargetGallery, isGalleryMode, isOpen]);
 
   const handleAddTag = () => {
     const trimmed = tagDraft.trim();
@@ -824,6 +877,16 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
                   </div>
                   {formState.galleryMode === 'existing' ? (
                     <div className="upload-wizard__gallery-select">
+                      <label className="upload-wizard__gallery-search">
+                        <span className="sr-only">Search collections</span>
+                        <input
+                          type="search"
+                          value={gallerySearchTerm}
+                          onChange={(event) => setGallerySearchTerm(event.target.value)}
+                          placeholder="Search by title or curator"
+                          disabled={isLoadingGalleries || availableGalleries.length === 0}
+                        />
+                      </label>
                       <label>
                         <span className="sr-only">Existing gallery</span>
                         <select
@@ -840,9 +903,9 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
                                 ? 'No gallery available'
                                 : 'Select a gallery'}
                           </option>
-                          {availableGalleries.map((gallery) => (
+                          {displayedGalleries.map((gallery) => (
                             <option key={gallery.id} value={gallery.slug}>
-                              {gallery.title} · {gallery.owner.displayName}
+                              {gallery.title} · {gallery.owner?.displayName ?? 'Unknown curator'}
                             </option>
                           ))}
                         </select>
@@ -854,7 +917,15 @@ export const UploadWizard = ({ isOpen, onClose, onComplete, mode = 'asset' }: Up
                       ) : null}
                       {!galleryError && !isLoadingGalleries && availableGalleries.length === 0 ? (
                         <p className="upload-wizard__helper">
-                          No matching galleries found. Create a new gallery or adjust the selection.
+                          You do not have any collections yet. Create a new gallery to organize your images.
+                        </p>
+                      ) : null}
+                      {!galleryError &&
+                      !isLoadingGalleries &&
+                      availableGalleries.length > 0 &&
+                      displayedGalleries.length === 0 ? (
+                        <p className="upload-wizard__helper">
+                          No collections match your search. Try different keywords or clear the search field.
                         </p>
                       ) : null}
                     </div>
