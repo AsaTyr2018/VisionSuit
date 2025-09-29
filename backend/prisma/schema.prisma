@@ -38,6 +38,7 @@ enum ModerationActionType {
 enum NotificationType {
   ANNOUNCEMENT
   MODERATION
+  MODERATION_QUEUE
   LIKE
   COMMENT
 }

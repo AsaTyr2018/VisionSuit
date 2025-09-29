@@ -106,6 +106,7 @@ const notificationCategories: NotificationCategory[] = ['announcements', 'modera
 const notificationTypeToCategory: Record<NotificationType, NotificationCategory> = {
   ANNOUNCEMENT: 'announcements',
   MODERATION: 'moderation',
+  MODERATION_QUEUE: 'moderation',
   LIKE: 'likes',
   COMMENT: 'comments',
 };
