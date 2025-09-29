@@ -57,6 +57,14 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 
+## Database Maintenance
+
+- **Refresh the Prisma baseline without downtime** – When upgrading from older releases that contained dozens of incremental migrations, run the helper to back up the SQLite file, clear historical migration records, and mark the consolidated baseline as applied:
+  ```bash
+  DATABASE_URL="file:./dev.db" ./scripts/refresh_prisma_baseline.sh
+  ```
+  The script writes a timestamped copy of the database next to the original file, removes the legacy migration entries from `_prisma_migrations`, and uses `prisma migrate resolve` to register `00000000000000_baseline` so subsequent deploys and `prisma migrate deploy` executions align with the trimmed migration directory.
+
 ## Moderation CLI Helpers
 
 - **Approve all flagged assets** – Clear the moderation queue in one sweep after an incident review:

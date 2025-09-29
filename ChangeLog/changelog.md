@@ -1,3 +1,8 @@
+## 064 – [Normal Change] Prisma baseline consolidation with safety net
+- **Type**: Normal Change
+- **Reason**: The Prisma migrations directory had grown to dozens of incremental batches, making fresh deployments slower and leaving existing databases stuck with historical entries that no longer matched the trimmed repository.
+- **Change**: Replaced the stack of dated migrations with a single `00000000000000_baseline` snapshot, added a backup-aware helper script that archives the SQLite database and re-registers the new baseline, and documented the workflow in the README so operators can refresh production instances without data loss.
+
 ## 063 – [Standard Change] Real-time notification center rollout
 - **Type**: Standard Change
 - **Reason**: Members and curators had no unified space to receive announcements, moderation decisions, likes, and comments while they were signed in, so important updates could be missed during active sessions.
