@@ -1,3 +1,8 @@
+## 066 – [Normal Change] Project documentation audit refresh
+- **Type**: Normal Change
+- **Reason**: The repository lacked an up-to-date audit aligning README promises with current implementation, leaving stakeholders without a consolidated scorecard of what is delivered versus pending.
+- **Change**: Added the 2025-10-05 project audit report summarising documentation accuracy, frontend/backend alignment, and key gaps, and linked the latest audits from the README so operators can discover the new report quickly.
+
 ## 065 – [Normal Change] Prisma baseline SQLite auto-discovery
 - **Type**: Normal Change
 - **Reason**: Refreshing consolidated Prisma baselines failed when operators relied on the default `file:./backend/prisma/dev.db` connection string because the CLI resolved it relative to the backend directory and could not locate the database.
