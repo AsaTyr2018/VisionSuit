@@ -14,6 +14,7 @@
     "prisma:studio": "prisma studio",
     "seed": "ts-node --transpile-only prisma/seed.ts",
     "create-admin": "ts-node --transpile-only scripts/createAdmin.ts",
+    "moderation:approve-flagged": "ts-node --transpile-only scripts/approveFlaggedAssets.ts",
     "generator:sync-base-models": "ts-node --transpile-only scripts/syncGeneratorBaseModels.ts",
     "storage:reindex": "ts-node --transpile-only scripts/reindexStorage.ts"
   },

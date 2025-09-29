@@ -1507,3 +1507,8 @@
 - **Type**: Normal Change
 - **Reason**: Stacked panels forced extra scrolling as the adult and illegal keyword lists grew, slowing moderators reviewing safety filters.
 - **Changes**: Combined both keyword managers into a responsive two-column layout with shared styling tweaks so the lists stay visible side by side on wide screens while preserving form and table spacing.
+
+## 241 – [Addition] Bulk moderation approval CLI
+- **Type**: Normal Change
+- **Reason**: Moderators needed to clear verified false positives from the queue without approving each flagged model or image manually.
+- **Changes**: Added a Prisma-backed `moderation:approve-flagged` script that resets flagged metadata, writes moderation log entries, documented the command in the README, and exposed it through the backend npm scripts.
