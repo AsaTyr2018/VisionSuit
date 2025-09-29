@@ -1512,3 +1512,8 @@
 - **Type**: Normal Change
 - **Reason**: Moderators needed to clear verified false positives from the queue without approving each flagged model or image manually.
 - **Changes**: Added a Prisma-backed `moderation:approve-flagged` script that resets flagged metadata, writes moderation log entries, documented the command in the README, and exposed it through the backend npm scripts.
+
+## 242 – [Addition] CSV-based LoRA tagging import
+- **Type**: Normal Change
+- **Reason**: Curators shared a CSV catalog of LoRA files and categories that needed to map onto VisionSuit model tags without manual editing.
+- **Changes**: Added a Prisma-powered `tags:import` CLI that reads `lora,lora_name,category` rows, matches existing models by slug, title, or storage filename, creates any missing tags, links every matched LoRA to each category, and updated the README with usage guidance and options for dry-run previews and tag grouping.
