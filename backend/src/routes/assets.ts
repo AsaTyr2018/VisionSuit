@@ -10,6 +10,7 @@ import {
   ModerationEntityType,
   ModerationStatus,
   NotificationType,
+  UserRole,
   Tag,
   User,
 } from '@prisma/client';
@@ -645,6 +646,59 @@ const deleteImageAssetAndCleanup = async (image: ImageDeletionTarget) => {
   await removeStorageObject(storage.bucket, storage.objectName);
 };
 
+const notifyAdminsOfModerationQueue = async (params: {
+  entityType: 'model' | 'image';
+  entityId: string;
+  entityTitle: string | null;
+  owner: Pick<User, 'id' | 'displayName' | 'email'>;
+  flaggedBy: Pick<User, 'id' | 'displayName' | 'email'> | null;
+  reason: string | null;
+}) => {
+  const admins = await prisma.user.findMany({
+    where: { role: UserRole.ADMIN },
+    select: { id: true },
+  });
+
+  const recipients = admins.filter((admin) => admin.id !== (params.flaggedBy?.id ?? ''));
+  if (recipients.length === 0) {
+    return;
+  }
+
+  const entityLabel = params.entityType === 'model' ? 'Model' : 'Image';
+  const title = `Moderation queue: ${entityLabel} flagged for review.`;
+
+  const bodySegments = [
+    params.entityTitle ? `Asset: ${params.entityTitle}` : null,
+    `Owner: ${params.owner.displayName}`,
+    params.flaggedBy ? `Flagged by: ${params.flaggedBy.displayName}` : null,
+    params.reason ? `Reason: ${params.reason}` : null,
+  ].filter((segment): segment is string => Boolean(segment));
+
+  const body = bodySegments.length > 0 ? bodySegments.join(' • ') : null;
+
+  await Promise.all(
+    recipients.map((admin) =>
+      createNotification({
+        userId: admin.id,
+        type: NotificationType.MODERATION_QUEUE,
+        title,
+        body,
+        data: {
+          category: 'moderation',
+          entityType: params.entityType,
+          entityId: params.entityId,
+          entityTitle: params.entityTitle,
+          ownerId: params.owner.id,
+          ownerName: params.owner.displayName,
+          flaggedById: params.flaggedBy?.id ?? null,
+          flaggedByName: params.flaggedBy?.displayName ?? null,
+          reason: params.reason ?? null,
+        },
+      }),
+    ),
+  );
+};
+
 const createModerationLogEntry = async (params: {
   entityType: ModerationEntityType;
   entityId: string;
@@ -1146,6 +1200,15 @@ assetsRouter.post('/models/:id/flag', requireAuth, async (req, res, next) => {
         targetUserId: updated.owner.id,
         message: parsed.data.reason ?? null,
       });
+
+      await notifyAdminsOfModerationQueue({
+        entityType: 'model',
+        entityId: updated.id,
+        entityTitle: updated.title,
+        owner: updated.owner,
+        flaggedBy: updated.flaggedBy ?? null,
+        reason: parsed.data.reason ?? null,
+      });
     }
 
     res.json({ model: mapModelAsset(updated) });
@@ -1237,6 +1300,15 @@ assetsRouter.post('/images/:id/flag', requireAuth, async (req, res, next) => {
         actorId: req.user!.id,
         targetUserId: updated.owner.id,
         message: parsed.data.reason ?? null,
+      });
+
+      await notifyAdminsOfModerationQueue({
+        entityType: 'image',
+        entityId: updated.id,
+        entityTitle: updated.title,
+        owner: updated.owner,
+        flaggedBy: updated.flaggedBy ?? null,
+        reason: parsed.data.reason ?? null,
       });
     }
 

@@ -28,6 +28,7 @@ export type NotificationDeck = Record<NotificationCategory, NotificationViewMode
 const notificationTypeToCategory: Record<NotificationType, NotificationCategory> = {
   ANNOUNCEMENT: 'announcements',
   MODERATION: 'moderation',
+  MODERATION_QUEUE: 'moderation',
   LIKE: 'likes',
   COMMENT: 'comments',
 };
@@ -67,11 +68,17 @@ const calculateUnreadCounts = async (
     _count: { _all: true },
   });
 
+  const announcements = groups.find((group) => group.type === 'ANNOUNCEMENT')?._count._all ?? 0;
+  const moderationDecisions = groups.find((group) => group.type === 'MODERATION')?._count._all ?? 0;
+  const moderationQueue = groups.find((group) => group.type === 'MODERATION_QUEUE')?._count._all ?? 0;
+  const likes = groups.find((group) => group.type === 'LIKE')?._count._all ?? 0;
+  const comments = groups.find((group) => group.type === 'COMMENT')?._count._all ?? 0;
+
   return {
-    announcements: groups.find((group) => group.type === 'ANNOUNCEMENT')?._count._all ?? 0,
-    moderation: groups.find((group) => group.type === 'MODERATION')?._count._all ?? 0,
-    likes: groups.find((group) => group.type === 'LIKE')?._count._all ?? 0,
-    comments: groups.find((group) => group.type === 'COMMENT')?._count._all ?? 0,
+    announcements,
+    moderation: moderationDecisions + moderationQueue,
+    likes,
+    comments,
   };
 };
 

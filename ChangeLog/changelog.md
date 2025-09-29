@@ -1527,3 +1527,8 @@
 - **Type**: Normal Change
 - **Reason**: Prisma's development migrations failed with `no such table: SafetyKeyword` because the notification migration executed before the renamed safety keyword table existed.
 - **Changes**: Added a post-keyword Prisma migration that creates the notifications table and rebuilds the safety keyword schema without legacy defaults so the migration history applies cleanly on new environments.
+
+## 244 – [Addition] Admin moderation queue notifications
+- **Type**: Normal Change
+- **Reason**: Administrators needed a real-time cue when new assets enter the moderation queue so reviews start immediately without polling the dashboard.
+- **Changes**: Added an admin-only notification type emitted whenever a model or image is newly flagged, wired backend helpers to fan out the alerts, updated unread counts and the frontend notification type map, and clarified the moderation tab copy.

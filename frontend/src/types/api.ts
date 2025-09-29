@@ -21,7 +21,7 @@ export interface User {
   showAdultContent: boolean;
 }
 
-export type NotificationType = 'ANNOUNCEMENT' | 'MODERATION' | 'LIKE' | 'COMMENT';
+export type NotificationType = 'ANNOUNCEMENT' | 'MODERATION' | 'MODERATION_QUEUE' | 'LIKE' | 'COMMENT';
 export type NotificationCategory = 'announcements' | 'moderation' | 'likes' | 'comments';
 
 export interface NotificationItem {

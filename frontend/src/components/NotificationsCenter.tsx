@@ -13,7 +13,7 @@ const categoryConfig: Record<NotificationCategory, { label: string; description:
   },
   moderation: {
     label: 'Moderation',
-    description: 'Decisions for your models and images with reviewer notes.',
+    description: 'Decisions for your models and images plus moderation queue alerts.',
     empty: 'No moderation updates yet.',
   },
   likes: {
