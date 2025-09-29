@@ -844,7 +844,7 @@ export const GalleryExplorer = ({
       return;
     }
 
-    const confirmation = `Delete “${activeGallery.title}”? This cannot be undone.\nNicht umkehrbar ist wenn gelöscht wird. weg ist weg.`;
+    const confirmation = `Delete “${activeGallery.title}”? This cannot be undone.\nDeleted content cannot be restored.`;
     if (!window.confirm(confirmation)) {
       return;
     }
@@ -875,7 +875,7 @@ export const GalleryExplorer = ({
         return;
       }
 
-      const confirmation = `Delete image “${entry.image.title}”? This cannot be undone.\nNicht umkehrbar ist wenn gelöscht wird. weg ist weg.`;
+      const confirmation = `Delete image “${entry.image.title}”? This cannot be undone.\nDeleted content cannot be restored.`;
       if (!window.confirm(confirmation)) {
         return;
       }

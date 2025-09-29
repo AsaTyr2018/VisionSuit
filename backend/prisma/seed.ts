@@ -93,7 +93,7 @@ const main = async () => {
       email: 'curator@visionsuit.local',
       displayName: 'VisionSuit Curator',
       role: UserRole.CURATOR,
-      bio: 'Kuratiert hochwertige KI-Galerien und Modell-Assets.',
+      bio: 'Curates high-quality AI galleries and model assets.',
       passwordHash: curatorPassword,
       isActive: true,
     },
@@ -150,7 +150,7 @@ const main = async () => {
     create: {
       slug: 'neosynth-cinematic-lora',
       title: 'NeoSynth Cinematic LoRA',
-      description: 'Ein LoRA-Modell für filmische Lichtstimmungen in Porträts.',
+      description: 'A LoRA model for cinematic lighting moods in portraits.',
       version: '0.1.0',
       fileSize: 128_000_000,
       checksum: 'sha256-demo-checksum',
@@ -213,7 +213,7 @@ const main = async () => {
         create: [
           {
             position: 1,
-            note: 'LoRA-Asset inklusive Trigger-Wörtern und Metadaten.',
+            note: 'LoRA asset including trigger words and metadata.',
             asset: {
               connect: { id: cinematicModel.id },
             },

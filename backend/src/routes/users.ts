@@ -456,7 +456,7 @@ usersRouter.post('/:id/avatar', requireAuth, requireSelfOrAdmin, (req, res, next
       });
 
       if (!existingUser) {
-        res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+        res.status(404).json({ message: 'User not found.' });
         return;
       }
 
@@ -583,7 +583,7 @@ usersRouter.put('/:id/profile', requireAuth, requireSelfOrAdmin, async (req, res
     res.json({ user: serializeUserWithOrigin(req, user) });
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2025') {
-      res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+      res.status(404).json({ message: 'User not found.' });
       return;
     }
 
@@ -613,7 +613,7 @@ usersRouter.put('/:id/password', requireAuth, requireSelfOrAdmin, async (req, re
     });
 
     if (!user) {
-      res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+      res.status(404).json({ message: 'User not found.' });
       return;
     }
 
@@ -661,7 +661,7 @@ usersRouter.post('/', async (req, res, next) => {
   try {
     const result = createUserSchema.safeParse(req.body);
     if (!result.success) {
-      res.status(400).json({ message: 'Benutzer konnte nicht erstellt werden.', errors: result.error.flatten() });
+      res.status(400).json({ message: 'Failed to create user.', errors: result.error.flatten() });
       return;
     }
 
@@ -687,7 +687,7 @@ usersRouter.post('/', async (req, res, next) => {
     });
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2002') {
-      res.status(409).json({ message: 'E-Mail-Adresse wird bereits verwendet.' });
+      res.status(409).json({ message: 'Email address is already in use.' });
       return;
     }
 
@@ -699,7 +699,7 @@ usersRouter.put('/:id', async (req, res, next) => {
   try {
     const result = updateUserSchema.safeParse(req.body);
     if (!result.success) {
-      res.status(400).json({ message: 'Aktualisierung fehlgeschlagen.', errors: result.error.flatten() });
+      res.status(400).json({ message: 'Update failed.', errors: result.error.flatten() });
       return;
     }
 
@@ -747,12 +747,12 @@ usersRouter.put('/:id', async (req, res, next) => {
     });
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2025') {
-      res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+      res.status(404).json({ message: 'User not found.' });
       return;
     }
 
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2002') {
-      res.status(409).json({ message: 'E-Mail-Adresse wird bereits verwendet.' });
+      res.status(409).json({ message: 'Email address is already in use.' });
       return;
     }
 
@@ -765,7 +765,7 @@ usersRouter.delete('/:id', async (req, res, next) => {
     const targetId = req.params.id;
 
     if (req.user?.id === targetId) {
-      res.status(400).json({ message: 'Das eigene Konto kann nicht gelöscht werden.' });
+      res.status(400).json({ message: 'You cannot delete your own account.' });
       return;
     }
 
@@ -773,7 +773,7 @@ usersRouter.delete('/:id', async (req, res, next) => {
     res.status(204).send();
   } catch (error) {
     if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2025') {
-      res.status(404).json({ message: 'Benutzer wurde nicht gefunden.' });
+      res.status(404).json({ message: 'User not found.' });
       return;
     }
 
@@ -785,19 +785,19 @@ usersRouter.post('/bulk-delete', async (req, res, next) => {
   try {
     const parsed = bulkDeleteSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Ungültige Anfrage.', errors: parsed.error.flatten() });
+      res.status(400).json({ message: 'Invalid request.', errors: parsed.error.flatten() });
       return;
     }
 
     if (!req.user) {
-      res.status(401).json({ message: 'Authentifizierung erforderlich.' });
+      res.status(401).json({ message: 'Authentication required.' });
       return;
     }
 
     const uniqueIds = Array.from(new Set(parsed.data.ids.filter((id) => id !== req.user?.id)));
 
     if (uniqueIds.length === 0) {
-      res.status(400).json({ message: 'Keine gültigen Ziel-IDs übermittelt.' });
+      res.status(400).json({ message: 'No valid target IDs were provided.' });
       return;
     }
 
@@ -807,7 +807,7 @@ usersRouter.post('/bulk-delete', async (req, res, next) => {
     });
 
     if (usersToDelete.length === 0) {
-      res.status(404).json({ message: 'Keine passenden Benutzer:innen gefunden.' });
+      res.status(404).json({ message: 'No matching users found.' });
       return;
     }
 

@@ -1016,7 +1016,7 @@ export const AssetExplorer = ({
       return;
     }
 
-    const confirmationMessage = `Delete “${activeAsset.title}”? This cannot be undone.\nNicht umkehrbar ist wenn gelöscht wird. weg ist weg.`;
+    const confirmationMessage = `Delete “${activeAsset.title}”? This cannot be undone.\nDeleted content cannot be restored.`;
     if (!window.confirm(confirmationMessage)) {
       return;
     }

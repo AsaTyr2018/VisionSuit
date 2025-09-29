@@ -14,11 +14,11 @@ const encodeFilenameStar = (value: string) =>
   `UTF-8''${encodeURIComponent(value)}`;
 
 const sendNotFound = (res: Response) => {
-  res.status(404).json({ message: 'Die angeforderte Datei wurde nicht gefunden.' });
+  res.status(404).json({ message: 'The requested file was not found.' });
 };
 
 const sendBucketNotAllowed = (res: Response) => {
-  res.status(404).json({ message: 'Der angeforderte Storage-Bucket ist unbekannt.' });
+  res.status(404).json({ message: 'The requested storage bucket is unknown.' });
 };
 
 export const storageRouter = Router();
@@ -136,12 +136,12 @@ const handleObjectRequest = async (req: Request, res: Response, next: NextFuncti
     const accessDecision = await resolveAccessDecision(req.user, objectUri);
 
     if (accessDecision === 'unauthorized') {
-      res.status(401).json({ message: 'Authentifizierung erforderlich, um auf dieses Objekt zuzugreifen.' });
+      res.status(401).json({ message: 'Authentication is required to access this object.' });
       return;
     }
 
     if (accessDecision === 'forbidden') {
-      res.status(403).json({ message: 'Keine Berechtigung zum Zugriff auf dieses Objekt.' });
+      res.status(403).json({ message: 'Not authorized to access this object.' });
       return;
     }
 
