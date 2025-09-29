@@ -35,6 +35,13 @@ enum ModerationActionType {
   REMOVED
 }
 
+enum NotificationType {
+  ANNOUNCEMENT
+  MODERATION
+  LIKE
+  COMMENT
+}
+
 enum SafetyKeywordCategory {
   ADULT
   ILLEGAL
@@ -69,6 +76,7 @@ model User {
   flaggedImages          ImageAsset[]            @relation("ImageAssetFlagger")
   moderationActions      ModerationLog[]         @relation("ModerationLogActor")
   moderationNotices      ModerationLog[]         @relation("ModerationLogRecipient")
+  notifications          Notification[]
   modelModerationReports ModelModerationReport[]
   imageModerationReports ImageModerationReport[]
 }
@@ -236,6 +244,22 @@ model ImageCommentLike {
 
   @@id([commentId, userId])
   @@index([userId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId, type])
+  @@index([userId, readAt])
 }
 
 model GalleryEntry {

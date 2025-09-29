@@ -9,6 +9,7 @@ import {
   ModerationActionType,
   ModerationEntityType,
   ModerationStatus,
+  NotificationType,
   Tag,
   User,
 } from '@prisma/client';
@@ -42,6 +43,7 @@ import { collectStringsFromJson, detectKeywordMatch } from '../lib/nsfw/keywordM
 import type { MetadataEvaluationResult } from '../lib/nsfw/metadata';
 import { resolveStorageLocation, storageBuckets, storageClient } from '../lib/storage';
 import { runNsfwImageAnalysis, toJsonImageAnalysis } from '../lib/nsfw/service';
+import { createNotification } from '../lib/notifications';
 
 type ModerationReportSource = ImageModerationReport & {
   reporter: Pick<User, 'id' | 'displayName' | 'email'>;
@@ -661,6 +663,54 @@ const createModerationLogEntry = async (params: {
       message: params.message ?? null,
     },
   });
+
+  if (params.targetUserId) {
+    const moderationActionLabels: Record<ModerationActionType, string> = {
+      FLAGGED: 'flagged for review',
+      APPROVED: 'approved',
+      REMOVED: 'removed',
+    };
+
+    const moderationEntityLabels: Record<ModerationEntityType, { noun: string; type: 'model' | 'image' }> = {
+      MODEL: { noun: 'model', type: 'model' },
+      IMAGE: { noun: 'image', type: 'image' },
+    };
+
+    const entityMeta = moderationEntityLabels[params.entityType];
+    let entityTitle: string | null = null;
+
+    if (params.entityType === ModerationEntityType.MODEL) {
+      const asset = await prisma.modelAsset.findUnique({
+        where: { id: params.entityId },
+        select: { title: true },
+      });
+      entityTitle = asset?.title ?? null;
+    } else if (params.entityType === ModerationEntityType.IMAGE) {
+      const asset = await prisma.imageAsset.findUnique({
+        where: { id: params.entityId },
+        select: { title: true },
+      });
+      entityTitle = asset?.title ?? null;
+    }
+
+    const actionLabel = moderationActionLabels[params.action];
+    const title = `Moderation update: Your ${entityMeta.noun} was ${actionLabel}.`;
+
+    await createNotification({
+      userId: params.targetUserId,
+      type: NotificationType.MODERATION,
+      title,
+      body: params.message ?? null,
+      data: {
+        category: 'moderation',
+        entityType: entityMeta.type,
+        entityId: params.entityId,
+        entityTitle,
+        action: params.action,
+        reason: params.message ?? null,
+      },
+    });
+  }
 };
 
 const updateModelSchema = z.object({
@@ -1472,7 +1522,7 @@ assetsRouter.post('/images/:id/moderation/remove', requireAuth, requireAdmin, as
 const ensureModelCommentAccess = async (modelId: string, viewerId: string | null, role: string | null) => {
   const model = await prisma.modelAsset.findUnique({
     where: { id: modelId },
-    select: { id: true, ownerId: true, isPublic: true, moderationStatus: true },
+    select: { id: true, ownerId: true, isPublic: true, moderationStatus: true, title: true },
   });
 
   if (!model) {
@@ -1493,7 +1543,7 @@ const ensureModelCommentAccess = async (modelId: string, viewerId: string | null
 const ensureImageVisibility = async (imageId: string, viewerId: string | null, role: string | null) => {
   const image = await prisma.imageAsset.findUnique({
     where: { id: imageId },
-    select: { id: true, ownerId: true, isPublic: true, moderationStatus: true },
+    select: { id: true, ownerId: true, isPublic: true, moderationStatus: true, title: true },
   });
 
   if (!image) {
@@ -1551,11 +1601,29 @@ assetsRouter.post('/images/:id/likes', requireAuth, async (req, res, next) => {
       return;
     }
 
+    const { image } = access;
+
     await prisma.imageLike.upsert({
       where: { userId_imageId: { userId: req.user.id, imageId } },
       update: {},
       create: { userId: req.user.id, imageId },
     });
+
+    if (image.ownerId !== req.user.id) {
+      await createNotification({
+        userId: image.ownerId,
+        type: NotificationType.LIKE,
+        title: `${req.user.displayName} liked your image${image.title ? ` "${image.title}"` : ''}.`,
+        data: {
+          category: 'like',
+          entityType: 'image',
+          entityId: image.id,
+          entityTitle: image.title ?? null,
+          actorId: req.user.id,
+          actorName: req.user.displayName,
+        },
+      });
+    }
 
     await respondWithUpdatedImage(res, imageId, req.user.id);
   } catch (error) {
@@ -1637,6 +1705,8 @@ assetsRouter.post('/models/:modelId/comments', requireAuth, async (req, res, nex
       return;
     }
 
+    const { model } = access;
+
     const parsed = commentInputSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ message: 'Kommentar konnte nicht gespeichert werden.', errors: parsed.error.flatten() });
@@ -1649,6 +1719,26 @@ assetsRouter.post('/models/:modelId/comments', requireAuth, async (req, res, nex
       data: { modelId, authorId: req.user.id, content },
       include: buildCommentInclude(req.user.id),
     });
+
+    if (model.ownerId !== req.user.id) {
+      const snippet = content.length > 140 ? `${content.slice(0, 137)}...` : content;
+      await createNotification({
+        userId: model.ownerId,
+        type: NotificationType.COMMENT,
+        title: `${req.user.displayName} commented on your model${model.title ? ` "${model.title}"` : ''}.`,
+        body: snippet,
+        data: {
+          category: 'comment',
+          entityType: 'model',
+          entityId: model.id,
+          entityTitle: model.title ?? null,
+          actorId: req.user.id,
+          actorName: req.user.displayName,
+          commentId: created.id,
+          snippet,
+        },
+      });
+    }
 
     res.status(201).json({ comment: mapModelComment(created, req.user.id) });
   } catch (error) {
@@ -1785,6 +1875,8 @@ assetsRouter.post('/images/:imageId/comments', requireAuth, async (req, res, nex
       return;
     }
 
+    const { image } = access;
+
     const parsed = commentInputSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ message: 'Kommentar konnte nicht gespeichert werden.', errors: parsed.error.flatten() });
@@ -1797,6 +1889,26 @@ assetsRouter.post('/images/:imageId/comments', requireAuth, async (req, res, nex
       data: { imageId, authorId: req.user.id, content },
       include: buildCommentInclude(req.user.id),
     });
+
+    if (image.ownerId !== req.user.id) {
+      const snippet = content.length > 140 ? `${content.slice(0, 137)}...` : content;
+      await createNotification({
+        userId: image.ownerId,
+        type: NotificationType.COMMENT,
+        title: `${req.user.displayName} commented on your image${image.title ? ` "${image.title}"` : ''}.`,
+        body: snippet,
+        data: {
+          category: 'comment',
+          entityType: 'image',
+          entityId: image.id,
+          entityTitle: image.title ?? null,
+          actorId: req.user.id,
+          actorName: req.user.displayName,
+          commentId: created.id,
+          snippet,
+        },
+      });
+    }
 
     res.status(201).json({ comment: mapImageComment(created, req.user.id) });
   } catch (error) {

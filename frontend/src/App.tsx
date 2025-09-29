@@ -12,6 +12,7 @@ import { OnSiteGenerator } from './components/OnSiteGenerator';
 import { UserProfile as UserProfileView } from './components/UserProfile';
 import { ServiceStatusPage } from './components/ServiceStatusPage';
 import { AccountSettingsDialog } from './components/AccountSettingsDialog';
+import { NotificationsCenter } from './components/NotificationsCenter';
 import { api } from './lib/api';
 import { useAuth } from './lib/auth';
 import { resolveCachedStorageUrl } from './lib/storage';
@@ -29,15 +30,31 @@ import type {
   User,
   UserProfile as UserProfileData,
   PlatformConfig,
+  NotificationItem,
+  NotificationCategory,
+  NotificationStreamEvent,
+  NotificationType,
 } from './types/api';
 
-type ViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin' | 'profile' | 'status';
-type PrimaryViewKey = 'home' | 'models' | 'images' | 'generator' | 'admin';
+type ViewKey =
+  | 'home'
+  | 'notifications'
+  | 'models'
+  | 'images'
+  | 'generator'
+  | 'admin'
+  | 'profile'
+  | 'status';
+type PrimaryViewKey = 'home' | 'notifications' | 'models' | 'images' | 'generator' | 'admin';
 
 const viewMeta: Record<ViewKey, { title: string; description: string }> = {
   home: {
     title: 'Home',
     description: 'Overview of recent models and image uploads—synchronized with the backend and storage.',
+  },
+  notifications: {
+    title: 'Notifications',
+    description: 'Stay on top of announcements, moderation updates, likes, and comments in real time.',
   },
   models: {
     title: 'Models',
@@ -83,6 +100,29 @@ const serviceBadgeLabels: Record<ServiceStatusKey, string> = {
 };
 
 const DEFAULT_ASSET_PAGE_SIZE = 24;
+
+const notificationCategories: NotificationCategory[] = ['announcements', 'moderation', 'likes', 'comments'];
+
+const notificationTypeToCategory: Record<NotificationType, NotificationCategory> = {
+  ANNOUNCEMENT: 'announcements',
+  MODERATION: 'moderation',
+  LIKE: 'likes',
+  COMMENT: 'comments',
+};
+
+const createEmptyNotificationDeck = (): Record<NotificationCategory, NotificationItem[]> => ({
+  announcements: [],
+  moderation: [],
+  likes: [],
+  comments: [],
+});
+
+const createEmptyNotificationCounts = (): Record<NotificationCategory, number> => ({
+  announcements: 0,
+  moderation: 0,
+  likes: 0,
+  comments: 0,
+});
 
 const filterModelAssetsForViewer = (assets: ModelAsset[], viewer?: User | null) => {
   const isAdmin = viewer?.role === 'ADMIN';
@@ -209,6 +249,9 @@ export const App = () => {
     maintenanceMode: false,
   });
   const [serviceStatus, setServiceStatus] = useState<Record<ServiceStatusKey, ServiceIndicator>>(createInitialStatus);
+  const [notificationDeck, setNotificationDeck] = useState<Record<NotificationCategory, NotificationItem[]>>(createEmptyNotificationDeck);
+  const [notificationUnread, setNotificationUnread] = useState<Record<NotificationCategory, number>>(createEmptyNotificationCounts);
+  const [totalUnreadNotifications, setTotalUnreadNotifications] = useState(0);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -254,15 +297,19 @@ export const App = () => {
   const isMaintenanceLocked = platformConfig.maintenanceMode && !isAdminUser;
 
   const availableViews = useMemo<PrimaryViewKey[]>(() => {
-    const views: PrimaryViewKey[] = ['home', 'models', 'images'];
+    const views: PrimaryViewKey[] = ['home'];
+    if (isAuthenticated) {
+      views.push('notifications');
+    }
+    views.push('models', 'images');
     if (canAccessGenerator) {
-      views.splice(3, 0, 'generator');
+      views.push('generator');
     }
     if (authUser?.role === 'ADMIN') {
       views.push('admin');
     }
     return views;
-  }, [authUser?.role, canAccessGenerator]);
+  }, [authUser?.role, canAccessGenerator, isAuthenticated]);
 
   useEffect(() => {
     if (!canAccessGenerator && activeView === 'generator') {
@@ -516,6 +563,24 @@ export const App = () => {
         setRankingTiers([]);
         setRankingTiersFallback(false);
       }
+
+      if (token && isAuthenticated) {
+        try {
+          const notificationSummary = await api.getNotifications(token);
+          setNotificationDeck(notificationSummary.notifications);
+          setNotificationUnread(notificationSummary.unreadCounts);
+          setTotalUnreadNotifications(notificationSummary.totalUnread);
+        } catch (notificationError) {
+          console.error('Failed to load notifications', notificationError);
+          setNotificationDeck(createEmptyNotificationDeck());
+          setNotificationUnread(createEmptyNotificationCounts());
+          setTotalUnreadNotifications(0);
+        }
+      } else {
+        setNotificationDeck(createEmptyNotificationDeck());
+        setNotificationUnread(createEmptyNotificationCounts());
+        setTotalUnreadNotifications(0);
+      }
       setErrorMessage(null);
     } catch (error) {
       console.error(error);
@@ -530,7 +595,7 @@ export const App = () => {
     }
 
     fetchServiceStatus().catch((statusError) => console.error('Failed to refresh service status', statusError));
-  }, [fetchServiceStatus, token, authUser?.role]);
+  }, [fetchServiceStatus, token, authUser?.role, isAuthenticated]);
 
   const loadMoreModelAssets = useCallback(async () => {
     if (isLoadingMoreModels || !modelAssetsHasMore) {
@@ -606,6 +671,75 @@ export const App = () => {
     }
   }, [imageAssetsCursor, imageAssetsHasMore, isLoadingMoreImages, token]);
 
+  const handleMarkNotificationRead = useCallback(
+    async (notification: NotificationItem, category: NotificationCategory) => {
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await api.markNotificationRead(token, notification.id);
+        const resolvedCategory = notificationTypeToCategory[response.notification.type];
+
+        setNotificationDeck((previous) => {
+          const updated: Record<NotificationCategory, NotificationItem[]> = { ...previous };
+          const categoriesToUpdate = new Set<NotificationCategory>([category, resolvedCategory]);
+          for (const key of categoriesToUpdate) {
+            const current = previous[key] ?? [];
+            updated[key] = current.map((entry) =>
+              entry.id === response.notification.id ? response.notification : entry,
+            );
+          }
+          return updated;
+        });
+        setNotificationUnread(response.unreadCounts);
+        setTotalUnreadNotifications(response.totalUnread);
+      } catch (error) {
+        console.error('Failed to mark notification as read', error);
+        setToast({ type: 'error', message: 'Unable to update notification.' });
+      }
+    },
+    [token, setToast],
+  );
+
+  const handleMarkCategoryRead = useCallback(
+    async (category: NotificationCategory | null) => {
+      if (!token) {
+        return;
+      }
+
+      try {
+        const response = await api.markNotificationsRead(token, category ?? undefined);
+        const updatedIds = new Set(response.updatedIds);
+
+        if (updatedIds.size > 0) {
+          setNotificationDeck((previous) => {
+            const updated: Record<NotificationCategory, NotificationItem[]> = { ...previous };
+            const categoriesToProcess = category ? [category] : notificationCategories;
+            const timestamp = new Date().toISOString();
+
+            for (const key of categoriesToProcess) {
+              updated[key] = previous[key].map((entry) =>
+                updatedIds.has(entry.id)
+                  ? { ...entry, readAt: entry.readAt ?? timestamp }
+                  : entry,
+              );
+            }
+
+            return updated;
+          });
+        }
+
+        setNotificationUnread(response.unreadCounts);
+        setTotalUnreadNotifications(response.totalUnread);
+      } catch (error) {
+        console.error('Failed to update notifications', error);
+        setToast({ type: 'error', message: 'Unable to update notifications.' });
+      }
+    },
+    [token, setToast],
+  );
+
   useEffect(() => {
     let isActive = true;
 
@@ -640,6 +774,60 @@ export const App = () => {
   useEffect(() => {
     refreshData().catch((error) => console.error('Unexpected fetch error', error));
   }, [refreshData]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!isAuthenticated || !token) {
+      return;
+    }
+
+    const source = new EventSource(
+      buildApiUrl(`/api/notifications/stream?accessToken=${encodeURIComponent(token)}`),
+    );
+
+    const handleNotification = (event: MessageEvent<string>) => {
+      try {
+        const payload = JSON.parse(event.data) as NotificationStreamEvent;
+        const category = notificationTypeToCategory[payload.notification.type];
+
+        setNotificationDeck((previous) => {
+          const existing = previous[category] ?? [];
+          if (existing.some((entry) => entry.id === payload.notification.id)) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [category]: [payload.notification, ...existing],
+          };
+        });
+        setNotificationUnread(payload.unreadCounts);
+        setTotalUnreadNotifications(payload.totalUnread);
+
+        if (!payload.notification.readAt) {
+          setToast({ type: 'success', message: payload.notification.title });
+        }
+      } catch (error) {
+        console.error('Failed to process notification event', error);
+      }
+    };
+
+    const handleError = (event: Event) => {
+      console.error('Notification stream error', event);
+    };
+
+    source.addEventListener('notification', handleNotification as EventListener);
+    source.addEventListener('error', handleError);
+
+    return () => {
+      source.removeEventListener('notification', handleNotification as EventListener);
+      source.removeEventListener('error', handleError);
+      source.close();
+    };
+  }, [isAuthenticated, token, setToast]);
 
   useEffect(() => {
     let isActive = true;
@@ -1067,6 +1255,9 @@ export const App = () => {
     setProfileError(null);
     setProfileReloadKey(0);
     setIsAccountSettingsOpen(false);
+    setNotificationDeck(createEmptyNotificationDeck());
+    setNotificationUnread(createEmptyNotificationCounts());
+    setTotalUnreadNotifications(0);
     openPrimaryView('home');
     refreshData().catch((error) => console.error('Failed to refresh after logout', error));
   }, [logout, openPrimaryView, refreshData]);
@@ -1576,6 +1767,23 @@ export const App = () => {
       );
     }
 
+    if (activeView === 'notifications') {
+      if (!authUser || !isAuthenticated) {
+        return <div className="content__alert">Sign in to review your notifications.</div>;
+      }
+
+      return (
+        <NotificationsCenter
+          notifications={notificationDeck}
+          unreadCounts={notificationUnread}
+          onMarkNotificationRead={handleMarkNotificationRead}
+          onMarkCategoryRead={handleMarkCategoryRead}
+          onOpenModel={handleModelCardClick}
+          onOpenImage={handleImageCardClick}
+        />
+      );
+    }
+
     if (activeView === 'models') {
       return (
         <AssetExplorer
@@ -1718,7 +1926,12 @@ export const App = () => {
                 className={`sidebar__nav-button${activeView === view ? ' sidebar__nav-button--active' : ''}`}
                 onClick={() => openPrimaryView(view)}
               >
-                {viewMeta[view].title}
+                <span className="sidebar__nav-button-inner">
+                  <span className="sidebar__nav-label">{viewMeta[view].title}</span>
+                  {view === 'notifications' && totalUnreadNotifications > 0 ? (
+                    <span className="sidebar__nav-badge">{totalUnreadNotifications}</span>
+                  ) : null}
+                </span>
               </button>
             ))}
             {authUser?.role === 'ADMIN' ? (
