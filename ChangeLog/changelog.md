@@ -1,3 +1,8 @@
+## 072 – [Emergency Change] Frontend same-origin API fallback
+- **Type**: Emergency Change
+- **Reason**: After the deployment the frontend defaulted to `http://localhost:4000`, so browsers accessing a remote instance attempted to call the API on the viewer's machine, triggering connection refusals and breaking service status checks.
+- **Change**: Defaulted `VITE_API_URL` to the same-origin token so `/api/*` requests flow through the configured proxy or reverse proxy, and documented how to point the frontend at an alternate API host when required.
+
 ## 071 – [Normal Change] Systemd rollout for maintenance workflow
 - **Type**: Normal Change
 - **Reason**: The PID-based shell launchers required manual babysitting during updates and could leave orphaned processes when deployments switched to the systemd-backed environment.

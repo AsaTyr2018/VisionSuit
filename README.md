@@ -43,6 +43,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
    export DATABASE_URL="file:./dev.db"
    ```
    The development helper scripts load `.env`, and exporting `DATABASE_URL` keeps standalone Prisma tasks such as `npx prisma migrate reset` from failing on a fresh installation.
+   The frontend now defaults to calling the API on the same origin, so `/api/*` requests automatically reach the backend through the Vite proxy and production reverse proxies. When the frontend and backend are served from different hosts, set `VITE_API_URL` (and optionally `DEV_API_PROXY_TARGET` during development) to point at the external API base URL.
 3. **Apply database migrations**
    ```bash
    npm --prefix backend run prisma:migrate
