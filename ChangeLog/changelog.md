@@ -1602,3 +1602,8 @@
 - **Type**: Normal Change
 - **Reason**: Curators struggled to target specific collections during uploads because the wizard hid private galleries and forced navigation through a long, unsorted list.
 - **Changes**: Added a dedicated "Upload to this collection" action inside owned gallery details, allowed the wizard to preload that selection, exposed private collections by authenticating gallery lookups, and introduced a search field so curators can quickly filter the target list.
+
+## 249 – [Update] PostgreSQL migration target preparation helpers
+- **Type**: Normal Change
+- **Reason**: Operators needed a repeatable way to confirm remote PostgreSQL hosts are ready before migrating VisionSuit off SQLite.
+- **Changes**: Implemented connection validation, optional database creation, TLS enforcement, and extension bootstrapping inside `prepare_postgres_target.sh`; wired the fresh install and upgrade scripts to call the helper with configurable environment flags; and refreshed the README to describe the new automation.
