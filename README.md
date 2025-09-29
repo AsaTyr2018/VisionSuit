@@ -59,6 +59,14 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
   ```
   The command reconnects flagged models and images to the active catalog, removes their `flaggedAt` markers, and writes a moderation log entry for each asset so the audit trail records the bulk approval.
 
+## Tagging CLI Helpers
+
+- **Import model tags from CSV** – Attach structured tag metadata to existing LoRAs in bulk:
+  ```bash
+  npm --prefix backend run tags:import -- --file ./tags.csv
+  ```
+  The script matches rows by model slug, title, or storage filename (e.g., `MyModel.safetensors`), creates any missing `Tag` entries, and links every matched LoRA to each category listed in the CSV. Run the command with `--dry-run` first to preview matches or pass `--tag-category <group>` to group the imported labels under a shared tag category in the database.
+
 ## Bulk Import Helpers
 
 - **Windows (`scripts/bulk_import_windows.ps1`)** – Pre-validates upload files, disables the implicit `Expect: 100-continue` header to keep self-hosted API proxies happy, unwraps transport exceptions so failures such as `Error while copying content to a stream` surface the underlying cause, and inspects paginated or flattened catalog responses so duplicate models are skipped even when `/api/assets/models` wraps items inside `items`, `data`, or `results`. Populate `./loras` and `./images` and run the script from PowerShell 7+.
