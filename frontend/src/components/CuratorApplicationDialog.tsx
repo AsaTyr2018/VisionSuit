@@ -33,10 +33,6 @@ export const CuratorApplicationDialog = ({
     setLocalError(null);
   }, [isOpen, application?.status]);
 
-  if (!isOpen) {
-    return null;
-  }
-
   const status = application?.status ?? null;
   const submittedAt = application?.createdAt ? formatter.format(new Date(application.createdAt)) : null;
   const decidedAt = application?.decidedAt ? formatter.format(new Date(application.decidedAt)) : null;
@@ -57,6 +53,10 @@ export const CuratorApplicationDialog = ({
     }
     return 'Share your motivation for joining the curator team. Include focus areas, moderation experience, or showcase links.';
   }, [status]);
+
+  if (!isOpen) {
+    return null;
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
