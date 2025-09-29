@@ -1,3 +1,8 @@
+## 069 – [Normal Change] Maintenance control center and service split
+- **Type**: Normal Change
+- **Reason**: Operating both stacks through a single launcher obscured which component failed, made service restarts clumsy, and lacked a central script for lifecycle tasks such as updates or rollbacks.
+- **Change**: Introduced dedicated `vs-Backend` and `vs-Frontend` service scripts, added a unified `maintenance.sh` controller with start/stop/install/update/rollback workflows, moved legacy helpers into `Legacy-scripts/`, and refreshed the README maintenance checklist to document the new process.
+
 ## 068 – [Normal Change] Maintenance restart checklist documentation
 - **Type**: Normal Change
 - **Reason**: The audit identified that README promised guided restart prompts even though only maintenance mode existed, leaving operators without documented steps for bringing services back after downtime.

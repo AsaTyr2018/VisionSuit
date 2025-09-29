@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 DOCKER_COMPOSE_CMD=""
@@ -128,7 +128,7 @@ success() {
 
 prompt_startup_mode() {
   info "Select how VisionSuit should start after installation"
-  echo "  [1] Manual launch (run ./dev-start.sh yourself)"
+  echo "  [1] Manual launch (run ./Legacy-scripts/dev-start.sh yourself)"
   echo "  [2] Automatic launch via systemd service"
 
   local choice
@@ -153,7 +153,7 @@ prompt_startup_mode() {
 print_manual_start_hint() {
   info "Manual startup selected"
   echo "Launch VisionSuit manually whenever needed:"
-  echo "  HOST=${backend_host:-$SERVER_IP} BACKEND_PORT=${backend_port:-4000} FRONTEND_PORT=${frontend_port:-5173} ./dev-start.sh"
+  echo "  HOST=${backend_host:-$SERVER_IP} BACKEND_PORT=${backend_port:-4000} FRONTEND_PORT=${frontend_port:-5173} ./Legacy-scripts/dev-start.sh"
 }
 
 setup_systemd_service() {
@@ -198,7 +198,7 @@ setup_systemd_service() {
 
   if ! tee "$service_file" >/dev/null <<EOF
 [Unit]
-Description=VisionSuit stack (dev-start.sh)
+Description=VisionSuit stack (Legacy dev-start.sh)
 After=network.target
 
 [Service]
@@ -206,7 +206,7 @@ Type=simple
 WorkingDirectory=$ROOT_DIR
 User=$service_user
 Group=$service_group
-ExecStart=$ROOT_DIR/dev-start.sh
+ExecStart=$ROOT_DIR/Legacy-scripts/dev-start.sh
 Environment=HOST=$host_env
 Environment=BACKEND_PORT=${backend_port:-4000}
 Environment=FRONTEND_PORT=${frontend_port:-5173}

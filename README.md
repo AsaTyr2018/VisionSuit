@@ -33,7 +33,7 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 
 1. **Install dependencies**
    ```bash
-   ./install.sh
+   ./maintenance.sh install
    ```
 2. **Configure environment variables**
    Copy the sample backend `.env` file and ensure Prisma has a SQLite connection string before running CLI commands:
@@ -47,20 +47,26 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
    npm --prefix backend run prisma:migrate
    ```
    This creates newly introduced tables—such as the notification inbox—and reconciles safety keyword schema tweaks before any services start.
-4. **Start the development stack**
+4. **Start the services via the maintenance controller**
    ```bash
-   ./dev-start.sh
+   ./maintenance.sh start
    ```
-   The starter now refreshes the Prisma client before launching services so new schema fields—such as the GPU toggle—apply without manual regeneration, then the backend automatically downloads the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` messages so you can track progress in the console.
-   VisionSuit now degrades gracefully if the native ONNX Runtime CPU backend cannot be loaded (for example, when `onnxruntime-node` does not provide binaries for the installed Node.js version). Startup logs `[startup] Auto tagger disabled` and continues serving requests, while affected uploads remain flagged with a descriptive `tagScanError`. Reinstall the dependency with `npm --prefix backend rebuild onnxruntime-node`, align the Node.js version with the published binaries, or set `ORT_BACKEND_PATH` to the directory that contains the native bindings to restore automatic tagging.
+   The maintenance hub now launches the dedicated `vs-Backend` and `vs-Frontend` service scripts, refreshing the Prisma client before the API boots and tailing logs to `./logs`. The backend still downloads the SmilingWolf auto-tagging assets on first launch and prints `[startup] Downloading ...` so you can monitor progress. VisionSuit continues to degrade gracefully if the native ONNX Runtime CPU backend cannot load (for example, when `onnxruntime-node` lacks binaries for the installed Node.js version): startup logs `[startup] Auto tagger disabled`, the stack keeps serving requests, and affected uploads are flagged with a descriptive `tagScanError`. Reinstall the dependency with `npm --prefix backend rebuild onnxruntime-node`, align the Node.js version with the published binaries, or set `ORT_BACKEND_PATH` to the directory that contains the native bindings to restore automatic tagging.
 5. **Seed and explore** – The backend ships with Prisma seed data. Visit the frontend URL shown in the terminal output and sign in with the seeded administrator account to configure services. Administrators can now launch Prisma Studio directly from the dashboard link—asset requests stay proxied through the backend so the interface loads end-to-end even when the frontend is served via the Vite development server. The proxy now rewrites Prisma Studio’s transport bootstrap so Prisma 6’s new `/api` default keeps flowing through the `/db` tunnel instead of colliding with the VisionSuit API namespace.
+
+## Service Control
+
+- `./maintenance.sh status` – Display aggregate health information from the `vs-Backend` and `vs-Frontend` service helpers alongside Prisma Studio if it is enabled.
+- `./maintenance.sh stop` / `./maintenance.sh restart` – Gracefully stop or restart both services in sequence. Individual service wrappers live in `services/vs-backend.sh` and `services/vs-frontend.sh` when you need fine-grained control.
+- `./maintenance.sh update` – Refresh backend and frontend dependencies, then re-run the Prisma migration workflow to apply schema updates.
+- Historical helpers now live in `Legacy-scripts/` for reference if you need to review the previous combined launcher or installer behaviour.
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 
 ## Maintenance Restart Checklist
 
 1. **Engage maintenance mode** – Toggle the "Enable maintenance mode (admins only)" switch under **Admin → Platform → Maintenance** or set `MAINTENANCE_MODE=true` in the backend environment configuration. Confirm the public UI shows the maintenance lock screen in an incognito browser session.
-2. **Restart application services** – Apply your deployment changes and restart the processes that run the backend API, frontend bundle, and GPU worker through your chosen supervisor (for example, `systemctl restart visionsuit-backend` or `pm2 restart visionsuit-backend`). Restart auxiliary services such as the asset proxy or CDN cache if they were part of the maintenance scope.
+2. **Restart application services** – Apply your deployment changes and restart the dedicated `vs-Backend` and `vs-Frontend` service scripts. On self-managed hosts run `./maintenance.sh restart` to sequence both automatically, or target your supervisor units (for example, `systemctl restart vs-backend` and `systemctl restart vs-frontend`). Restart auxiliary services such as the GPU worker, asset proxy, or CDN cache if they were part of the maintenance scope.
 3. **Verify health checks** – Call the platform status endpoint to confirm each service is healthy before reopening access:
    ```bash
    curl -s https://<your-host>/api/meta/platform | jq '{maintenanceMode, services}'
