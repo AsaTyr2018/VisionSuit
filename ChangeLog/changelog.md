@@ -1,3 +1,8 @@
+## 074 – [Normal Change] PostgreSQL upgrade automation rehearsal
+- **Type**: Normal Change
+- **Reason**: Operators need a reliable, scriptable rehearsal for the SQLite-to-PostgreSQL cutover so they can validate infra prerequisites, capture backups, and verify data integrity before scheduling downtime.
+- **Change**: Implemented the `upgrade_sqlite_to_postgres.sh` workflow to stop services, capture timestamped SQLite backups, run `pgloader` imports, execute Prisma migrations, verify table row counts, and optionally run post-cutover health checks; documented the automation capabilities in the README.
+
 ## 073 – [Normal Change] PostgreSQL migration planning workspace
 - **Type**: Normal Change
 - **Reason**: Preparing for the upcoming move to PostgreSQL requires dedicated planning material and automation stubs so operators can evaluate the cutover approach before implementation begins.

@@ -105,9 +105,9 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
 
 - **PostgreSQL migration workspace** – Early planning artifacts and evolving automation for moving from SQLite to a remote PostgreSQL instance now live in `scripts/postgres-migration/`. The directory includes:
   - `PROJECT_PLAN.md` outlining goals, deliverables, and the development timeline for the migration effort.
-  - `prepare_postgres_target.sh`, which now validates connectivity, optionally creates the target database, enforces TLS policies, and installs required extensions before the cutover.
+  - `prepare_postgres_target.sh`, which validates connectivity, optionally creates the target database, enforces TLS policies, and installs required extensions before the cutover.
   - `fresh_install_postgres_setup.sh` and `upgrade_sqlite_to_postgres.sh`, which call the target preparation helper automatically (unless skipped via environment flags) before continuing with install or upgrade workflows.
-- The upgrade script sequence toggles maintenance mode, backs up the SQLite database, imports data into PostgreSQL, validates the cutover, and disables maintenance mode after health checks succeed. Upcoming revisions will focus on data integrity checks and richer audit logging once the migration flow is fully automated.
+- The upgrade automation now orchestrates the full rehearsal: it can stop services through `maintenance.sh`, take timestamped `.backup` and `.dump` snapshots of the SQLite file under `backups/postgres-migration/`, run `pgloader` to import data, execute Prisma `migrate deploy`/`generate`/`migrate status`, verify table row counts between SQLite and PostgreSQL, and optionally run a custom health check command before resuming traffic. Each phase is toggleable with `UPGRADE_*` environment variables so operators can dry-run the flow or reuse individual steps while testing their infrastructure.
 
 ## Moderation CLI Helpers
 
