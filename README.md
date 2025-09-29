@@ -51,6 +51,14 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 
 For production deployments, review storage credentials, JWT secrets, GPU agent endpoints, and generator bucket provisioning before exposing the stack.
 
+## Moderation CLI Helpers
+
+- **Approve all flagged assets** – Clear the moderation queue in one sweep after an incident review:
+  ```bash
+  npm --prefix backend run moderation:approve-flagged
+  ```
+  The command reconnects flagged models and images to the active catalog, removes their `flaggedAt` markers, and writes a moderation log entry for each asset so the audit trail records the bulk approval.
+
 ## Bulk Import Helpers
 
 - **Windows (`scripts/bulk_import_windows.ps1`)** – Pre-validates upload files, disables the implicit `Expect: 100-continue` header to keep self-hosted API proxies happy, unwraps transport exceptions so failures such as `Error while copying content to a stream` surface the underlying cause, and inspects paginated or flattened catalog responses so duplicate models are skipped even when `/api/assets/models` wraps items inside `items`, `data`, or `results`. Populate `./loras` and `./images` and run the script from PowerShell 7+.
