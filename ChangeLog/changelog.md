@@ -1522,3 +1522,8 @@
 - **Type**: Normal Change
 - **Reason**: Curators shared a CSV catalog of LoRA files and categories that needed to map onto VisionSuit model tags without manual editing.
 - **Changes**: Added a Prisma-powered `tags:import` CLI that reads `lora,lora_name,category` rows, matches existing models by slug, title, or storage filename, creates any missing tags, links every matched LoRA to each category, and updated the README with usage guidance and options for dry-run previews and tag grouping.
+
+## 243 – [Fix] Notification schema migration alignment
+- **Type**: Normal Change
+- **Reason**: Prisma's development migrations failed with `no such table: SafetyKeyword` because the notification migration executed before the renamed safety keyword table existed.
+- **Changes**: Added a post-keyword Prisma migration that creates the notifications table and rebuilds the safety keyword schema without legacy defaults so the migration history applies cleanly on new environments.
