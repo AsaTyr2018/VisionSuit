@@ -1,3 +1,8 @@
+## 065 – [Normal Change] Prisma baseline SQLite auto-discovery
+- **Type**: Normal Change
+- **Reason**: Refreshing consolidated Prisma baselines failed when operators relied on the default `file:./backend/prisma/dev.db` connection string because the CLI resolved it relative to the backend directory and could not locate the database.
+- **Change**: Enhanced the helper script to auto-detect SQLite files under `backend/prisma`, prefer the standard `dev.db`, and export an absolute `file:` URL before reapplying the baseline so batch consolidations succeed without manual path tweaks.
+
 ## 064 – [Normal Change] Prisma baseline consolidation with safety net
 - **Type**: Normal Change
 - **Reason**: The Prisma migrations directory had grown to dozens of incremental batches, making fresh deployments slower and leaving existing databases stuck with historical entries that no longer matched the trimmed repository.

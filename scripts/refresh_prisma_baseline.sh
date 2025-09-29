@@ -7,45 +7,78 @@ export REPO_ROOT
 BASELINE_NAME="00000000000000_baseline"
 BASELINE_PATH="${REPO_ROOT}/backend/prisma/migrations/${BASELINE_NAME}/migration.sql"
 
+DEFAULT_DB_DIR="${REPO_ROOT}/backend/prisma"
+
 if [[ ! -f "${BASELINE_PATH}" ]]; then
   echo "Baseline migration not found at ${BASELINE_PATH}." >&2
   exit 1
 fi
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
-  echo "DATABASE_URL must be set to a Prisma SQLite connection string before running this script." >&2
-  exit 1
+  echo "DATABASE_URL not provided. Attempting to locate the SQLite database under ${DEFAULT_DB_DIR}."
 fi
 
-DB_PATH="$(python3 - <<'PY'
+resolve_db_path() {
+  local url="$1"
+  if [[ -z "${url}" ]]; then
+    return 1
+  fi
+  python3 - "$url" <<'PY'
 import os
 import sys
 from urllib.parse import urlparse, unquote
 
-url = os.environ.get("DATABASE_URL", "")
+url = sys.argv[1]
 parsed = urlparse(url)
 if parsed.scheme != "file":
     sys.stderr.write("This helper currently supports Prisma SQLite connections (file: URLs) only.\n")
-    sys.exit(1)
+    sys.exit(2)
 path = unquote(parsed.path)
 if path.startswith("/"):
     resolved = path
 else:
     repo_root = os.environ.get("REPO_ROOT") or os.getcwd()
     resolved = os.path.normpath(os.path.join(repo_root, path))
-print(resolved)
+print(os.path.abspath(resolved))
 PY
-)"
+}
 
-if [[ -z "${DB_PATH}" ]]; then
-  echo "Unable to resolve the SQLite database path from DATABASE_URL=${DATABASE_URL}." >&2
-  exit 1
+DB_PATH=""
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  if ! DB_PATH="$(resolve_db_path "${DATABASE_URL}")"; then
+    echo "Failed to resolve database path from DATABASE_URL=${DATABASE_URL}." >&2
+    exit 1
+  fi
 fi
+
+if [[ -z "${DB_PATH}" || ! -f "${DB_PATH}" ]]; then
+  mapfile -t DB_CANDIDATES < <(find "${DEFAULT_DB_DIR}" -maxdepth 1 -type f -name '*.db' 2>/dev/null | sort)
+  if (( ${#DB_CANDIDATES[@]} == 0 )); then
+    echo "No SQLite database found under ${DEFAULT_DB_DIR}. Provide DATABASE_URL or create the database before running this script." >&2
+    exit 1
+  fi
+  for candidate in "${DB_CANDIDATES[@]}"; do
+    if [[ "$(basename "${candidate}")" == "dev.db" ]]; then
+      DB_PATH="${candidate}"
+      break
+    fi
+  done
+  if [[ -z "${DB_PATH}" ]]; then
+    DB_PATH="${DB_CANDIDATES[0]}"
+  fi
+  echo "Resolved SQLite database to ${DB_PATH}."
+fi
+
+DB_PATH="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "${DB_PATH}")"
 
 if [[ ! -f "${DB_PATH}" ]]; then
   echo "Database file ${DB_PATH} was not found. Aborting." >&2
   exit 1
 fi
+
+RESOLVED_DATABASE_URL="file:${DB_PATH}"
+export DATABASE_URL="${RESOLVED_DATABASE_URL}"
+echo "Using DATABASE_URL=${DATABASE_URL}"
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
   echo "sqlite3 is required to adjust the Prisma migration history." >&2
