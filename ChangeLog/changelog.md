@@ -1,3 +1,13 @@
+## 076 – [Normal Change] Remote preparation key export and guide
+- **Type**: Normal Change
+- **Reason**: Operators needed key-based root access, credential exports, and a dedicated playbook before VisionSuit could safely connect to the PostgreSQL target without managing database passwords.
+- **Change**: Updated `remote_prepare_helper.sh` to grant the supplied SSH key root login rights, capture the exported key material in `visionsuit_remote_access.txt`, and provision passwordless PostgreSQL roles, introduced a preparation guide detailing the workflow, and refreshed the README to reference the new flow.
+
+## 075 – [Normal Change] PostgreSQL migration sanity guardrails
+- **Type**: Normal Change
+- **Reason**: Migration rehearsals needed verifiable compatibility checks and a repeatable way to prepare remote hosts so version or privilege mismatches do not derail the PostgreSQL cutover.
+- **Change**: Added a `sanity_check.sh` validator that inspects local Prisma dependencies and the remote PostgreSQL host over SSH, introduced a `remote_prepare_helper.sh` to provision the deployment user and database role on the target, wired both fresh-install and upgrade flows to enforce the sanity validation by default, and documented the usage in the README.
+
 ## 074 – [Normal Change] PostgreSQL upgrade automation rehearsal
 - **Type**: Normal Change
 - **Reason**: Operators need a reliable, scriptable rehearsal for the SQLite-to-PostgreSQL cutover so they can validate infra prerequisites, capture backups, and verify data integrity before scheduling downtime.
