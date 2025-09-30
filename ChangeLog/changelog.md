@@ -1632,3 +1632,8 @@
 - **Type**: Normal Change
 - **Reason**: Operators needed a repeatable way to confirm remote PostgreSQL hosts are ready before migrating VisionSuit off SQLite.
 - **Changes**: Implemented connection validation, optional database creation, TLS enforcement, and extension bootstrapping inside `prepare_postgres_target.sh`; wired the fresh install and upgrade scripts to call the helper with configurable environment flags; and refreshed the README to describe the new automation.
+
+## 250 – [Update] Production PostgreSQL migration workflow guardrails
+- **Type**: Standard Change
+- **Reason**: Production cutovers from SQLite to PostgreSQL require an auditable, tightly controlled workflow so operators can avoid data loss during the transition.
+- **Changes**: Added dedicated automation for each migration phase (`postgress-prepare.sh`, `preflight.sh`, `migration.sh`, and `prisma-switch.sh`), rewrote the README and runbook to document the six-step production process, and ensured environment overrides plus service restarts are sourced from the generated `.env-migration` bundle.
