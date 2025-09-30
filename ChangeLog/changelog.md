@@ -1,3 +1,8 @@
+## 079 – [Emergency Change] PostgreSQL target safeguards and rollback helper
+- **Type**: Emergency Change
+- **Reason**: The preparation helper crashed when creating databases inside DO blocks and lacked input validation or a way to undo partial provisioning, leaving rehearsal hosts in a broken state.
+- **Change**: Hardened `postgress-prepare.sh` with identifier validation, explicit role and database checks, and privilege grants, added README guidance, and shipped `postgress-rollback.sh` to remove the automation user, credentials, database, and role on demand.
+
 ## 078 – [Normal Change] PostgreSQL preparation guide automation refresh
 - **Type**: Normal Change
 - **Reason**: The new automation bundle generates SSH credentials and configuration defaults, so the preparation playbook needed to show operators how to leverage the scripted flow instead of manually passing flags.
