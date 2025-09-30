@@ -1637,3 +1637,8 @@
 - **Type**: Standard Change
 - **Reason**: Production cutovers from SQLite to PostgreSQL require an auditable, tightly controlled workflow so operators can avoid data loss during the transition.
 - **Changes**: Added dedicated automation for each migration phase (`postgress-prepare.sh`, `preflight.sh`, `migration.sh`, and `prisma-switch.sh`), rewrote the README and runbook to document the six-step production process, and ensured environment overrides plus service restarts are sourced from the generated `.env-migration` bundle.
+
+## 251 – [Fix] PostgreSQL prepare DO block quoting
+- **Type**: Normal Change
+- **Reason**: The `postgress-prepare.sh` helper substituted the shell process ID into `DO $$` blocks, causing PostgreSQL to reject the automation with `syntax error at or near "38371"`.
+- **Changes**: Switched the script’s here-documents to single-quote mode so `$` is preserved for PostgreSQL, keeping the DO blocks intact during role and database provisioning.
