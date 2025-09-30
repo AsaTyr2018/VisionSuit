@@ -231,6 +231,7 @@ else
   POSTGRES_SUPER="$(getent passwd | awk -F: '$1 ~ /postgres/ {print $1; exit}')"
 fi
 
+
 if [[ -z "$POSTGRES_SUPER" ]]; then
   fail "Unable to determine PostgreSQL superuser account."
 fi
