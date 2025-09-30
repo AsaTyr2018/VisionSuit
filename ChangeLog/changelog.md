@@ -1,3 +1,8 @@
+## 080 – [Normal Change] PostgreSQL migration host detection and sudo access
+- **Type**: Normal Change
+- **Reason**: The migration preflight failed when the preparation helper exported a non-routable hostname and the automation user could not escalate privileges via sudo without a password.
+- **Change**: Updated `postgress-prepare.sh` to export the server's primary IPv4 address, install a validated sudoers drop-in for the migration user, and taught `remote_prepare_helper.sh` to provision the same passwordless sudo entry when granting sudo access; refreshed the README to document the IPv4 export and sudoers automation.
+
 ## 079 – [Emergency Change] PostgreSQL target safeguards and rollback helper
 - **Type**: Emergency Change
 - **Reason**: The preparation helper crashed when creating databases inside DO blocks and lacked input validation or a way to undo partial provisioning, leaving rehearsal hosts in a broken state.
