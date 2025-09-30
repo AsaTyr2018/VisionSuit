@@ -109,6 +109,28 @@ require_command() {
   fi
 }
 
+fail() {
+  echo "[postgress-prepare] $1" >&2
+  exit 1
+}
+
+validate_identifier() {
+  local value="$1"
+  local label="$2"
+
+  if [[ -z "$value" ]]; then
+    fail "$label cannot be empty."
+  fi
+
+  if [[ "$value" == *'"'* ]]; then
+    fail "$label must not contain double quotes."
+  fi
+
+  if ! [[ "$value" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    fail "$label may only contain letters, numbers, hyphens, and underscores."
+  fi
+}
+
 install_packages() {
   if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
@@ -137,9 +159,17 @@ install_packages() {
 }
 
 # Ensure prerequisite tooling exists.
-for bin in ssh-keygen openssl; do
+for bin in ssh-keygen openssl sudo; do
   require_command "$bin"
 done
+
+validate_identifier "$DB_NAME" "Database name"
+validate_identifier "$DB_USER" "Database user"
+validate_identifier "$LINUX_USER" "Linux automation user"
+
+if [[ "$LINUX_USER" == "root" ]]; then
+  fail "Linux automation user cannot be root."
+fi
 
 if ! command -v psql >/dev/null 2>&1; then
   log "PostgreSQL client not detected, attempting installation."
@@ -201,39 +231,53 @@ else
   POSTGRES_SUPER="$(getent passwd | awk -F: '$1 ~ /postgres/ {print $1; exit}')"
 fi
 
-create_role_sql=$(cat <<SQL
-DO $$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
-      CREATE ROLE "$DB_USER" LOGIN PASSWORD NULL;
-   END IF;
-END
-$$;
+if [[ -z "$POSTGRES_SUPER" ]]; then
+  fail "Unable to determine PostgreSQL superuser account."
+fi
+
+if [[ "$DB_USER" == "$POSTGRES_SUPER" ]]; then
+  fail "Database user cannot reuse the PostgreSQL superuser account ($POSTGRES_SUPER)."
+fi
+
+log "Checking PostgreSQL role '$DB_USER'."
+role_exists=$(sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d postgres -tA -v db_user="$DB_USER" <<'SQL'
+SELECT 1 FROM pg_roles WHERE rolname = :'db_user';
 SQL
 )
 
-sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -c "$create_role_sql"
+if [[ -z "${role_exists//[[:space:]]/}" ]]; then
+  log "Creating PostgreSQL role '$DB_USER'."
+  sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d postgres <<SQL
+CREATE ROLE "$DB_USER" LOGIN PASSWORD NULL;
+SQL
+else
+  log "Role '$DB_USER' already present."
+fi
 
-create_db_sql=$(cat <<SQL
-DO $$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '$DB_NAME') THEN
-      CREATE DATABASE "$DB_NAME" OWNER "$DB_USER";
-   END IF;
-END
-$$;
+log "Checking PostgreSQL database '$DB_NAME'."
+db_exists=$(sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d postgres -tA -v db_name="$DB_NAME" <<'SQL'
+SELECT 1 FROM pg_database WHERE datname = :'db_name';
 SQL
 )
 
-sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -c "$create_db_sql"
+if [[ -z "${db_exists//[[:space:]]/}" ]]; then
+  log "Creating PostgreSQL database '$DB_NAME'."
+  sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d postgres <<SQL
+CREATE DATABASE "$DB_NAME" OWNER "$DB_USER";
+SQL
+else
+  log "Database '$DB_NAME' already present."
+fi
 
-grant_sql=$(cat <<SQL
-GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
+sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d postgres <<SQL
 ALTER DATABASE "$DB_NAME" OWNER TO "$DB_USER";
 SQL
-)
 
-sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d "$DB_NAME" -c "$grant_sql"
+sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -d "$DB_NAME" <<SQL
+GRANT ALL PRIVILEGES ON DATABASE "$DB_NAME" TO "$DB_USER";
+REVOKE CONNECT ON DATABASE "$DB_NAME" FROM PUBLIC;
+GRANT CONNECT ON DATABASE "$DB_NAME" TO "$DB_USER";
+SQL
 
 # Generate application password
 PASSWORD_FILE="$KEY_DIR/${DB_USER}.pgpass"
