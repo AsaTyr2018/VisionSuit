@@ -201,7 +201,7 @@ else
   POSTGRES_SUPER="$(getent passwd | awk -F: '$1 ~ /postgres/ {print $1; exit}')"
 fi
 
-create_role_sql=$(cat <<SQL
+create_role_sql=$(cat <<'SQL'
 DO $$
 BEGIN
    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$DB_USER') THEN
@@ -214,7 +214,7 @@ SQL
 
 sudo -u "$POSTGRES_SUPER" psql -v ON_ERROR_STOP=1 -p "$DB_PORT" -c "$create_role_sql"
 
-create_db_sql=$(cat <<SQL
+create_db_sql=$(cat <<'SQL'
 DO $$
 BEGIN
    IF NOT EXISTS (SELECT FROM pg_database WHERE datname = '$DB_NAME') THEN
