@@ -101,44 +101,18 @@ For production deployments, review storage credentials, JWT secrets, GPU agent e
   ```
   The script writes a timestamped copy of the database next to the original file, removes the legacy migration entries from `_prisma_migrations`, and uses `prisma migrate resolve` to register `00000000000000_baseline` so subsequent deploys and `prisma migrate deploy` executions align with the trimmed migration directory.
 
-### PostgreSQL Migration Planning
+### Production SQLite → PostgreSQL migration
 
-- **PostgreSQL migration workspace** – Early planning artifacts and evolving automation for moving from SQLite to a remote PostgreSQL instance now live in `scripts/postgres-migration/`. The directory includes:
-  - `PROJECT_PLAN.md` outlining goals, deliverables, and the development timeline for the migration effort.
-  - `sanity_check.sh`, which confirms local Prisma dependencies are installed and that the remote PostgreSQL host meets minimum version and extension requirements over SSH before any stateful steps run.
-  - `remote_prepare_helper.sh`, a remote-side bootstrapper that creates the dedicated SSH deployment account, grants the supplied key root access, writes a `~/visionsuit_remote_access.txt` summary with the exported public key, and provisions a passwordless PostgreSQL role (with optional `CREATEDB`) so migrations can execute cleanly. When `visionsuit_migration_config.env` sits next to the script it auto-loads the bundle and runs without prompting for additional arguments.
-  - `prepare_postgres_target.sh`, which validates connectivity, optionally creates the target database, enforces TLS policies, and installs required extensions before the cutover.
-  - `fresh_install_postgres_setup.sh` and `upgrade_sqlite_to_postgres.sh`, which now run the sanity validator automatically (unless `FRESH_INSTALL_SKIP_SANITY=true` or `UPGRADE_SKIP_SANITY=true`) before preparing the target and proceeding with installation or upgrade workflows.
-  - `docs/postgres-migration-preparation.md`, the end-to-end preparation guide covering the remote helper, sanity checks, and the follow-up orchestration scripts.
-  - `scripts/postgres-migration/generated/`, created the first time the upgrade helper runs, containing a dedicated SSH key pair and `visionsuit_migration_config.env`. Set `UPGRADE_AUTOMATION_ONLY=true` to exit immediately after generating the automation bundle whenever you need to refresh keys or regenerate the config file.
+For production environments the SQLite → PostgreSQL cutover follows a six-stage workflow that must run in order. Each phase is backed by a dedicated automation script and double-checked to avoid data loss. See `docs/postgres-migration-preparation.md` for deep-dive notes.
 
-  Example usage when rehearsing a migration:
-  ```bash
-  # 1. Generate automation assets on the VisionSuit host (exits after writing keys/config)
-  POSTGRES_URL="postgres://visionsuit_migrate@db.internal:5432/visionsuit?sslmode=require" \
-    SQLITE_PATH="backend/prisma/dev.db" \
-    UPGRADE_AUTOMATION_ONLY=true \
-    ./scripts/postgres-migration/upgrade_sqlite_to_postgres.sh
+1. **Preparation on the target host** – Run `scripts/postgres-migration/postgress-prepare.sh` on the future PostgreSQL server. The helper validates OS compatibility, installs PostgreSQL, provisions a `visionsuit-migrator` Linux user with root-capable SSH key access, creates the `visionsuit` database, and emits `/root/vs-conf.txt` containing the SSH key (base64), database credentials, the public hostname for Prisma, and the internal hostname used for SSH tunnels.
+2. **Transfer the configuration bundle** – Securely copy `vs-conf.txt` to the VisionSuit host (e.g. `/root/config/vs-conf.txt`). The file never leaves encrypted channels and should be treated like any other secret.
+3. **Run the migration preflight** – Execute `scripts/postgres-migration/preflight.sh --config /root/config/vs-conf.txt`. The agent imports the key, establishes SSH connectivity, confirms the database is reachable, and writes `.env-migration` with the derived PostgreSQL and SQLite settings required for the next steps.
+4. **Migrate data** – Launch `scripts/postgres-migration/migration.sh`. It snapshots the SQLite file, opens an SSH tunnel with the credentials from `.env-migration` (set `MIGRATION_SKIP_TUNNEL=1` when a direct TCP route is available), clears any stale PostgreSQL tables, performs the transfer with `pgloader` (or a `sqlite3`/`psql` fallback), and validates row counts across every table. The command aborts immediately if a mismatch appears.
+5. **Switch Prisma to PostgreSQL** – Once validation passes, run `scripts/postgres-migration/prisma-switch.sh`. The helper rewrites `/etc/visionsuit/vs-backend.env` and `/etc/visionsuit/vs-frontend.env` with the new `DATABASE_URL`/`SHADOW_DATABASE_URL` pair sourced from `.env-migration`, then restarts `vs-backend` and `vs-frontend` via systemd so both services begin using the remote database.
+6. **Final verification** – Confirm the application is healthy, review Prisma logs, and archive the generated backups. At this point PostgreSQL is the authoritative datastore.
 
-  # 2. Copy the remote helper and config bundle to the PostgreSQL host and execute it
-  scp scripts/postgres-migration/remote_prepare_helper.sh \
-      scripts/postgres-migration/generated/visionsuit_migration_config.env \
-      admin@db.internal:/tmp/
-  ssh admin@db.internal 'sudo bash /tmp/remote_prepare_helper.sh'
-
-  # 3. Validate Prisma tooling and the remote PostgreSQL target using the generated private key
-  ./scripts/postgres-migration/sanity_check.sh \
-    --prisma-project ./backend \
-    --postgres-url "postgres://visionsuit_migrate@db.internal:5432/visionsuit?sslmode=require" \
-    --ssh-target visionsuit-migrator@db.internal \
-    --ssh-identity scripts/postgres-migration/generated/visionsuit_migration \
-    --require-extensions pg_trgm,uuid-ossp
-  ```
-
-  Review the generated `visionsuit_remote_access.txt` and copied `visionsuit_migration_config.env` files in the deployment user's home directory on the target host to confirm the published key material and granted PostgreSQL privileges before handing the credentials to the VisionSuit server. Adjust `UPGRADE_REMOTE_*` environment variables if you need different user, role, or database names when regenerating the automation bundle.
-
-  Set `FRESH_INSTALL_SANITY_SSH_TARGET` or `UPGRADE_SANITY_SSH_TARGET` (plus optional `*_SANITY_SSH_PORT`/`*_SANITY_SSH_IDENTITY`) before invoking the orchestration scripts so they can run the compatibility checks automatically.
-- The upgrade automation now orchestrates the full rehearsal: it can stop services through `maintenance.sh`, take timestamped `.backup` and `.dump` snapshots of the SQLite file under `backups/postgres-migration/`, run `pgloader` to import data, execute Prisma `migrate deploy`/`generate`/`migrate status`, verify table row counts between SQLite and PostgreSQL, and optionally run a custom health check command before resuming traffic. Each phase is toggleable with `UPGRADE_*` environment variables so operators can dry-run the flow or reuse individual steps while testing their infrastructure.
+Every step is idempotent and designed for repeatability—operators can rerun the helpers to regenerate credentials, refresh `.env-migration`, or rehearse the import prior to the live cutover.
 
 ## Moderation CLI Helpers
 
