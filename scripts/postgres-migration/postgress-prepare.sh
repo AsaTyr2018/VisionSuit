@@ -294,16 +294,50 @@ GRANT CONNECT ON DATABASE "$DB_NAME" TO "$DB_USER";
 SQL
 
 HOSTNAME_FQDN="$(hostname -f 2>/dev/null || hostname)"
+PRIMARY_IPV4=""
+if command -v ip >/dev/null 2>&1; then
+  PRIMARY_IPV4=$(ip -4 route get 1.1.1.1 2>/dev/null | awk 'NR==1 {for (i=1; i<=NF; i++) if ($i=="src") {print $(i+1); exit}}')
+fi
+if [[ -z "$PRIMARY_IPV4" ]]; then
+  PRIMARY_IPV4=$(hostname -I 2>/dev/null | awk '{print $1}')
+fi
+if [[ -z "$PRIMARY_IPV4" ]]; then
+  PRIMARY_IPV4="$HOSTNAME_FQDN"
+fi
+
+SUDOERS_DIR="/etc/sudoers.d"
+SUDOERS_FILE="${SUDOERS_DIR}/${LINUX_USER}"
+SUDOERS_ENTRY="${LINUX_USER} ALL=(ALL) NOPASSWD:ALL"
+
+if [[ -d "$SUDOERS_DIR" ]]; then
+  printf '%s\n' "$SUDOERS_ENTRY" >"$SUDOERS_FILE"
+  chmod 440 "$SUDOERS_FILE"
+  if command -v visudo >/dev/null 2>&1; then
+    if ! visudo -cf "$SUDOERS_FILE" >/dev/null; then
+      rm -f "$SUDOERS_FILE"
+      fail "Failed to validate sudoers entry for ${LINUX_USER}."
+    fi
+  fi
+else
+  if ! grep -qxF "$SUDOERS_ENTRY" /etc/sudoers 2>/dev/null; then
+    printf '%s\n' "$SUDOERS_ENTRY" >>/etc/sudoers
+  fi
+  if command -v visudo >/dev/null 2>&1; then
+    if ! visudo -c >/dev/null; then
+      fail "visudo reported errors after updating /etc/sudoers."
+    fi
+  fi
+fi
 
 PRIVATE_KEY_B64="$(base64 -w0 "$PRIVATE_KEY")"
 
 cat >"$CONFIG_PATH" <<CONF
 # VisionSuit PostgreSQL migration configuration
-SSH_HOST=${HOSTNAME_FQDN}
+SSH_HOST=${PRIMARY_IPV4}
 SSH_PORT=${SSH_PORT}
 SSH_USER=${LINUX_USER}
 SSH_PRIVATE_KEY_BASE64=${PRIVATE_KEY_B64}
-POSTGRES_HOST=${HOSTNAME_FQDN}
+POSTGRES_HOST=${PRIMARY_IPV4}
 POSTGRES_INTERNAL_HOST=localhost
 POSTGRES_PORT=${DB_PORT}
 POSTGRES_DB=${DB_NAME}

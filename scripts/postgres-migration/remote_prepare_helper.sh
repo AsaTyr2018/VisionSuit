@@ -215,6 +215,36 @@ if $SUDO_ACCESS; then
   else
     echo "[remote-prepare] sudo group not found; skipping sudo access grant." >&2
   fi
+
+  SUDOERS_DIR="/etc/sudoers.d"
+  SUDOERS_FILE="${SUDOERS_DIR}/${UNIX_USER}"
+  SUDOERS_ENTRY="${UNIX_USER} ALL=(ALL) NOPASSWD:ALL"
+
+  if [[ -d "$SUDOERS_DIR" ]]; then
+    printf '%s\n' "$SUDOERS_ENTRY" >"$SUDOERS_FILE"
+    chmod 440 "$SUDOERS_FILE"
+    if command -v visudo >/dev/null 2>&1; then
+      if ! visudo -cf "$SUDOERS_FILE" >/dev/null; then
+        rm -f "$SUDOERS_FILE"
+        echo "[remote-prepare] Failed to validate sudoers entry for ${UNIX_USER}." >&2
+        exit 1
+      fi
+    fi
+    echo "[remote-prepare] Provisioned passwordless sudo entry at ${SUDOERS_FILE}."
+  else
+    if ! grep -qxF "$SUDOERS_ENTRY" /etc/sudoers 2>/dev/null; then
+      printf '%s\n' "$SUDOERS_ENTRY" >>/etc/sudoers
+      echo "[remote-prepare] Appended passwordless sudo entry to /etc/sudoers for ${UNIX_USER}."
+    else
+      echo "[remote-prepare] Passwordless sudo entry already present in /etc/sudoers." >&2
+    fi
+    if command -v visudo >/dev/null 2>&1; then
+      if ! visudo -c >/dev/null; then
+        echo "[remote-prepare] visudo reported errors after updating /etc/sudoers." >&2
+        exit 1
+      fi
+    fi
+  fi
 fi
 
 if ! command -v psql >/dev/null 2>&1; then
