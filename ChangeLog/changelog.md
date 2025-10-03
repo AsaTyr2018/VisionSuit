@@ -1,3 +1,8 @@
+## 092 – [Normal Change] External connector service existence validation
+- **Type**: Normal Change
+- **Reason**: The PostgreSQL migration preflight tried to enable the fallback external connector even when the systemd unit was missing, leaving operators with a generic failure message and no guidance on how to proceed.
+- **Change**: Added a system manager-aware service lookup before enabling the connector, emit actionable install/rename guidance when the unit is absent, and refreshed the README plus preparation guide to document the validation.
+
 ## 091 – [Normal Change] External connector activation during preflight
 - **Type**: Normal Change
 - **Reason**: The fallback external connector stayed disabled even when PostgreSQL credentials were validated, leaving standby consumers without a ready endpoint if the SSH tunnel failed during migration rehearsals.
