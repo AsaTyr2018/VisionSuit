@@ -65,8 +65,13 @@ VisionSuit is a self-hosted platform for curating AI image galleries, distributi
 
 ### Systemd deployment notes
 
-- Systemd unit templates reside in `services/systemd/` and render to `/etc/systemd/system/vs-backend.service` and `/etc/systemd/system/vs-frontend.service` with the repository path baked in during installation.
+- Systemd unit templates reside in `services/systemd/` and render to `/etc/systemd/system/vs-backend.service`, `/etc/systemd/system/vs-frontend.service`, and `/etc/systemd/system/visionsuit-external-connector.service` with the repository path baked in during installation.
 - Override runtime configuration with optional environment files at `/etc/visionsuit/vs-backend.env` and `/etc/visionsuit/vs-frontend.env` before restarting the services.
+- The fallback external connector installs alongside the core services but stays disabled until it has credentials for the PostgreSQL tunnel. Populate `/etc/visionsuit/visionsuit-external-connector.env` with the SSH target (`EXTERNAL_CONNECTOR_SSH_HOST`, `EXTERNAL_CONNECTOR_SSH_USER`, `EXTERNAL_CONNECTOR_BIND_HOST`, `EXTERNAL_CONNECTOR_BIND_PORT`, and any key overrides), then enable it with:
+  ```bash
+  sudo systemctl enable --now visionsuit-external-connector.service
+  ```
+  The helper script at `services/vs-external-connector.sh` maintains the PID file in `run/` and logs activity to `logs/vs-external-connector.log` so you can monitor the tunnel that the migration preflight expects to find.
 - Hosts without systemd continue to use the legacy shell controllers; the maintenance entry points detect the environment automatically.
 
 ### Migrating from the legacy systemd unit
