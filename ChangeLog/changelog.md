@@ -1662,3 +1662,8 @@
 - **Type**: Normal Change
 - **Reason**: The PostgreSQL migration preflight stopped before writing the `.env-migration` bundle because it referenced the background PID placeholder `$!` without actually launching the tunnel as a background job.
 - **Changes**: Started the SSH tunnel with an explicit background invocation so the script records the tunnel PID safely while preserving the cleanup trap and connection validation flow.
+
+## 253 – [Fix] PostgreSQL migration tunnel stabilization
+- **Type**: Normal Change
+- **Reason**: The main migration script exited with `line 129: $!: unbound variable` because the SSH tunnel command never registered a background PID when `set -u` was active.
+- **Changes**: Launch the tunnel as a managed background job with `ExitOnForwardFailure`, capture its PID safely, verify the process remains alive, and report exit codes when the tunnel cannot be established.
