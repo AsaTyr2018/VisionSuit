@@ -1,3 +1,8 @@
+## 089 – [Emergency Change] Shell-escaped migration environment export
+- **Type**: Emergency Change
+- **Reason**: The generated `.env-migration` file wrote raw credentials, so sourcing it or deriving `DATABASE_URL` failed when PostgreSQL passwords contained shell metacharacters such as `$` or `!`, causing authentication errors like `28P01` during rehearsals.
+- **Change**: Added a helper that emits `%q`-escaped assignments, URI-encodes the PostgreSQL connection string components before composing `DATABASE_URL`, and documented the safer preflight output so migration helpers can source complex credentials reliably.
+
 ## 088 – [Normal Change] Boolean-aware PostgreSQL role check in preflight
 - **Type**: Normal Change
 - **Reason**: `psql` emitted `unrecognized value "1 = 0" for "\if expression"` during role provisioning, cluttering the preflight log even though the command continued.
