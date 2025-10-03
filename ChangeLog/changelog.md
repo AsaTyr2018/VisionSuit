@@ -1,3 +1,8 @@
+## 084 – [Emergency Change] pgloader invocation fix in migration orchestrator
+- **Type**: Emergency Change
+- **Reason**: The PostgreSQL migration helper invoked `pgloader` without the stdin placeholder and missing statement terminators, so the tool exited with a usage banner instead of loading data, blocking rehearsals mid-cutover.
+- **Change**: Updated `migration.sh` to stream the loader instructions through `pgloader -` with explicit statement termination so the automated SQLite-to-PostgreSQL transfer runs successfully again.
+
 ## 083 – [Normal Change] Migration preflight dependency auto-install
 - **Type**: Normal Change
 - **Reason**: Operators still had to install `pgloader` or `sqlite3` manually when the preflight detected missing tooling, causing the migration rehearsal to abort before connecting to the remote host.
