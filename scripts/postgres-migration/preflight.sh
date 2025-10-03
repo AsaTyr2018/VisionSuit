@@ -160,6 +160,142 @@ log() {
   printf '[preflight] %s\n' "$1"
 }
 
+run_with_sudo() {
+  if [[ $EUID -eq 0 ]]; then
+    "$@"
+    return $?
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+    return $?
+  fi
+
+  echo "[preflight] Cannot escalate privileges to install packages. Run as root or install dependencies manually." >&2
+  return 1
+}
+
+PKG_MANAGER=""
+APT_UPDATED=0
+
+detect_package_manager() {
+  if [[ -n "$PKG_MANAGER" ]]; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    PKG_MANAGER="apt"
+  elif command -v dnf >/dev/null 2>&1; then
+    PKG_MANAGER="dnf"
+  elif command -v yum >/dev/null 2>&1; then
+    PKG_MANAGER="yum"
+  elif command -v pacman >/dev/null 2>&1; then
+    PKG_MANAGER="pacman"
+  elif command -v brew >/dev/null 2>&1; then
+    PKG_MANAGER="brew"
+  else
+    PKG_MANAGER=""
+  fi
+}
+
+install_package() {
+  local package="$1"
+
+  detect_package_manager
+
+  case "$PKG_MANAGER" in
+    apt)
+      if [[ $APT_UPDATED -eq 0 ]]; then
+        if ! run_with_sudo apt-get update -y >/dev/null; then
+          return 1
+        fi
+        APT_UPDATED=1
+      fi
+      run_with_sudo apt-get install -y "$package"
+      ;;
+    dnf)
+      run_with_sudo dnf install -y "$package"
+      ;;
+    yum)
+      run_with_sudo yum install -y "$package"
+      ;;
+    pacman)
+      run_with_sudo pacman -Sy --noconfirm "$package"
+      ;;
+    brew)
+      brew install "$package"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+ensure_dependency() {
+  local tool="$1"
+  shift
+
+  if command -v "$tool" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "$tool not found; attempting automatic installation."
+
+  detect_package_manager
+  if [[ -z "$PKG_MANAGER" ]]; then
+    echo "[preflight] No supported package manager detected. Install ${tool} manually and rerun preflight." >&2
+    return 1
+  fi
+
+  local package=""
+  for mapping in "$@"; do
+    if [[ "$mapping" == "$PKG_MANAGER="* ]]; then
+      package="${mapping#*=}"
+      break
+    fi
+  done
+
+  if [[ -z "$package" ]]; then
+    echo "[preflight] Automatic installation for ${tool} is not configured for ${PKG_MANAGER}. Install it manually." >&2
+    return 1
+  fi
+
+  if install_package "$package"; then
+    if command -v "$tool" >/dev/null 2>&1; then
+      log "Installed ${tool} via ${PKG_MANAGER}."
+      return 0
+    fi
+  fi
+
+  echo "[preflight] Failed to install ${tool} automatically. Install it manually and rerun preflight." >&2
+  return 1
+}
+
+log "Validating local migration dependencies."
+
+HAS_PGLOADER=0
+if ensure_dependency "pgloader" \
+  "apt=pgloader" "dnf=pgloader" "yum=pgloader" "pacman=pgloader" "brew=pgloader"; then
+  HAS_PGLOADER=1
+  log "pgloader ready for primary SQLite → PostgreSQL transfer."
+else
+  log "pgloader remains unavailable after automatic installation attempt; sqlite3 fallback will be required." >&2
+fi
+
+HAS_SQLITE=0
+if ensure_dependency "sqlite3" \
+  "apt=sqlite3" "dnf=sqlite" "yum=sqlite" "pacman=sqlite" "brew=sqlite"; then
+  HAS_SQLITE=1
+  log "sqlite3 ready for migration fallback and export tooling."
+else
+  log "sqlite3 remains unavailable after automatic installation attempt." >&2
+fi
+
+if [[ ${HAS_PGLOADER} -eq 0 && ${HAS_SQLITE} -eq 0 ]]; then
+  echo "[preflight] Neither pgloader nor sqlite3 is available. Install pgloader (preferred) or sqlite3 before continuing." >&2
+  exit 1
+fi
+
 log "SSH private key extracted to ${SSH_KEY_PATH}, installed at ${SYSTEM_SSH_KEY_PATH}, and loaded into ssh-agent. ${AGENT_MESSAGE}"
 
 log "Checking SSH connectivity to ${SSH_USER}@${SSH_HOST}:${SSH_PORT}."
