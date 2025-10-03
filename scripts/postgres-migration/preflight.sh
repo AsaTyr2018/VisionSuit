@@ -314,11 +314,11 @@ if ! "${SSH_CMD[@]}" \
 set -euo pipefail
 sudo -u "$SUPER" psql -v ON_ERROR_STOP=1 -p "$PORT" -d postgres -v role="$ROLE" -v pwd="$PASSWORD" <<'SQL'
 \set QUIET 1
-SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') THEN 1 ELSE 0 END AS role_exists \gset
-\if :role_exists = 0
-  SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pwd') \gexec
-\else
+SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') AS role_exists \gset
+\if :role_exists
   SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role', :'pwd') \gexec
+\else
+  SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pwd') \gexec
 \endif
 \unset QUIET
 SQL

@@ -1,3 +1,8 @@
+## 088 – [Normal Change] Boolean-aware PostgreSQL role check in preflight
+- **Type**: Normal Change
+- **Reason**: `psql` emitted `unrecognized value "1 = 0" for "\if expression"` during role provisioning, cluttering the preflight log even though the command continued.
+- **Change**: Switched the role lookup to `SELECT EXISTS` so `\if` receives the native boolean flag and inverted the branching to keep the alter/create behaviour intact without triggering warnings.
+
 ## 087 – [Emergency Change] Preflight auto-provisions PostgreSQL role
 - **Type**: Emergency Change
 - **Reason**: Migration rehearsals aborted with `password authentication failed` when the target role was missing or its password no longer matched the exported bundle, leaving the cutover blocked before any data moved.
