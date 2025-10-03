@@ -124,10 +124,18 @@ PY
 )
   fi
   log "Establishing SSH tunnel to ${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}:${POSTGRES_SSH_PORT} (local port ${LOCAL_PG_PORT})."
-  SSH_CMD=(ssh -i "$POSTGRES_SSH_KEY" -p "$POSTGRES_SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-  "${SSH_CMD[@]}" -fN -L "${LOCAL_PG_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}"
+  SSH_CMD=(ssh -i "$POSTGRES_SSH_KEY" -p "$POSTGRES_SSH_PORT" -o BatchMode=yes -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new)
+  "${SSH_CMD[@]}" -N -L "${LOCAL_PG_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}" &
   tunnel_pid=$!
   sleep 1
+  if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+    set +e
+    wait "$tunnel_pid"
+    status=$?
+    set -e
+    echo "[migration] Failed to establish SSH tunnel (PID ${tunnel_pid}, exit code ${status}). Check SSH connectivity and credentials." >&2
+    exit 1
+  fi
 else
   log "Using direct PostgreSQL connection to ${POSTGRES_HOST}:${POSTGRES_PORT}."
 fi
