@@ -174,15 +174,18 @@ drop_existing
 
 if command -v pgloader >/dev/null 2>&1; then
   log "Using pgloader for migration."
-  pgloader - <<'LOAD' | tee -a "$log_file"
+  load_file="$WORK_DIR/pgloader-${TIMESTAMP}.load"
+  cat <<LOAD >"$load_file"
 LOAD DATABASE
-     FROM sqlite:///${SQLITE_PATH}
-     INTO ${postgres_url}
+     FROM 'sqlite:///${SQLITE_PATH}'
+     INTO '${postgres_url}'
 
  WITH include drop, create tables, create indexes, reset sequences
  SET work_mem TO '128MB', maintenance_work_mem TO '256MB'
  SET search_path TO 'public';
 LOAD
+  log "Executing pgloader with load file ${load_file}."
+  pgloader "$load_file" | tee -a "$log_file"
 else
   log "pgloader not found – falling back to sqlite3 dump." >&2
   require() {
