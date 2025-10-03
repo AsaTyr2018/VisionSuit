@@ -313,15 +313,14 @@ if ! "${SSH_CMD[@]}" \
   bash -s <<'EOS'; then
 set -euo pipefail
 sudo -u "$SUPER" psql -v ON_ERROR_STOP=1 -p "$PORT" -d postgres -v role="$ROLE" -v pwd="$PASSWORD" <<'SQL'
-DO $do$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') THEN
-    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pwd');
-  ELSE
-    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role', :'pwd');
-  END IF;
-END
-$do$;
+\set QUIET 1
+SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') THEN 1 ELSE 0 END AS role_exists \gset
+\if :role_exists = 0
+  SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pwd') \gexec
+\else
+  SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role', :'pwd') \gexec
+\endif
+\unset QUIET
 SQL
 EOS
   echo "[preflight] Failed to provision or update PostgreSQL role ${POSTGRES_USER}." >&2

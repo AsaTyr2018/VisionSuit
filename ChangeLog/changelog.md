@@ -1702,3 +1702,8 @@
 - **Type**: Normal Change
 - **Reason**: The migration workflow aborted later because neither `pgloader` nor `sqlite3` was available, yet the preflight script reported success without detecting the missing tooling.
 - **Changes**: Added dependency checks to the preflight helper so it now validates `pgloader` or `sqlite3` before writing `.env-migration`, surfaced context about the detected tooling in the logs, and refreshed the README migration instructions to mention the new verification step.
+
+## 255 – [Fix] Preflight PostgreSQL role provisioning
+- **Type**: Normal Change
+- **Reason**: PostgreSQL rejected the preflight DO block with `syntax error at or near ":"`, preventing the migration helper from creating or updating the target role.
+- **Changes**: Replaced the DO block with `psql` meta-command logic that checks for the role and executes formatted `CREATE ROLE` or `ALTER ROLE` statements via `\gexec`, preserving password updates without triggering syntax errors.
