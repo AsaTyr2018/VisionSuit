@@ -1,3 +1,8 @@
+## 086 – [Emergency Change] Ensure pgloader accepts generated target URI
+- **Type**: Emergency Change
+- **Reason**: The migration orchestrator wrapped the PostgreSQL connection string in single quotes and left credentials raw, so pgloader 3.6.7 aborted before reading the load file and complex passwords containing `@` or spaces could not be imported.
+- **Change**: Removed the stray quoting, percent-encoded PostgreSQL credentials when generating the load script, and documented the improvement so pgloader reliably parses the target URI even with special characters.
+
 ## 085 – [Emergency Change] Restore pgloader STDIN compatibility
 - **Type**: Emergency Change
 - **Reason**: Production rehearsals still failed because the migration helper invoked `pgloader` with the `-` placeholder, which the packaged 3.6.7 build interprets as a filename and aborts before reading the inline load instructions.
