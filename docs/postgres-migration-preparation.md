@@ -39,7 +39,7 @@ On the VisionSuit host, execute:
 ./scripts/postgres-migration/preflight.sh --config /root/config/vs-conf.txt
 ```
 
-The preflight agent extracts the private key, establishes SSH connectivity, sets up a temporary tunnel to the PostgreSQL server, and confirms that the database accepts logins. After successful validation it writes `.env-migration` in the repository root and stores the private key at `config/migration-ssh-key` (unless overridden). The env file contains:
+The preflight agent extracts the private key, establishes SSH connectivity, sets up a temporary tunnel to the PostgreSQL server, confirms that the database accepts logins, and activates the fallback external connector service (`POSTGRES_EXTERNAL_CONNECTOR_SERVICE`, default `visionsuit-external-connector`) once the credentials succeed so downstream consumers can fail over immediately. After successful validation it writes `.env-migration` in the repository root and stores the private key at `config/migration-ssh-key` (unless overridden). The env file contains:
 
 - `DATABASE_URL` pointing at PostgreSQL.
 - The SQLite source path used for exports.
