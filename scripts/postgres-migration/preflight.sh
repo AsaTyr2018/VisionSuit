@@ -390,19 +390,46 @@ if [[ -z "${SERVICE}" ]]; then
 fi
 
 if command -v systemctl >/dev/null 2>&1; then
-  sudo systemctl enable --now "${SERVICE}" >/dev/null 2>&1 || {
-    sudo systemctl enable "${SERVICE}" >/dev/null 2>&1 || true
-    sudo systemctl restart "${SERVICE}" >/dev/null 2>&1
+  FOUND_UNIT=""
+  for candidate in "${SERVICE}" "${SERVICE}.service"; do
+    if sudo systemctl status "${candidate}" >/dev/null 2>&1; then
+      FOUND_UNIT="${candidate}"
+      break
+    fi
+    if sudo systemctl list-unit-files "${candidate}" >/dev/null 2>&1; then
+      FOUND_UNIT="${candidate}"
+      break
+    fi
+  done
+
+  if [[ -z "${FOUND_UNIT}" ]]; then
+    cat >&2 <<EOF
+[preflight] External connector service "${SERVICE}" is not registered with systemd on the target host.
+Install the connector or update POSTGRES_EXTERNAL_CONNECTOR_SERVICE in vs-conf.txt to match the deployed unit name, then rerun preflight.
+EOF
+    exit 1
+  fi
+
+  sudo systemctl enable --now "${FOUND_UNIT}" >/dev/null 2>&1 || {
+    sudo systemctl enable "${FOUND_UNIT}" >/dev/null 2>&1 || true
+    sudo systemctl restart "${FOUND_UNIT}" >/dev/null 2>&1
   }
-  sudo systemctl is-active --quiet "${SERVICE}"
+  sudo systemctl is-active --quiet "${FOUND_UNIT}"
 elif command -v service >/dev/null 2>&1; then
+  if [[ ! -x "/etc/init.d/${SERVICE}" ]]; then
+    cat >&2 <<EOF
+[preflight] External connector service "${SERVICE}" is not installed under /etc/init.d on the target host.
+Install the init script or update POSTGRES_EXTERNAL_CONNECTOR_SERVICE in vs-conf.txt to match the deployed service name, then rerun preflight.
+EOF
+    exit 1
+  fi
   sudo service "${SERVICE}" start >/dev/null 2>&1 || sudo service "${SERVICE}" restart >/dev/null 2>&1
 else
   echo "[preflight] No supported service manager found to activate ${SERVICE}." >&2
   exit 1
 fi
 EOS
-  echo "[preflight] Failed to activate external connector service ${POSTGRES_EXTERNAL_CONNECTOR_SERVICE}." >&2
+  echo "[preflight] External connector service ${POSTGRES_EXTERNAL_CONNECTOR_SERVICE} could not be activated. Ensure the unit exists on the target host (install it or set POSTGRES_EXTERNAL_CONNECTOR_SERVICE accordingly) before rerunning preflight." >&2
   exit 1
 fi
 log "External connector service ${POSTGRES_EXTERNAL_CONNECTOR_SERVICE} active for fallback." 
