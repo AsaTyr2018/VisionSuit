@@ -1,3 +1,8 @@
+## 082 – [Emergency Change] PostgreSQL migration port validation guard
+- **Type**: Emergency Change
+- **Reason**: The production migration helper crashed before importing data when `psql` parsed the randomly generated database password as the port value, leaving the rehearsal stuck before the PostgreSQL tables were cleared.
+- **Change**: Added numeric validation for both the configured and tunnel-resolved PostgreSQL ports and switched all `psql` calls to use explicit host/port parameters so libpq never treats credentials as the port; refreshed the README to highlight the safeguard.
+
 ## 081 – [Normal Change] Migration preflight SSH key persistence
 - **Type**: Normal Change
 - **Reason**: The PostgreSQL migration preflight stored the SSH key only inside the repository workspace, leaving later commands without a system-level key and failing when no agent identity was loaded.

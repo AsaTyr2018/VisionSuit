@@ -61,6 +61,11 @@ for var in SQLITE_PATH DATABASE_URL POSTGRES_USER POSTGRES_PASSWORD POSTGRES_HOS
   fi
 done
 
+if ! [[ "$POSTGRES_PORT" =~ ^[0-9]+$ ]]; then
+  echo "[migration] POSTGRES_PORT must be numeric (current value: ${POSTGRES_PORT})." >&2
+  exit 1
+fi
+
 if [[ "$SKIP_TUNNEL" != "1" ]]; then
   for var in POSTGRES_SSH_HOST POSTGRES_SSH_PORT POSTGRES_SSH_USER POSTGRES_SSH_KEY POSTGRES_INTERNAL_HOST; do
     if [[ -z "${!var:-}" ]]; then
@@ -141,10 +146,20 @@ else
 fi
 
 postgres_url="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${LOCAL_PG_HOST}:${LOCAL_PG_PORT}/${POSTGRES_DB}"
+if ! [[ "$LOCAL_PG_PORT" =~ ^[0-9]+$ ]]; then
+  echo "[migration] Resolved local PostgreSQL port '${LOCAL_PG_PORT}' is not numeric." >&2
+  exit 1
+fi
+
+psql_args=(--host "$LOCAL_PG_HOST" --port "$LOCAL_PG_PORT" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB")
+
+psql_exec() {
+  PGPASSWORD="$POSTGRES_PASSWORD" psql "${psql_args[@]}" "$@"
+}
 
 drop_existing() {
   log "Dropping existing tables on PostgreSQL to ensure clean import."
-  PGPASSWORD="$POSTGRES_PASSWORD" psql "$postgres_url" --set ON_ERROR_STOP=1 <<'SQL'
+  psql_exec --set ON_ERROR_STOP=1 <<'SQL'
 DO $$ DECLARE
     rec record;
 BEGIN
@@ -183,11 +198,11 @@ else
   log "Exporting SQLite schema and data to ${SQLITE_SQL}."
   sqlite3 "$SQLITE_PATH" .dump >"$SQLITE_SQL"
   log "Importing dump into PostgreSQL (this may take a while)."
-  PGPASSWORD="$POSTGRES_PASSWORD" psql "$postgres_url" -f "$SQLITE_SQL" >>"$log_file" 2>&1
+  psql_exec -f "$SQLITE_SQL" >>"$log_file" 2>&1
 fi
 
 log "Running vacuum/analyze on PostgreSQL."
-PGPASSWORD="$POSTGRES_PASSWORD" psql "$postgres_url" --set ON_ERROR_STOP=1 -c "VACUUM ANALYZE;" >>"$log_file" 2>&1
+psql_exec --set ON_ERROR_STOP=1 -c "VACUUM ANALYZE;" >>"$log_file" 2>&1
 
 log "Validating row counts between SQLite and PostgreSQL."
 
@@ -195,7 +210,7 @@ count_tables=$(sqlite3 "$SQLITE_PATH" "SELECT name FROM sqlite_master WHERE type
 missing_tables=()
 for table in $count_tables; do
   sqlite_count=$(sqlite3 "$SQLITE_PATH" "SELECT COUNT(*) FROM \"$table\";")
-  pg_count=$(PGPASSWORD="$POSTGRES_PASSWORD" psql "$postgres_url" --no-align --tuples-only --quiet -c "SELECT COUNT(*) FROM \"$table\";" || echo "-1")
+  pg_count=$(psql_exec --no-align --tuples-only --quiet -c "SELECT COUNT(*) FROM \"$table\";" || echo "-1")
   if [[ "$pg_count" != "$sqlite_count" ]]; then
     missing_tables+=("$table")
     log "Mismatch detected for table '$table': sqlite=${sqlite_count}, postgres=${pg_count}"
