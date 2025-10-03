@@ -1,3 +1,8 @@
+## 091 – [Normal Change] External connector activation during preflight
+- **Type**: Normal Change
+- **Reason**: The fallback external connector stayed disabled even when PostgreSQL credentials were validated, leaving standby consumers without a ready endpoint if the SSH tunnel failed during migration rehearsals.
+- **Change**: Updated `preflight.sh` to derive the `POSTGRES_EXTERNAL_CONNECTOR_SERVICE` (defaulting to `visionsuit-external-connector`), enable and start it on the remote host once authentication succeeds, persist the value in `.env-migration`, and refreshed the README plus migration guide to highlight the automatic fallback preparation.
+
 ## 090 – [Emergency Change] Direct PostgreSQL fallback in migration orchestrator
 - **Type**: Emergency Change
 - **Reason**: Even after credentials were repaired, `pgloader` still rejected the tunneled connection during rehearsals, keeping the production cutover blocked.
