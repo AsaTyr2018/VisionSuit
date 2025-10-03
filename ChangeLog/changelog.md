@@ -1,3 +1,8 @@
+## 083 – [Normal Change] Migration preflight dependency auto-install
+- **Type**: Normal Change
+- **Reason**: Operators still had to install `pgloader` or `sqlite3` manually when the preflight detected missing tooling, causing the migration rehearsal to abort before connecting to the remote host.
+- **Change**: Added automatic package installation attempts for `pgloader` and `sqlite3` across common package managers, updated the README to explain the behaviour, and retained manual fallback messaging when no supported manager is available.
+
 ## 082 – [Emergency Change] PostgreSQL migration port validation guard
 - **Type**: Emergency Change
 - **Reason**: The production migration helper crashed before importing data when `psql` parsed the randomly generated database password as the port value, leaving the rehearsal stuck before the PostgreSQL tables were cleared.
@@ -1672,3 +1677,8 @@
 - **Type**: Normal Change
 - **Reason**: The main migration script exited with `line 129: $!: unbound variable` because the SSH tunnel command never registered a background PID when `set -u` was active.
 - **Changes**: Launch the tunnel as a managed background job with `ExitOnForwardFailure`, capture its PID safely, verify the process remains alive, and report exit codes when the tunnel cannot be established.
+
+## 254 – [Fix] Preflight migration dependency guardrail
+- **Type**: Normal Change
+- **Reason**: The migration workflow aborted later because neither `pgloader` nor `sqlite3` was available, yet the preflight script reported success without detecting the missing tooling.
+- **Changes**: Added dependency checks to the preflight helper so it now validates `pgloader` or `sqlite3` before writing `.env-migration`, surfaced context about the detected tooling in the logs, and refreshed the README migration instructions to mention the new verification step.
