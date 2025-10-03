@@ -145,13 +145,32 @@ else
   log "Using direct PostgreSQL connection to ${POSTGRES_HOST}:${POSTGRES_PORT}."
 fi
 
-postgres_url="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${LOCAL_PG_HOST}:${LOCAL_PG_PORT}/${POSTGRES_DB}"
 if ! [[ "$LOCAL_PG_PORT" =~ ^[0-9]+$ ]]; then
   echo "[migration] Resolved local PostgreSQL port '${LOCAL_PG_PORT}' is not numeric." >&2
   exit 1
 fi
 
 psql_args=(--host "$LOCAL_PG_HOST" --port "$LOCAL_PG_PORT" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB")
+
+urlencode() {
+  local raw="$1"
+  local length=${#raw}
+  local encoded=""
+  local i char ord
+  for ((i = 0; i < length; i++)); do
+    char=${raw:i:1}
+    case "$char" in
+      [a-zA-Z0-9.~_-])
+        encoded+="$char"
+        ;;
+      *)
+        LC_CTYPE=C printf -v ord '%d' "'$char"
+        printf -v encoded '%s%%%02X' "$encoded" "$ord"
+        ;;
+    esac
+  done
+  printf '%s' "$encoded"
+}
 
 psql_exec() {
   PGPASSWORD="$POSTGRES_PASSWORD" psql "${psql_args[@]}" "$@"
@@ -175,10 +194,14 @@ drop_existing
 if command -v pgloader >/dev/null 2>&1; then
   log "Using pgloader for migration."
   load_file="$WORK_DIR/pgloader-${TIMESTAMP}.load"
+  encoded_pg_user=$(urlencode "$POSTGRES_USER")
+  encoded_pg_password=$(urlencode "$POSTGRES_PASSWORD")
+  encoded_pg_db=$(urlencode "$POSTGRES_DB")
+  postgres_url="postgresql://${encoded_pg_user}:${encoded_pg_password}@${LOCAL_PG_HOST}:${LOCAL_PG_PORT}/${encoded_pg_db}"
   cat <<LOAD >"$load_file"
 LOAD DATABASE
      FROM 'sqlite:///${SQLITE_PATH}'
-     INTO '${postgres_url}'
+     INTO ${postgres_url}
 
  WITH include drop, create tables, create indexes, reset sequences
  SET work_mem TO '128MB', maintenance_work_mem TO '256MB'
