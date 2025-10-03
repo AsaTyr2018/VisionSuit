@@ -11,6 +11,7 @@ set -euo pipefail
 ENV_FILE=".env-migration"
 WORK_DIR="run/migration"
 SKIP_TUNNEL="${MIGRATION_SKIP_TUNNEL:-0}"
+DIRECT_FALLBACK="${MIGRATION_DIRECT_FALLBACK:-1}"
 
 usage() {
   cat <<USAGE
@@ -100,58 +101,6 @@ log() {
 log "Creating SQLite safety backup at ${SQLITE_BAK}."
 cp "$SQLITE_PATH" "$SQLITE_BAK"
 
-tunnel_pid=""
-cleanup() {
-  if [[ -n "$tunnel_pid" ]]; then
-    kill "$tunnel_pid" 2>/dev/null || true
-    wait "$tunnel_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT
-
-LOCAL_PG_HOST="$POSTGRES_HOST"
-LOCAL_PG_PORT="$POSTGRES_PORT"
-
-if [[ "$SKIP_TUNNEL" != "1" ]]; then
-  LOCAL_PG_HOST="127.0.0.1"
-  LOCAL_PG_PORT="$POSTGRES_PORT"
-  if command -v lsof >/dev/null 2>&1 && lsof -Pi :"$LOCAL_PG_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-    if ! command -v python3 >/dev/null 2>&1; then
-      echo "[migration] python3 is required to allocate an alternate tunnel port." >&2
-      exit 1
-    fi
-    LOCAL_PG_PORT=$(python3 - <<'PY'
-import socket
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind(('127.0.0.1', 0))
-    print(s.getsockname()[1])
-PY
-)
-  fi
-  log "Establishing SSH tunnel to ${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}:${POSTGRES_SSH_PORT} (local port ${LOCAL_PG_PORT})."
-  SSH_CMD=(ssh -i "$POSTGRES_SSH_KEY" -p "$POSTGRES_SSH_PORT" -o BatchMode=yes -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new)
-  "${SSH_CMD[@]}" -N -L "${LOCAL_PG_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}" &
-  tunnel_pid=$!
-  sleep 1
-  if ! kill -0 "$tunnel_pid" 2>/dev/null; then
-    set +e
-    wait "$tunnel_pid"
-    status=$?
-    set -e
-    echo "[migration] Failed to establish SSH tunnel (PID ${tunnel_pid}, exit code ${status}). Check SSH connectivity and credentials." >&2
-    exit 1
-  fi
-else
-  log "Using direct PostgreSQL connection to ${POSTGRES_HOST}:${POSTGRES_PORT}."
-fi
-
-if ! [[ "$LOCAL_PG_PORT" =~ ^[0-9]+$ ]]; then
-  echo "[migration] Resolved local PostgreSQL port '${LOCAL_PG_PORT}' is not numeric." >&2
-  exit 1
-fi
-
-psql_args=(--host "$LOCAL_PG_HOST" --port "$LOCAL_PG_PORT" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB")
-
 urlencode() {
   local raw="$1"
   local length=${#raw}
@@ -172,6 +121,8 @@ urlencode() {
   printf '%s' "$encoded"
 }
 
+psql_args=()
+
 psql_exec() {
   PGPASSWORD="$POSTGRES_PASSWORD" psql "${psql_args[@]}" "$@"
 }
@@ -189,16 +140,93 @@ END $$;
 SQL
 }
 
-drop_existing
+ACTIVE_HOST=""
+ACTIVE_PORT=""
+ACTIVE_MODE=""
+ACTIVE_TUNNEL_PID=""
 
-if command -v pgloader >/dev/null 2>&1; then
-  log "Using pgloader for migration."
-  load_file="$WORK_DIR/pgloader-${TIMESTAMP}.load"
-  encoded_pg_user=$(urlencode "$POSTGRES_USER")
-  encoded_pg_password=$(urlencode "$POSTGRES_PASSWORD")
-  encoded_pg_db=$(urlencode "$POSTGRES_DB")
-  postgres_url="postgresql://${encoded_pg_user}:${encoded_pg_password}@${LOCAL_PG_HOST}:${LOCAL_PG_PORT}/${encoded_pg_db}"
-  cat <<LOAD >"$load_file"
+teardown_connection() {
+  if [[ -n "$ACTIVE_TUNNEL_PID" ]]; then
+    kill "$ACTIVE_TUNNEL_PID" 2>/dev/null || true
+    wait "$ACTIVE_TUNNEL_PID" 2>/dev/null || true
+    ACTIVE_TUNNEL_PID=""
+  fi
+}
+
+cleanup_all() {
+  teardown_connection
+}
+trap cleanup_all EXIT
+
+allocate_tunnel_port() {
+  local desired="$1"
+  local chosen="$desired"
+  if command -v lsof >/dev/null 2>&1 && lsof -Pi :"$desired" -sTCP:LISTEN >/dev/null 2>&1; then
+    if ! command -v python3 >/dev/null 2>&1; then
+      echo "[migration] python3 is required to allocate an alternate tunnel port." >&2
+      return 1
+    fi
+    chosen=$(python3 - <<'PY'
+import socket
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.bind(('127.0.0.1', 0))
+    print(s.getsockname()[1])
+PY
+)
+  fi
+  printf '%s' "$chosen"
+}
+
+setup_connection() {
+  local mode="$1"
+  teardown_connection
+
+  if [[ "$mode" == "tunnel" ]]; then
+    local local_port
+    local_port=$(allocate_tunnel_port "$POSTGRES_PORT") || return 1
+    ACTIVE_HOST="127.0.0.1"
+    ACTIVE_PORT="$local_port"
+    ACTIVE_MODE="tunnel"
+    log "Establishing SSH tunnel to ${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}:${POSTGRES_SSH_PORT} (local port ${ACTIVE_PORT})."
+    SSH_CMD=(ssh -i "$POSTGRES_SSH_KEY" -p "$POSTGRES_SSH_PORT" -o BatchMode=yes -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new)
+    "${SSH_CMD[@]}" -N -L "${ACTIVE_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${POSTGRES_SSH_USER}@${POSTGRES_SSH_HOST}" &
+    ACTIVE_TUNNEL_PID=$!
+    sleep 1
+    if ! kill -0 "$ACTIVE_TUNNEL_PID" 2>/dev/null; then
+      wait "$ACTIVE_TUNNEL_PID" 2>/dev/null || true
+      echo "[migration] Failed to establish SSH tunnel. Check SSH connectivity and credentials." >&2
+      teardown_connection
+      return 1
+    fi
+  else
+    ACTIVE_HOST="$POSTGRES_HOST"
+    ACTIVE_PORT="$POSTGRES_PORT"
+    ACTIVE_MODE="direct"
+    log "Using direct PostgreSQL connection to ${ACTIVE_HOST}:${ACTIVE_PORT}."
+  fi
+
+  if ! [[ "$ACTIVE_PORT" =~ ^[0-9]+$ ]]; then
+    echo "[migration] Resolved PostgreSQL port '${ACTIVE_PORT}' is not numeric." >&2
+    teardown_connection
+    return 1
+  fi
+
+  psql_args=(--host "$ACTIVE_HOST" --port "$ACTIVE_PORT" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB")
+  return 0
+}
+
+perform_transfer() {
+  drop_existing
+
+  if command -v pgloader >/dev/null 2>&1; then
+    log "Using pgloader for migration (${ACTIVE_MODE} connection)."
+    local load_file="$WORK_DIR/pgloader-${TIMESTAMP}-${ACTIVE_MODE}.load"
+    local encoded_pg_user encoded_pg_password encoded_pg_db postgres_url
+    encoded_pg_user=$(urlencode "$POSTGRES_USER")
+    encoded_pg_password=$(urlencode "$POSTGRES_PASSWORD")
+    encoded_pg_db=$(urlencode "$POSTGRES_DB")
+    postgres_url="postgresql://${encoded_pg_user}:${encoded_pg_password}@${ACTIVE_HOST}:${ACTIVE_PORT}/${encoded_pg_db}"
+    cat <<LOAD >"$load_file"
 LOAD DATABASE
      FROM 'sqlite:///${SQLITE_PATH}'
      INTO ${postgres_url}
@@ -207,24 +235,69 @@ LOAD DATABASE
  SET work_mem TO '128MB', maintenance_work_mem TO '256MB'
  SET search_path TO 'public';
 LOAD
-  log "Executing pgloader with load file ${load_file}."
-  pgloader "$load_file" | tee -a "$log_file"
-else
-  log "pgloader not found – falling back to sqlite3 dump." >&2
-  require() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-      echo "[migration] Required command '$1' missing." >&2
-      exit 1
-    fi
-  }
-  require sqlite3
-  require psql
+    log "Executing pgloader with load file ${load_file}."
+    pgloader "$load_file" | tee -a "$log_file"
+  else
+    log "pgloader not found – falling back to sqlite3 dump." >&2
+    require() {
+      if ! command -v "$1" >/dev/null 2>&1; then
+        echo "[migration] Required command '$1' missing." >&2
+        exit 1
+      fi
+    }
+    require sqlite3
+    require psql
 
-  SQLITE_SQL="$WORK_DIR/sqlite-export-${TIMESTAMP}.sql"
-  log "Exporting SQLite schema and data to ${SQLITE_SQL}."
-  sqlite3 "$SQLITE_PATH" .dump >"$SQLITE_SQL"
-  log "Importing dump into PostgreSQL (this may take a while)."
-  psql_exec -f "$SQLITE_SQL" >>"$log_file" 2>&1
+    local sqlite_sql="$WORK_DIR/sqlite-export-${TIMESTAMP}.sql"
+    log "Exporting SQLite schema and data to ${sqlite_sql}."
+    sqlite3 "$SQLITE_PATH" .dump >"$sqlite_sql"
+    log "Importing dump into PostgreSQL (this may take a while)."
+    psql_exec -f "$sqlite_sql" >>"$log_file" 2>&1
+  fi
+}
+
+attempt_modes=()
+
+if [[ "$SKIP_TUNNEL" != "1" ]]; then
+  attempt_modes+=("tunnel")
+else
+  attempt_modes+=("direct")
+fi
+
+if [[ "$DIRECT_FALLBACK" == "1" && "$SKIP_TUNNEL" != "1" ]]; then
+  attempt_modes+=("direct")
+fi
+
+if [[ ${#attempt_modes[@]} -eq 0 ]]; then
+  echo "[migration] No connection strategies available." >&2
+  exit 1
+fi
+
+success_mode=""
+
+for mode in "${attempt_modes[@]}"; do
+  if ! setup_connection "$mode"; then
+    log "Connection setup for ${mode} strategy failed; trying next option if available."
+    continue
+  fi
+
+  set +e
+  ( set -e; perform_transfer )
+  status=$?
+  set -e
+
+  if [[ $status -eq 0 ]]; then
+    success_mode="$mode"
+    break
+  fi
+
+  log "Migration attempt via ${mode} connection failed with status ${status}."
+  teardown_connection
+done
+
+if [[ -z "$success_mode" ]]; then
+  echo "[migration] All migration strategies failed. Review the log above for details." >&2
+  exit 1
 fi
 
 log "Running vacuum/analyze on PostgreSQL."
@@ -250,5 +323,5 @@ if [[ ${#missing_tables[@]} -gt 0 ]]; then
   exit 1
 fi
 
-log "SQLite to PostgreSQL migration completed successfully."
+log "SQLite to PostgreSQL migration completed successfully via ${success_mode:-$ACTIVE_MODE} connection."
 

@@ -1,3 +1,8 @@
+## 090 – [Emergency Change] Direct PostgreSQL fallback in migration orchestrator
+- **Type**: Emergency Change
+- **Reason**: Even after credentials were repaired, `pgloader` still rejected the tunneled connection during rehearsals, keeping the production cutover blocked.
+- **Change**: Refactored `migration.sh` to manage connection strategies centrally, retry the import over the direct `POSTGRES_HOST` route when the SSH tunnel attempt fails, and expose `MIGRATION_DIRECT_FALLBACK` so operators can disable the automatic retry when it is not permitted.
+
 ## 089 – [Emergency Change] Shell-escaped migration environment export
 - **Type**: Emergency Change
 - **Reason**: The generated `.env-migration` file wrote raw credentials, so sourcing it or deriving `DATABASE_URL` failed when PostgreSQL passwords contained shell metacharacters such as `$` or `!`, causing authentication errors like `28P01` during rehearsals.
