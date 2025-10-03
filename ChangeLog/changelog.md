@@ -1657,3 +1657,8 @@
 - **Type**: Normal Change
 - **Reason**: The `postgress-prepare.sh` helper substituted the shell process ID into `DO $$` blocks, causing PostgreSQL to reject the automation with `syntax error at or near "38371"`.
 - **Changes**: Switched the script’s here-documents to single-quote mode so `$` is preserved for PostgreSQL, keeping the DO blocks intact during role and database provisioning.
+
+## 252 – [Fix] Preflight SSH tunnel PID capture
+- **Type**: Normal Change
+- **Reason**: The PostgreSQL migration preflight stopped before writing the `.env-migration` bundle because it referenced the background PID placeholder `$!` without actually launching the tunnel as a background job.
+- **Changes**: Started the SSH tunnel with an explicit background invocation so the script records the tunnel PID safely while preserving the cleanup trap and connection validation flow.

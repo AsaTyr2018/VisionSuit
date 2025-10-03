@@ -194,7 +194,7 @@ PY
 fi
 
 SSH_CMD=(ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
-"${SSH_CMD[@]}" -fN -L "${TUNNEL_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${SSH_USER}@${SSH_HOST}"
+"${SSH_CMD[@]}" -N -L "${TUNNEL_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${SSH_USER}@${SSH_HOST}" &
 SSH_TUNNEL_PID=$!
 trap cleanup EXIT
 sleep 1
