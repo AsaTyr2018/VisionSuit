@@ -1,3 +1,8 @@
+## 081 – [Normal Change] Migration preflight SSH key persistence
+- **Type**: Normal Change
+- **Reason**: The PostgreSQL migration preflight stored the SSH key only inside the repository workspace, leaving later commands without a system-level key and failing when no agent identity was loaded.
+- **Change**: Updated `preflight.sh` to copy the key into `~/.ssh/visionsuit-migration`, ensure `ssh-agent` is running, add the key to the agent, persist the agent environment for reuse, and emit a status log; refreshed the README to highlight the automatic installation.
+
 ## 080 – [Normal Change] PostgreSQL migration host detection and sudo access
 - **Type**: Normal Change
 - **Reason**: The migration preflight failed when the preparation helper exported a non-routable hostname and the automation user could not escalate privileges via sudo without a password.
