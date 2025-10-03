@@ -1,3 +1,8 @@
+## 087 – [Emergency Change] Preflight auto-provisions PostgreSQL role
+- **Type**: Emergency Change
+- **Reason**: Migration rehearsals aborted with `password authentication failed` when the target role was missing or its password no longer matched the exported bundle, leaving the cutover blocked before any data moved.
+- **Change**: Taught `preflight.sh` to create or reset the PostgreSQL role using the prepared superuser before testing connectivity, logged the confirmation, and refreshed the README to highlight that the preflight now guarantees the bundled credentials exist ahead of the import.
+
 ## 086 – [Emergency Change] Ensure pgloader accepts generated target URI
 - **Type**: Emergency Change
 - **Reason**: The migration orchestrator wrapped the PostgreSQL connection string in single quotes and left credentials raw, so pgloader 3.6.7 aborted before reading the load file and complex passwords containing `@` or spaces could not be imported.

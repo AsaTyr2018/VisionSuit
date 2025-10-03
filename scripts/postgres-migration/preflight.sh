@@ -120,6 +120,8 @@ if ! command -v ssh-agent >/dev/null 2>&1; then
   exit 1
 fi
 
+SSH_CMD=(ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+
 if [[ -z "${SSH_AUTH_SOCK:-}" ]] || ! ssh-add -l >/dev/null 2>&1; then
   eval "$(ssh-agent -s)" >/dev/null
   SSH_AGENT_STARTED=1
@@ -299,11 +301,34 @@ fi
 log "SSH private key extracted to ${SSH_KEY_PATH}, installed at ${SYSTEM_SSH_KEY_PATH}, and loaded into ssh-agent. ${AGENT_MESSAGE}"
 
 log "Checking SSH connectivity to ${SSH_USER}@${SSH_HOST}:${SSH_PORT}."
-if ! ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-  "${SSH_USER}@${SSH_HOST}" 'echo preflight-ok' >/dev/null; then
+if ! "${SSH_CMD[@]}" "${SSH_USER}@${SSH_HOST}" 'echo preflight-ok' >/dev/null; then
   echo "[preflight] SSH connectivity test failed." >&2
   exit 1
 fi
+
+log "Ensuring PostgreSQL role ${POSTGRES_USER} exists with the configured password."
+if ! "${SSH_CMD[@]}" \
+  "${SSH_USER}@${SSH_HOST}" \
+  ROLE="$POSTGRES_USER" PASSWORD="$POSTGRES_PASSWORD" PORT="$POSTGRES_PORT" SUPER="$POSTGRES_SUPERUSER" \
+  bash -s <<'EOS'; then
+set -euo pipefail
+sudo -u "$SUPER" psql -v ON_ERROR_STOP=1 -p "$PORT" -d postgres -v role="$ROLE" -v pwd="$PASSWORD" <<'SQL'
+DO $do$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', :'role', :'pwd');
+  ELSE
+    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'role', :'pwd');
+  END IF;
+END
+$do$;
+SQL
+EOS
+  echo "[preflight] Failed to provision or update PostgreSQL role ${POSTGRES_USER}." >&2
+  exit 1
+fi
+
+log "PostgreSQL role ${POSTGRES_USER} confirmed."
 
 log "Validating PostgreSQL connection from target host via SSH tunnel."
 
@@ -329,7 +354,6 @@ PY
 )
 fi
 
-SSH_CMD=(ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 "${SSH_CMD[@]}" -N -L "${TUNNEL_PORT}:${POSTGRES_INTERNAL_HOST}:${POSTGRES_PORT}" "${SSH_USER}@${SSH_HOST}" &
 SSH_TUNNEL_PID=$!
 trap cleanup EXIT
