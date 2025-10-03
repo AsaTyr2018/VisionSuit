@@ -1,3 +1,8 @@
+## 085 – [Emergency Change] Restore pgloader STDIN compatibility
+- **Type**: Emergency Change
+- **Reason**: Production rehearsals still failed because the migration helper invoked `pgloader` with the `-` placeholder, which the packaged 3.6.7 build interprets as a filename and aborts before reading the inline load instructions.
+- **Change**: Persist the generated load script to the migration work directory and execute `pgloader` against that file so the SQLite-to-PostgreSQL transfer runs on all supported builds again, while keeping the log output for troubleshooting.
+
 ## 084 – [Emergency Change] pgloader invocation fix in migration orchestrator
 - **Type**: Emergency Change
 - **Reason**: The PostgreSQL migration helper invoked `pgloader` without the stdin placeholder and missing statement terminators, so the tool exited with a usage banner instead of loading data, blocking rehearsals mid-cutover.
