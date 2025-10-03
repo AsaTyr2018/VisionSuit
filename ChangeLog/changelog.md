@@ -1,3 +1,8 @@
+## 093 – [Normal Change] External connector systemd deployment
+- **Type**: Normal Change
+- **Reason**: Operators needed a ready-to-install systemd unit and launcher for the fallback PostgreSQL tunnel so the migration preflight could enable the connector without manual setup each run.
+- **Change**: Added the `visionsuit-external-connector.service` template with a managed SSH tunnel helper, taught `maintenance.sh` to deploy the unit alongside the core services, and refreshed the README plus migration preparation guide with installation and enablement steps.
+
 ## 092 – [Normal Change] External connector service existence validation
 - **Type**: Normal Change
 - **Reason**: The PostgreSQL migration preflight tried to enable the fallback external connector even when the systemd unit was missing, leaving operators with a generic failure message and no guidance on how to proceed.

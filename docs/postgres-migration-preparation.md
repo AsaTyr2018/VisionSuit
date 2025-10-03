@@ -21,6 +21,34 @@ The helper installs PostgreSQL when absent, creates the `visionsuit-migrator` Li
 
 Store the generated file securely—anyone with `vs-conf.txt` can access the database host.
 
+### Install the fallback connector service on the PostgreSQL host
+
+The migration preflight now verifies that `visionsuit-external-connector.service` exists so it can enable the standby tunnel automatically. After copying this repository (or at minimum the `services/` directory) to the PostgreSQL server, render the unit template and install the helper script:
+
+```bash
+sudo ./maintenance.sh install
+```
+
+If you prefer to install manually, copy `services/systemd/visionsuit-external-connector.service` to `/etc/systemd/system/` and replace `@ROOT_DIR@` with the path to your checkout, then copy `services/vs-external-connector.sh` into that directory and make it executable.
+
+Create `/etc/visionsuit/visionsuit-external-connector.env` with the SSH parameters that should keep the tunnel online—for example:
+
+```bash
+EXTERNAL_CONNECTOR_SSH_HOST=db.internal
+EXTERNAL_CONNECTOR_SSH_USER=visionsuit-migrator
+EXTERNAL_CONNECTOR_SSH_KEY=/root/.ssh/visionsuit-migration
+EXTERNAL_CONNECTOR_BIND_HOST=127.0.0.1
+EXTERNAL_CONNECTOR_BIND_PORT=6432
+EXTERNAL_CONNECTOR_REMOTE_HOST=127.0.0.1
+EXTERNAL_CONNECTOR_REMOTE_PORT=5432
+```
+
+Once the file is in place, enable the service so the preflight can activate it on demand:
+
+```bash
+sudo systemctl enable --now visionsuit-external-connector.service
+```
+
 ## 2. Deliver `vs-conf.txt` to the VisionSuit host
 
 Copy the configuration bundle via an encrypted channel. A typical path is `/root/config/vs-conf.txt` on the VisionSuit server:
