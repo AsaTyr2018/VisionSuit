@@ -1,3 +1,5 @@
+# Currently on Hold for working on VisionSuit2
+
 # VisionSuit
 
 VisionSuit is a self-hosted platform for curating AI image galleries, distributing LoRA adapters, and managing an on-site GPU generation workflow. It ships with a full-stack experience that keeps moderation, governance, and community tooling under your control.
